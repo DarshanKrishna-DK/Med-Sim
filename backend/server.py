@@ -93,6 +93,10 @@ FRONTEND_ORIGINS = {
 ALLOWED_ORIGINS.extend(sorted(FRONTEND_ORIGINS - set(ALLOWED_ORIGINS)))
 
 
+# Paths that cost credits or touch providers. Everything else (the SPA) is public.
+API_PREFIXES = ("/agent/", "/voice/", "/teach/", "/coach/", "/llm/")
+
+
 def _is_dev_origin(origin: str) -> bool:
     return origin in DEV_ORIGINS or origin in FRONTEND_ORIGINS or bool(DEV_ORIGIN_RE.match(origin))
 
@@ -129,6 +133,10 @@ async def require_shared_secret(request: Request, call_next):
     # /health is public for monitoring; CORS preflight runs above this anyway
     # but bypass OPTIONS defensively.
     if path == "/health" or request.method == "OPTIONS":
+        return await call_next(request)
+    # Only the API is guarded. The built SPA and its static assets (/, /assets/*,
+    # /index.html) are public: a top-level page load sends no Origin header.
+    if not path.startswith(API_PREFIXES):
         return await call_next(request)
     # Agora's cloud calls /llm/* with no Origin; that route does its own
     # per-agent bearer-token check (llm_proxy.valid_token).

@@ -30,6 +30,18 @@ class FrontendOriginsTest(unittest.TestCase):
         from fastapi.testclient import TestClient
         self.assertEqual(TestClient(self.server.app).get("/health").status_code, 200)
 
+    def test_spa_paths_are_public_but_api_needs_trusted_origin(self):
+        from fastapi.testclient import TestClient
+        c = TestClient(self.server.app)
+        # A top-level page load or asset fetch carries no Origin header.
+        for path in ("/", "/index.html", "/assets/characters/doctor.glb"):
+            self.assertNotEqual(c.get(path).status_code, 401, path)
+        # The API still refuses requests from an untrusted origin.
+        r = c.post("/voice/start", json={}, headers={"Origin": "https://evil.example.com"})
+        self.assertEqual(r.status_code, 401)
+        r = c.post("/voice/stop", json={"agentId": "x"})
+        self.assertEqual(r.status_code, 401)
+
 
 if __name__ == "__main__":
     unittest.main()
