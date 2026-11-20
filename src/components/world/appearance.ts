@@ -10,28 +10,39 @@ export interface AttachBones {
   rArm?: THREE.Bone;
 }
 
+/** Per-layer alpha cutoff and shade for the Hair_Shell_N meshes (inner
+ *  layer darker, outer strand tips a touch lighter). */
+const HAIR_SHELL_CUTOFF = [0.13, 0.45, 0.68];
+const HAIR_SHELL_TINT = [0.75, 0.95, 1.06];
+
 /** Recolour one Ready Player Me style mesh by material name. Materials are
  *  cloned per character and pushed to `owned` for disposal. */
 export function applyLook(mesh: THREE.Mesh, look: Look, owned: THREE.Material[]) {
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   const next = mats.map((m): THREE.Material => {
-    if (m.name === 'Hair_Short') {
-      // Blender-built haircut: strand texture, sheen, soft hairline via vertex alpha.
-      const map = strandTexture(!!look.hairGrey);
-      const hair = new THREE.MeshPhysicalMaterial({
-        map,
-        bumpMap: map,
-        bumpScale: 1.5,
-        color: '#ffffff',
-        roughness: 0.6,
-        sheen: 0.8,
-        sheenRoughness: 0.45,
-        sheenColor: new THREE.Color(look.hairGrey ? '#ece8e0' : '#4a3a2e'),
+    const shell = /^Hair_Shell_(\d)$/.exec(m.name);
+    if (shell) {
+      // Blender-built layered haircut (scratch build_male.py / hair_v3.py):
+      // strand texture RGB = luminance, A = strand height; COLOR_0 alpha =
+      // density (fades at the hairline). Each shell alpha-tests at its own
+      // cutoff so the outer layers only keep the longer strands.
+      const k = Number(shell[1]);
+      const src = m as THREE.MeshStandardMaterial;
+      const hair = new THREE.MeshStandardMaterial({
+        name: m.name,
+        map: src.map,
+        normalMap: src.normalMap,
+        normalScale: new THREE.Vector2(0.8, 0.8),
+        color: new THREE.Color(look.hair).multiplyScalar(HAIR_SHELL_TINT[k] ?? 1),
+        roughness: look.hairGrey ? 0.7 : 0.78,
+        metalness: 0,
+        envMapIntensity: 0.35,
         vertexColors: true,
-        transparent: true,
-        alphaTest: 0.02,
+        transparent: false,
+        depthWrite: true,
+        alphaTest: HAIR_SHELL_CUTOFF[k] ?? 0.5,
+        alphaToCoverage: true,
       });
-      hair.userData.ownedMap = map;
       owned.push(hair);
       return hair;
     }
@@ -47,6 +58,7 @@ export function applyLook(mesh: THREE.Mesh, look: Look, owned: THREE.Material[])
     switch (m.name) {
       case 'Wolf3D_Skin':
       case 'Wolf3D_Body':
+      case 'Skin_Extra':
         c.color.set(look.skin);
         c.roughness = Math.max(0.58, c.roughness);
         break;
@@ -61,10 +73,18 @@ export function applyLook(mesh: THREE.Mesh, look: Look, owned: THREE.Material[])
       case 'Wolf3D_Outfit_Top':
       case 'Doctor_Coat':
       case 'Kurta_Cloth':
+      case 'Saree_Cloth':
         garment(look.top);
         break;
       case 'Wolf3D_Outfit_Bottom':
+      case 'Dhoti_Cloth':
         garment(look.bottom);
+        break;
+      case 'Saree_Border':
+        c.color.set(look.border ?? '#d4a640');
+        break;
+      case 'Saree_Blouse':
+        c.color.set(look.blouse ?? look.border ?? '#d4a640');
         break;
       case 'Wolf3D_Outfit_Footwear':
         if (look.shoes) c.color.set(look.shoes);
@@ -144,25 +164,13 @@ function attach(bone: THREE.Bone, mesh: THREE.Object3D) {
 
 const wp = (o: THREE.Object3D | undefined, fb: THREE.Vector3) => (o ? o.getWorldPosition(new THREE.Vector3()) : fb.clone());
 
-/** Procedural extras parented to bones: short hair, dupatta, stethoscope,
+/** Procedural extras parented to bones: dupatta, stethoscope,
  *  ID badge. Built in bind-pose model space, fitted to the mesh surface.
  *  Call with the model detached and in bind pose. */
 export function addAttachments(model: THREE.Object3D, bones: AttachBones, look: Look, owned: THREE.Material[]) {
   model.updateMatrixWorld(true);
-  const head = bones.head;
   const chest = bones.spine2;
 
-  if (look.hairCap && head) {
-    let headMesh: THREE.Mesh | null = null;
-    model.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh && !Array.isArray(m.material) && m.material.name === 'Wolf3D_Skin') headMesh = m;
-    });
-    if (headMesh) {
-      const hair = buildHairShell(headMesh, look, owned);
-      if (hair) attach(head, hair);
-    }
-  }
   if (!chest) return;
   const torso = bodyPoints(model, /Wolf3D_Outfit_Top|Wolf3D_Body|Doctor_Coat|Doctor_Shirt|Kurta_Cloth/);
   const L = wp(bones.lArm, new THREE.Vector3(0.17, 1.4, 0));
@@ -229,111 +237,4 @@ export function addAttachments(model: THREE.Object3D, bones: AttachBones, look: 
     badge.updateMatrix();
     attach(chest, badge);
   }
-}
-
-/** Strand texture for the hair shell (runs front to back). */
-function strandTexture(grey: boolean): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 512;
-  const g = c.getContext('2d')!;
-  g.fillStyle = grey ? '#a7a29b' : '#17110d';
-  g.fillRect(0, 0, 256, 512);
-  const tones = grey ? ['#d8d4cd', '#8f8a83', '#bdb8b0', '#6f6a64'] : ['#2c2119', '#0b0806', '#3b2c21', '#1f1712'];
-  for (let i = 0; i < 1400; i++) {
-    const x = Math.random() * 256;
-    const y = Math.random() * 512;
-    const len = 30 + Math.random() * 90;
-    g.strokeStyle = tones[i % tones.length];
-    g.globalAlpha = 0.35 + Math.random() * 0.45;
-    g.lineWidth = 0.6 + Math.random() * 1.1;
-    g.beginPath();
-    g.moveTo(x, y);
-    g.quadraticCurveTo(x + (Math.random() - 0.5) * 6, y + len / 2, x + (Math.random() - 0.5) * 8, y + len);
-    g.stroke();
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 8;
-  return t;
-}
-
-/** Short neat haircut fitted to the actual scalp: the head mesh's scalp
- *  triangles above a hairline (high at the forehead, low at the nape) are
- *  copied and pushed out along their normals, thin at the hairline and
- *  fuller on top, with a strand texture running front to back. */
-function buildHairShell(headMesh: THREE.Mesh, look: Look, owned: THREE.Material[]): THREE.Mesh | null {
-  const geo = headMesh.geometry;
-  const pos = geo.getAttribute('position');
-  const nor = geo.getAttribute('normal');
-  const index = geo.getIndex();
-  if (!pos || !nor || !index) return null;
-  const mw = headMesh.matrixWorld;
-  const nm = new THREE.Matrix3().getNormalMatrix(mw);
-  const P: THREE.Vector3[] = [];
-  const N: THREE.Vector3[] = [];
-  let top = -Infinity;
-  for (let i = 0; i < pos.count; i++) {
-    const p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mw);
-    P.push(p);
-    N.push(new THREE.Vector3().fromBufferAttribute(nor, i).applyMatrix3(nm).normalize());
-    if (p.y > top) top = p.y;
-  }
-  // scalp centre from the upper skull
-  const cap = P.filter((p) => p.y > top - 0.06);
-  const cx = cap.reduce((a, p) => a + p.x, 0) / cap.length;
-  const cz = cap.reduce((a, p) => a + p.z, 0) / cap.length;
-  const hairline = (p: THREE.Vector3) => {
-    const phi = Math.atan2(p.x - cx, p.z - cz); // 0 = forehead
-    const f = (1 - Math.cos(phi)) / 2; // 0 front .. 1 nape
-    const temple = Math.exp(-(((Math.abs(phi) - 0.75) / 0.25) ** 2)) * 0.012; // slight recession
-    return top - (0.062 + 0.095 * f ** 1.4) + temple;
-  };
-  const keep = P.map((p) => p.y > hairline(p));
-  const remap = new Map<number, number>();
-  const outPos: number[] = [];
-  const outUv: number[] = [];
-  const outIdx: number[] = [];
-  const vert = (i: number) => {
-    let k = remap.get(i);
-    if (k !== undefined) return k;
-    const p = P[i];
-    const d = p.y - hairline(p);
-    const t = 0.0022 + 0.0105 * Math.min(1, Math.max(0, d / 0.035)) + 0.004 * Math.min(1, Math.max(0, (p.y - (top - 0.035)) / 0.035));
-    const q = p.clone().addScaledVector(N[i], t);
-    k = outPos.length / 3;
-    outPos.push(q.x, q.y, q.z);
-    const phi = Math.atan2(p.x - cx, p.z - cz);
-    outUv.push((phi / (Math.PI * 2)) * 3, (top - p.y) * 9);
-    remap.set(i, k);
-    return k;
-  };
-  for (let f = 0; f < index.count; f += 3) {
-    const a = index.getX(f), b = index.getX(f + 1), c = index.getX(f + 2);
-    const n = (keep[a] ? 1 : 0) + (keep[b] ? 1 : 0) + (keep[c] ? 1 : 0);
-    if (n < 2) continue;
-    outIdx.push(vert(a), vert(b), vert(c));
-  }
-  if (!outIdx.length) return null;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(outPos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(outUv, 2));
-  g.setIndex(outIdx);
-  g.computeVertexNormals();
-  const map = strandTexture(!!look.hairGrey);
-  const mat = new THREE.MeshPhysicalMaterial({
-    map,
-    color: look.hairGrey ? '#ffffff' : '#ffffff',
-    roughness: 0.55,
-    sheen: 0.7,
-    sheenRoughness: 0.45,
-    sheenColor: new THREE.Color(look.hairGrey ? '#e8e4dc' : '#5a4436'),
-    bumpMap: map,
-    bumpScale: 1.2,
-  });
-  owned.push(mat);
-  const mesh = new THREE.Mesh(g, mat);
-  mesh.castShadow = true;
-  return mesh;
 }

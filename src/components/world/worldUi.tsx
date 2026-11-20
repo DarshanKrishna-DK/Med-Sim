@@ -177,9 +177,9 @@ export function ControlsCard({ seated }: { seated?: boolean }) {
       <div style={{ ...labelStyle, color: UI.primary }}>Controls</div>
       {row('WASD', seated ? 'Stand up and walk' : 'Walk')}
       {row('Shift', 'Run')}
-      {row('Drag', 'Look around (wheel: zoom)')}
+      {row('Mouse', 'Look around (click to capture, wheel: zoom)')}
       {row('E', 'Use door')}
-      {row('Esc', 'Menu')}
+      {row('Esc', 'Free cursor, again for menu')}
     </div>
   );
 }

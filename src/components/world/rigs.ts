@@ -8,7 +8,7 @@
 // time (see retarget.ts). Files are local under public/assets/characters;
 // sources and licences are in public/assets/CREDITS.md.
 
-export type RigId = 'male' | 'female' | 'doctor';
+export type RigId = 'male' | 'female' | 'doctor' | 'saree' | 'dhoti' | 'child';
 
 export const RIG_URL: Record<RigId, string> = {
   // Cleaned in Blender (scratch script build_male.py): no bow tie, flower or
@@ -18,6 +18,14 @@ export const RIG_URL: Record<RigId, string> = {
   // light-blue shirt, clean-shaven, fitted short haircut.
   doctor: '/assets/characters/doctor.glb',
   female: '/assets/characters/rpm-female.glb',
+  // Built in Blender (scratch build_saree.py / build_male.py + attire_male.py),
+  // same skeletons as above so the retargeted clips play unchanged:
+  // saree with pleats, border and pallu over a short-sleeved blouse, bindi, bangles.
+  saree: '/assets/characters/female-saree.glb',
+  // Elderly man: hip-length kurta over a loose white dhoti with front pleats.
+  dhoti: '/assets/characters/male-dhoti.glb',
+  // Boy: t-shirt with short sleeves and knee shorts (scaled by height).
+  child: '/assets/characters/male-child.glb',
 };
 
 /** Source of the shared animation library. Xbot is never rendered. */
@@ -36,16 +44,18 @@ export interface Look {
   height: number;
   /** Multiply tint over the base skin texture. */
   skin: string;
-  /** Hair colour. `grey` strips the texture so it reads silver. */
+  /** Hair colour (multiplies the strand texture of the Blender-built haircut). */
   hair: string;
   hairGrey?: boolean;
-  /** Male rig is bald under its stock hat: add a short-hair cap. */
-  hairCap?: boolean;
   top: Garment;
   bottom: Garment;
   shoes?: string;
   beard?: 'hide' | 'keep';
   glasses?: boolean;
+  /** Saree border / zari colour (saree rig). */
+  border?: string;
+  /** Blouse colour (saree rig). */
+  blouse?: string;
   /** Draped scarf over both shoulders (salwar kameez). */
   dupatta?: string;
   stethoscope?: boolean;
@@ -66,7 +76,7 @@ export const DOCTOR_LOOK: Look = {
   rig: 'doctor',
   height: 1.78,
   skin: '#d8a382',
-  hair: HAIR_BLACK,
+  hair: '#2a1f17',
   top: { color: '#f4f5f7', map: false, roughness: 0.8 },
   bottom: { color: '#1d2a44', map: false },
   shoes: '#2a221d',
@@ -105,12 +115,26 @@ function hash(s: string): number {
 
 const pick = <T,>(arr: T[], h: number) => arr[h % arr.length];
 
+/** Extra avalanche so seeds that differ only in their last character still
+ *  spread across the outfit choices. */
+function mix(h: number): number {
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
 // Kameez / kurta palettes.
 const KAMEEZ = ['#9c2a3a', '#c9932e', '#1f6f73', '#d98a6a', '#2a4a9a', '#3f7a43', '#a03a7a', '#6b3fa0', '#d4b24c'];
 const SALWAR = ['#f2ead8', '#e9e2cf', '#2b2b38', '#7a1f2b', '#1e3b5c', '#d8c49a'];
 const DUPATTA = ['#e7c35a', '#c0392b', '#f0e6d2', '#2e8b7a', '#d76f9a', '#f4a259', '#5b7fd1'];
 const KURTA = ['#f3efe6', '#e8dcc0', '#9fb6cf', '#6d7f5a', '#7d2e3a', '#c7b08a', '#3f5a7a'];
 const PAJAMA = ['#f2efe8', '#e6e0d2', '#3a3d46', '#c9bfae'];
+const SAREE = ['#9c1f3a', '#1f6f73', '#c2571a', '#2a4a9a', '#3f7a43', '#7a1f6b', '#d4a017', '#b8325a', '#5b3f8c', '#0f6b5c'];
+const SAREE_ELDER = ['#e9e2d0', '#7a6a8a', '#5a6e7a', '#8a6d5a', '#d8cfc0', '#4f6d5a'];
+const ZARI = ['#d4a640', '#c9a227', '#e2c56a', '#b33a3a', '#2a4a9a', '#f0e6d2'];
+const BLOUSE = ['#d4a640', '#7a1f2b', '#1e3b5c', '#2e8b7a', '#f0e6d2', '#3a2f5a'];
+const TSHIRT = ['#e04a3a', '#2f7fd8', '#f2c230', '#3faa5a', '#f28c28', '#8a5ad8', '#f2f2ee', '#1fa3a3'];
+const SHORTS = ['#24365e', '#6b5a3e', '#3a3d46', '#2f5a3a', '#7a7f88'];
 
 /** Standing height by age (rough growth curve). */
 export function heightForAge(age: number, gender: 'M' | 'F'): number {
@@ -136,6 +160,25 @@ export function patientLook(age: number, gender: 'M' | 'F', seed = ''): Look {
         top: { color: '#f5f5f2', map: false }, bottom: { color: '#24365e', map: false }, shoes: '#1c1c1c',
       };
     }
+    const m = mix(h);
+    const saree = age >= 30 ? m % 4 !== 0 : !teen && m % 4 === 0;
+    if (saree) {
+      const cloth = elderly ? pick(SAREE_ELDER, h >>> 9) : pick(SAREE, h >>> 9);
+      return {
+        rig: 'saree',
+        height,
+        skin,
+        hair: elderly ? HAIR_GREY : (h >>> 7) % 4 === 0 ? HAIR_DARK_BROWN : HAIR_BLACK,
+        hairGrey: elderly,
+        top: { color: cloth, map: false, roughness: 0.72 },
+        // leggings under the saree: same colour so nothing reads through
+        bottom: { color: cloth, map: false, roughness: 0.8 },
+        border: pick(ZARI, h >>> 13),
+        blouse: pick(BLOUSE, h >>> 17),
+        shoes: '#5a3a28',
+        glasses: elderly && (h >>> 19) % 2 === 0,
+      };
+    }
     return {
       rig: 'female',
       height,
@@ -152,8 +195,24 @@ export function patientLook(age: number, gender: 'M' | 'F', seed = ''): Look {
 
   if (child) {
     return {
-      rig: 'male', height, skin, hair: HAIR_BLACK,
-      top: { color: '#f5f5f2', map: false }, bottom: { color: '#24365e', map: false }, shoes: '#1c1c1c', beard: 'hide',
+      rig: 'child', height, skin, hair: HAIR_BLACK,
+      top: { color: pick(TSHIRT, h >>> 9), map: false, roughness: 0.8 },
+      bottom: { color: pick(SHORTS, h >>> 13), map: false, roughness: 0.85 },
+      shoes: '#1c1c1c', beard: 'hide',
+    };
+  }
+  if (elderly && mix(h) % 3 !== 0) {
+    return {
+      rig: 'dhoti',
+      height,
+      skin,
+      hair: HAIR_GREY,
+      hairGrey: true,
+      top: { color: pick(['#f4f1ea', '#efe6d2', '#e6ddc8', '#d9d4c8'], h >>> 9), map: false, roughness: 0.85 },
+      bottom: { color: pick(['#f6f3ea', '#f0e9d6'], h >>> 13), map: false, roughness: 0.88 },
+      shoes: '#4a3424',
+      beard: (h >>> 15) % 3 === 0 ? 'hide' : 'keep',
+      glasses: (h >>> 19) % 2 === 0,
     };
   }
   const shirtTrousers = !elderly && (h >>> 11) % 3 === 0;

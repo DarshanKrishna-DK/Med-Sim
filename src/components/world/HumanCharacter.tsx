@@ -262,3 +262,6 @@ export function HumanCharacter({ look, control }: { look: Look; control: Charact
 useGLTF.preload(ANIM_URL);
 useGLTF.preload(RIG_URL.male);
 useGLTF.preload(RIG_URL.female);
+useGLTF.preload(RIG_URL.saree);
+useGLTF.preload(RIG_URL.dhoti);
+useGLTF.preload(RIG_URL.child);

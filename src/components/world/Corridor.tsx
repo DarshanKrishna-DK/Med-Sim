@@ -1086,11 +1086,15 @@ function Npcs({ runtime }: { runtime: PlayerRuntime }) {
   const elder = useMemo(() => patientLook(70, 'M', 'lobby-elder-2'), []);
   const mother = useMemo(() => patientLook(38, 'F', 'lobby-family-1'), []);
   const visitor = useMemo(() => patientLook(29, 'F', 'corridor-visitor-3'), []);
+  const kid = useMemo(() => patientLook(8, 'M', 'lobby-family-kid'), []);
+  const grandma = useMemo(() => patientLook(66, 'F', 'lobby-grandma-1'), []);
   return (
     <>
       <StaticNpc look={NURSE_LOOK} position={[-5.25, 0, 4.4]} rotY={Math.PI / 2} runtime={runtime} />
       <StaticNpc look={elder} position={[5.06, 0, 4.1]} rotY={-Math.PI / 2} sit seatHeight={0.48} runtime={runtime} />
       <StaticNpc look={mother} position={[5.06, 0, 5.3]} rotY={-Math.PI / 2} sit seatHeight={0.48} runtime={runtime} />
+      <StaticNpc look={kid} position={[5.06, 0, 5.93]} rotY={-Math.PI / 2} sit seatHeight={0.48} runtime={runtime} />
+      <StaticNpc look={grandma} position={[2.94, 0, 6.29]} rotY={Math.PI / 2} sit seatHeight={0.48} runtime={runtime} />
       <StaticNpc look={visitor} position={[-CORRIDOR_HALF_W + 0.36, 0, -19.1]} rotY={Math.PI / 2} sit seatHeight={0.48} runtime={runtime} />
       <PatrolNpc look={WARD_ATTENDANT_LOOK} a={[0.9, -3]} b={[0.9, -29]} runtime={runtime} />
     </>

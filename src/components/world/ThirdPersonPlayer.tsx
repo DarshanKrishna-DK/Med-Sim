@@ -53,6 +53,8 @@ export interface CameraRig {
 }
 
 const WALK = 2.3;
+/** Mouse-look sensitivity, radians per pixel of pointer-locked movement. */
+const LOOK_SENS = 0.0024;
 const RUN = 5.0;
 const RADIUS = 0.3;
 
@@ -125,12 +127,18 @@ export function ThirdPersonPlayer({
   const group = useRef<THREE.Group>(null);
   const control = useMemo(() => makeControl({ seatHeight: seat?.height }), [seat?.height]);
   const keys = useRef({ f: false, b: false, l: false, r: false, run: false, rotL: false, rotR: false });
+  const lockRef = useRef<{ lock: () => void; unlock: () => void; locked: () => boolean } | null>(null);
   const camState = useRef({
     dist: rig.distance,
     want: rig.distance,
     effDist: rig.distance,
     pivot: new THREE.Vector3(runtime.pos.x, rig.pivotHeight, runtime.pos.z),
     lastDrag: -10,
+    /** Mouse-look delta not yet applied (smoothed in the frame loop). */
+    pendYaw: 0,
+    pendPitch: 0,
+    /** Cursor x (0..1) while hovering the canvas unlocked, -1 otherwise. */
+    hoverX: -1,
     idle: 0,
     t: 0,
     init: false,
@@ -156,6 +164,7 @@ export function ThirdPersonPlayer({
       if (!k) return;
       keys.current[k] = true;
       if (k !== 'run') e.preventDefault();
+      if (k === 'f' || k === 'b' || k === 'l' || k === 'r') lockRef.current?.lock();
     };
     const up = (e: KeyboardEvent) => {
       const k = map(e);
@@ -175,18 +184,54 @@ export function ThirdPersonPlayer({
     };
   }, []);
 
-  // ── mouse drag orbit + wheel zoom ──
+  // ── mouse look ──
+  // Pointer Lock: a click on the canvas (or the first movement key) captures
+  // the mouse and from then on moving it turns the camera, like most
+  // third-person games. Esc / Alt / Tab or focusing a text field frees the
+  // cursor (the first Esc only frees it; the next one opens the menu).
+  // While free, dragging still orbits and resting the cursor near the left
+  // or right edge slowly turns the camera.
   useEffect(() => {
     const el = gl.domElement;
+    const s = camState.current;
     let dragging = false;
     let lx = 0, ly = 0;
+    const locked = () => document.pointerLockElement === el;
+    const lock = () => {
+      if (locked() || !runtime.inputEnabled || document.querySelector('.modal-layer')) return;
+      try {
+        const r = el.requestPointerLock() as unknown as Promise<void> | undefined;
+        if (r && typeof r.catch === 'function') r.catch(() => {});
+      } catch {
+        /* pointer lock unavailable: drag + edge look still work */
+      }
+    };
+    const unlock = () => {
+      if (locked()) document.exitPointerLock();
+    };
+    lockRef.current = { lock, unlock, locked };
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0 && e.button !== 2) return;
+      if (locked()) {
+        runtime.dragPx = 999; // clicks while captured never hit doors under a frozen cursor
+        return;
+      }
       dragging = true;
       runtime.dragPx = 0;
       lx = e.clientX; ly = e.clientY;
     };
+    const onClick = () => {
+      if (runtime.dragPx <= 6) lock();
+    };
     const onMove = (e: PointerEvent) => {
+      if (locked()) {
+        if (!runtime.inputEnabled) return;
+        s.pendYaw -= e.movementX * LOOK_SENS;
+        s.pendPitch += e.movementY * LOOK_SENS * 0.8;
+        s.lastDrag = s.t;
+        return;
+      }
+      s.hoverX = e.target === el ? e.clientX / Math.max(1, window.innerWidth) : -1;
       if (!dragging) return;
       const dx = e.clientX - lx, dy = e.clientY - ly;
       lx = e.clientX; ly = e.clientY;
@@ -194,25 +239,49 @@ export function ThirdPersonPlayer({
       if (!runtime.inputEnabled) return;
       runtime.camYaw -= dx * 0.0055;
       runtime.camPitch = THREE.MathUtils.clamp(runtime.camPitch + dy * 0.004, -0.35, 1.1);
-      camState.current.lastDrag = camState.current.t;
+      s.lastDrag = s.t;
     };
     const onUp = () => { dragging = false; };
+    const onLeave = () => { s.hoverX = -1; };
     const onWheel = (e: WheelEvent) => {
-      const s = camState.current;
       s.want = THREE.MathUtils.clamp(s.want + Math.sign(e.deltaY) * 0.4, rig.minDistance, rig.maxDistance);
+    };
+    const onKeyCapture = (e: KeyboardEvent) => {
+      if (!locked()) return;
+      if (e.code === 'Escape') {
+        // First Esc only frees the cursor; the menu opens on the next one.
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        unlock();
+      } else if (e.key === 'Alt' || e.code === 'Tab') {
+        unlock();
+      }
+    };
+    const onFocus = (e: FocusEvent) => {
+      if (isTypingTarget(e.target)) unlock();
     };
     const noMenu = (e: Event) => e.preventDefault();
     el.addEventListener('pointerdown', onDown);
+    el.addEventListener('click', onClick);
+    el.addEventListener('pointerleave', onLeave);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('keydown', onKeyCapture, true);
+    document.addEventListener('focusin', onFocus);
     el.addEventListener('wheel', onWheel, { passive: true });
     el.addEventListener('contextmenu', noMenu);
     return () => {
       el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('click', onClick);
+      el.removeEventListener('pointerleave', onLeave);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('keydown', onKeyCapture, true);
+      document.removeEventListener('focusin', onFocus);
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('contextmenu', noMenu);
+      unlock();
+      lockRef.current = null;
     };
   }, [gl, runtime, rig.minDistance, rig.maxDistance]);
 
@@ -224,6 +293,27 @@ export function ThirdPersonPlayer({
     s.t += dt;
     const k = keys.current;
     const enabled = runtime.inputEnabled;
+
+    // Mouse look (smoothed), edge hover-look while the cursor is free.
+    if (!enabled) {
+      s.pendYaw = s.pendPitch = 0;
+      if (lockRef.current?.locked()) lockRef.current.unlock();
+    } else {
+      const take = 1 - Math.exp(-dt * 28);
+      const dy = s.pendYaw * take, dp = s.pendPitch * take;
+      s.pendYaw -= dy;
+      s.pendPitch -= dp;
+      runtime.camYaw += dy;
+      runtime.camPitch = THREE.MathUtils.clamp(runtime.camPitch + dp, -0.35, 1.1);
+      if (s.hoverX >= 0 && !lockRef.current?.locked()) {
+        const edge = 0.07;
+        const e = s.hoverX < edge ? -(1 - s.hoverX / edge) : s.hoverX > 1 - edge ? (s.hoverX - (1 - edge)) / edge : 0;
+        if (e !== 0) {
+          runtime.camYaw -= Math.sign(e) * e * e * 1.3 * dt;
+          s.lastDrag = s.t;
+        }
+      }
+    }
 
     // Camera rotation from arrows.
     if (enabled && (k.rotL || k.rotR)) {
@@ -320,6 +410,23 @@ export function ThirdPersonPlayer({
     camera.position.copy(tmp.cam);
     camera.lookAt(s.pivot);
     if (g) g.visible = ed > 0.55;
+    // Dev-only inspection camera for screenshots: set
+    // window.__camOverride = { yaw, dist, height, lookHeight } (yaw 0 = in
+    // front of the avatar). Stripped from production builds.
+    if (import.meta.env.DEV) {
+      const o = (window as unknown as {
+        __camOverride?: { yaw: number; dist: number; height: number; lookHeight?: number; at?: [number, number, number]; from?: [number, number, number] };
+      }).__camOverride;
+      if (o?.at && o.from) {
+        camera.position.set(...o.from);
+        camera.lookAt(...o.at);
+      } else if (o) {
+        const a = runtime.yaw + o.yaw;
+        camera.position.set(runtime.pos.x + Math.sin(a) * o.dist, o.height, runtime.pos.z + Math.cos(a) * o.dist);
+        camera.lookAt(runtime.pos.x, o.lookHeight ?? o.height, runtime.pos.z);
+        if (g) g.visible = true;
+      }
+    }
   });
 
   return (
