@@ -1,0 +1,38 @@
+# Dependencies and build output
+node_modules/
+dist/
+.vite/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Secrets (backend/.env.example stays tracked as the template)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Every dot-directory: editor, agent, tool and MCP state
+# (.claude, .playwright-mcp, .vscode, .idea, .agents, .cursor, ...)
+.*/
+# Local MCP / tool config files
+.mcp.json
+skills-lock.json
+/skills/
+
+# Internal docs and working notes are not part of the repo
+docs/
+
+# Python backend
+__pycache__/
+*.pyc
+backend/.venv/
+backend/.venv-voice/
+backend/samples/*.wav
+
+# Logs and OS junk
+*.log
+verify.log
+.DS_Store
+Thumbs.db
+desktop.ini
