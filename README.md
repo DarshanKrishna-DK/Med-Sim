@@ -139,7 +139,7 @@ Allow microphone access when the browser asks. Check `GET http://127.0.0.1:8787/
 Third-person camera: you always see your doctor avatar.
 
 - `W` `A` `S` `D`: walk; `Shift`: run
-- Drag: look around; mouse wheel: zoom
+- Mouse: look around (click the scene or press a movement key to capture the mouse; Esc, Alt or Tab frees it, a second Esc opens the menu; with a free cursor, drag or rest it near a screen edge to turn); mouse wheel: zoom
 - `E`: open the door you are facing (built clinics open, the rest show "Coming soon"); in a clinic, `E` at the exit door returns to the corridor
 - `T` (in a clinic): connect or hang up the voice conversation with the patient
 - `N` (in a clinic): done with this patient, call the next one
@@ -209,4 +209,6 @@ Two tests in `npm test` currently fail because `.claude/commands/medsim-verify-s
 
 ## License
 
-TODO: license not decided.
+MedSim's source code is released under the [MIT License](LICENSE).
+
+Third-party assets keep their own licences, listed in `public/assets/CREDITS.md` (Poly Haven models and HDRI are CC0; fonts are OFL). One character model is CC BY-NC 4.0, which is fine for this non-commercial demo but must be replaced before any commercial use. Cases marked "Based on a published case" are adapted from CC BY case reports cited in `src/data/REAL_CASES.md`.
