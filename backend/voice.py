@@ -127,6 +127,32 @@ TURN_DETECTION = {
 }
 
 
+# Agora "talking while waiting" fillers (properties.filler_words, join reference).
+# Static only: generated fillers need a BYOK OpenAI/Groq/xAI LLM, ours is custom/Sarvam.
+FILLER_PHRASES = [
+    "Hmm...",
+    "Haan, doctor...",
+    "Umm, let me think...",
+    "Achha...",
+    "One second, doctor...",
+    "Hmm, let me see...",
+    "Okay, doctor...",
+    "Umm... yes...",
+]
+FILLER_WAIT_MS = 1100
+
+
+def filler_block() -> dict[str, Any]:
+    return {
+        "enable": True,
+        "trigger": {"fixed_time_config": {"response_wait_ms": FILLER_WAIT_MS}},
+        "content": {
+            "mode": "static",
+            "static_config": {"phrases": list(FILLER_PHRASES), "selection_rule": "shuffle"},
+        },
+    }
+
+
 def _llm_block(system_prompt: str, greeting: str, *, probe: bool = False) -> dict[str, Any]:
     """PATIENT_LLM_PROVIDER = sarvam (default) | groq | managed (Agora-managed
     OpenAI, no key needed). sarvam/groq fall back to the other if unconfigured.
@@ -219,6 +245,7 @@ def build_join_body(
             "asr": asr,
             "llm": _llm_block(req.systemPrompt, req.initialLine),
             "turn_detection": copy.deepcopy(TURN_DETECTION),
+            "filler_words": filler_block(),
             "tts": {
                 "vendor": "murf",
                 "params": {
@@ -251,6 +278,11 @@ async def voice_start(req: VoiceStartRequest):
 
     body = build_join_body(req, channel, user_uid, agent_token, env["MURF_API_KEY"])
     r = await _agora_call("POST", "/join", body)
+    if 400 <= r.status_code < 500 and "filler" in r.text.lower():
+        # Fillers are polish: never let them block the call.
+        log.warning("Agora rejected filler_words (%s); retrying join without it", r.status_code)
+        body["properties"].pop("filler_words", None)
+        r = await _agora_call("POST", "/join", body)
     if r.status_code != 200:
         raise _agora_fail(r, "join")
     try:

@@ -300,8 +300,12 @@ SYSTEM_PROMPT = (
     "If the only catalog product has a different strength than the doctor asked for, still prescribe it but keep the "
     "doctor's dose in the dose field, and say the difference out loud in your final sentence "
     "(e.g. 'aspirin is stocked as 100 mg, prescribed 75 mg daily as you asked, please confirm').\n"
-    "- Finish with ONE spoken sentence (max 30 words) like: 'Done - CBC and CRP sent, results are on your screen; "
-    "amoxicillin held because of penicillin allergy.' No markdown."
+    "- Finish with a short spoken confirmation, max 30 words, in the warm natural voice of an experienced Indian charge "
+    "nurse talking to the doctor. Use contractions, say doses and numbers as words, and use commas and '...' for "
+    "natural pauses. Never start with 'Done -', never use lists or markdown. Say what you did, flag anything held or "
+    "different, and end with a short check-in sometimes. Example: 'Okay doctor, done. I've sent the troponin and the "
+    "ECG... and aspirin is on, seventy-five milligrams once a day. Anything else?' Another: 'Okay doctor, CBC is sent, "
+    "but I've held the amoxicillin... she's allergic to penicillin.'"
 )
 
 
@@ -382,7 +386,7 @@ async def _run_json_plan(st: NurseState, req: NurseActRequest, steps: list[dict[
         res = st.execute(name, args if isinstance(args, dict) else {})
         steps.append({"tool": name, "args": args, "ok": bool(res.get("ok")), "summary": summarize(name, args, res), "result": res})
     msg2, _ = await chat(
-        [{"role": "system", "content": "Write ONE spoken sentence (max 30 words, no markdown) confirming to the doctor what was done, mentioning anything refused or abnormal. Use only the facts given."},
+        [{"role": "system", "content": "Write a short spoken confirmation (max 30 words, no markdown, no 'Done -' prefix) as a warm Indian charge nurse talking to the doctor: contractions, numbers as words, commas and '...' for pauses, e.g. 'Okay doctor, I've sent the troponin and ECG... anything else?'. Mention anything refused or abnormal. Use only the facts given."},
          {"role": "user", "content": json.dumps([{"tool": s["tool"], "summary": s["summary"]} for s in steps])}],
         max_tokens=120, stick_to=prov,
     )
@@ -400,7 +404,7 @@ def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]]) -> str:
         bits.append("held: " + "; ".join(refused))
     if st.follow_up:
         bits.append(f"follow-up in {st.follow_up['inDays']} days")
-    return ("Done - " + "; ".join(bits) + ".") if bits else "I couldn't complete that order."
+    return ("Okay doctor, " + ", ".join(bits) + ". Anything else?") if bits else "I couldn't complete that order."
 
 
 @router.post("/agent/nurse/act")

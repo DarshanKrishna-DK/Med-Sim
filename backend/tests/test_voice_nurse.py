@@ -87,6 +87,35 @@ class VoiceStartTests(unittest.TestCase):
         self.assertEqual(body["llm"]["system_messages"][0]["content"], "You are Raj.")
         self.assertEqual(body["llm"]["greeting_message"], "Hi doc")
 
+    def test_join_has_static_filler_words(self) -> None:
+        r = self.client.post("/voice/start", headers=HDR, json={
+            "caseId": "c", "systemPrompt": "x", "initialLine": "y", "gender": "M"})
+        self.assertEqual(r.status_code, 200, r.text)
+        fw = json.loads(self.calls[0].content)["properties"]["filler_words"]
+        self.assertTrue(fw["enable"])
+        self.assertEqual(fw["trigger"]["fixed_time_config"]["response_wait_ms"], 1100)
+        self.assertEqual(fw["content"]["mode"], "static")
+        self.assertNotIn("generated_config", fw["content"])
+        self.assertEqual(fw["content"]["static_config"]["selection_rule"], "shuffle")
+        self.assertIn("Hmm...", fw["content"]["static_config"]["phrases"])
+
+    def test_join_retries_without_filler_when_rejected(self) -> None:
+        calls: list[dict] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            body = json.loads(req.content)
+            calls.append(body)
+            if "filler_words" in body["properties"]:
+                return httpx.Response(400, json={"reason": "InvalidFieldValue: filler_words not supported"})
+            return httpx.Response(200, json={"agent_id": "AGENT9"})
+
+        voice._client_factory = lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        r = self.client.post("/voice/start", headers=HDR, json={
+            "caseId": "c", "systemPrompt": "x", "initialLine": "y", "gender": "M"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("filler_words", calls[1]["properties"])
+
     def test_ares_asr_when_voice_asr_ares(self) -> None:
         os.environ["VOICE_ASR"] = "ares"
         r = self.client.post("/voice/start", headers=HDR, json={
