@@ -56,6 +56,19 @@ export interface TestResult {
   abnormal: boolean;
 }
 
+/** Provenance for a case adapted from a published, openly licensed report. */
+export interface CaseSource {
+  title: string;
+  /** First author et al. */
+  authors: string;
+  journal: string;
+  year: number;
+  /** DOI or PMC link. */
+  url: string;
+  /** e.g. 'CC BY 4.0'. */
+  license: string;
+}
+
 export interface PatientCase {
   id: string;
   name: string;
@@ -78,6 +91,10 @@ export interface PatientCase {
   criticalTreatmentIds: string[];
   diagnosisOptions: string[];
   rubric?: CaseRubric;
+  /** Set on cases adapted from a real published case report. */
+  source?: CaseSource;
+  /** True when `source` is set (published case adaptation). */
+  realCase?: boolean;
 }
 
 // ── OSCE rubric, grades a completed encounter ────────────────────────

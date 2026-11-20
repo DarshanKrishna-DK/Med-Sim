@@ -105,6 +105,16 @@ export const TESTS: Test[] = [
   { id: 'spirometry', name: 'Pulmonary Function (PFT)',  category: 'bedside', turnaroundSec: 50 },
   { id: 'pap-smear',  name: 'Pap / HPV Co-test',         category: 'bedside', turnaroundSec: 60 },
   { id: 'skin-biopsy',name: 'Skin Biopsy',               category: 'bedside', turnaroundSec: 90 },
+
+  // ───────── Added for published-case adaptations ─────────
+  { id: 'csf',             name: 'Lumbar Puncture / CSF Analysis',   category: 'lab', turnaroundSec: 80 },
+  { id: 'tropical-serology', name: 'Tropical Fever Serology (dengue, scrub typhus, leptospira)', category: 'lab', turnaroundSec: 70 },
+  { id: 'ceruloplasmin',   name: 'Ceruloplasmin / Copper Studies',   category: 'lab', turnaroundSec: 80 },
+  { id: 'thyroid-ab',      name: 'Thyroid Antibodies (TRAb, anti-TPO)', category: 'lab', turnaroundSec: 70 },
+  { id: 'slit-skin-smear', name: 'Slit-skin Smear (AFB)',            category: 'bedside', turnaroundSec: 60 },
+  { id: 'ascitic-fluid',   name: 'Ascitic Fluid Analysis',           category: 'lab', turnaroundSec: 70 },
+  { id: 'sputum-afb',      name: 'Sputum AFB / GeneXpert',           category: 'lab', turnaroundSec: 70 },
+  { id: 'peripheral-smear',name: 'Peripheral Smear / Bone Marrow',   category: 'lab', turnaroundSec: 70 },
 ];
 
 export const testById = (id: string) => TESTS.find((t) => t.id === id);

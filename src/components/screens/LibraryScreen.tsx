@@ -155,6 +155,7 @@ function CaseCard({ c, showClinic }: { c: Case; showClinic: boolean }) {
       <span className="case-meta">
         {showClinic && <span className="case-clinic">{CLINIC_LABELS[c.clinic]}</span>}
         {sevLabel && <span className={`tag tag--${severity}`}>{sevLabel}</span>}
+        {p?.source && <span className="chip" title="Adapted from an open-access case report">Based on a published case</span>}
       </span>
     </button>
   );
@@ -211,6 +212,16 @@ function BriefDrawer({ caseId }: { caseId: string }) {
             <h3 className="block-title">Triage vitals</h3>
             <VitalsRow vitals={p.vitals} />
           </section>
+
+          {p.source && (
+            <section className="brief-block">
+              <h3 className="block-title">Source</h3>
+              <p className="brief-blurb">
+                Based on a published case: {p.source.authors}, {p.source.journal}, {p.source.year}. {p.source.license}.{' '}
+                <a href={p.source.url} target="_blank" rel="noopener noreferrer">View article</a>
+              </p>
+            </section>
+          )}
 
           <section className="brief-block">
             <h3 className="block-title">In the room</h3>

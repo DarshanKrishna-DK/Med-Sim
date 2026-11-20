@@ -13,6 +13,7 @@
  */
 
 import type { ClinicId } from '../game/clinic';
+import { REAL_CASE_MED_LINKS } from './realCases.ts';
 
 /**
  * High-level therapeutic category used to group the prescription pad.
@@ -1515,6 +1516,14 @@ export const MEDICATIONS: Medication[] = [
     contraindications: ['normal-pregnancy-2nd-tri', 'dvt'],
   },
 ];
+
+// Link published-case diagnoses to existing drugs (see realCases.ts).
+for (const m of MEDICATIONS) {
+  const link = REAL_CASE_MED_LINKS[m.id];
+  if (!link) continue;
+  if (link.indications) m.indications.push(...link.indications);
+  if (link.contraindications) m.contraindications = [...(m.contraindications ?? []), ...link.contraindications];
+}
 
 /* ------------------------------------------------------------------ */
 /*  Lookups                                                            */

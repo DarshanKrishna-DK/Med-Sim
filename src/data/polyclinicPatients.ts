@@ -1,5 +1,6 @@
 import type { PatientCase } from '../game/types';
 import type { ClinicId } from '../game/clinic';
+import { REAL_CASES_BY_SPECIALTY, REAL_CASE_DIAGNOSIS_LABELS } from './realCases.ts';
 
 const internalMedicine: PatientCase[] = [
   {
@@ -6722,30 +6723,30 @@ const cardiothoracicVascularSurgery: PatientCase[] = [
 ];
 
 const _bySpecialty = {
-  'internal-medicine': internalMedicine,
-  cardiology,
-  neurology,
-  neurosurgery,
-  dermatology,
-  endocrinology,
-  gastroenterology,
-  pulmonology,
-  nephrology,
-  rheumatology,
-  hematology,
-  oncology,
-  'infectious-disease': infectiousDisease,
-  'allergy-immunology': allergyImmunology,
-  psychiatry,
-  obgyn,
-  urology,
-  ophthalmology,
-  ent,
-  orthopedics,
-  pmr,
-  pediatrics,
-  'general-surgery': generalSurgery,
-  'cardiothoracic-vascular-surgery': cardiothoracicVascularSurgery,
+  'internal-medicine': [...internalMedicine, ...(REAL_CASES_BY_SPECIALTY['internal-medicine'] ?? [])],
+  cardiology: [...cardiology, ...(REAL_CASES_BY_SPECIALTY['cardiology'] ?? [])],
+  neurology: [...neurology, ...(REAL_CASES_BY_SPECIALTY['neurology'] ?? [])],
+  neurosurgery: [...neurosurgery, ...(REAL_CASES_BY_SPECIALTY['neurosurgery'] ?? [])],
+  dermatology: [...dermatology, ...(REAL_CASES_BY_SPECIALTY['dermatology'] ?? [])],
+  endocrinology: [...endocrinology, ...(REAL_CASES_BY_SPECIALTY['endocrinology'] ?? [])],
+  gastroenterology: [...gastroenterology, ...(REAL_CASES_BY_SPECIALTY['gastroenterology'] ?? [])],
+  pulmonology: [...pulmonology, ...(REAL_CASES_BY_SPECIALTY['pulmonology'] ?? [])],
+  nephrology: [...nephrology, ...(REAL_CASES_BY_SPECIALTY['nephrology'] ?? [])],
+  rheumatology: [...rheumatology, ...(REAL_CASES_BY_SPECIALTY['rheumatology'] ?? [])],
+  hematology: [...hematology, ...(REAL_CASES_BY_SPECIALTY['hematology'] ?? [])],
+  oncology: [...oncology, ...(REAL_CASES_BY_SPECIALTY['oncology'] ?? [])],
+  'infectious-disease': [...infectiousDisease, ...(REAL_CASES_BY_SPECIALTY['infectious-disease'] ?? [])],
+  'allergy-immunology': [...allergyImmunology, ...(REAL_CASES_BY_SPECIALTY['allergy-immunology'] ?? [])],
+  psychiatry: [...psychiatry, ...(REAL_CASES_BY_SPECIALTY['psychiatry'] ?? [])],
+  obgyn: [...obgyn, ...(REAL_CASES_BY_SPECIALTY['obgyn'] ?? [])],
+  urology: [...urology, ...(REAL_CASES_BY_SPECIALTY['urology'] ?? [])],
+  ophthalmology: [...ophthalmology, ...(REAL_CASES_BY_SPECIALTY['ophthalmology'] ?? [])],
+  ent: [...ent, ...(REAL_CASES_BY_SPECIALTY['ent'] ?? [])],
+  orthopedics: [...orthopedics, ...(REAL_CASES_BY_SPECIALTY['orthopedics'] ?? [])],
+  pmr: [...pmr, ...(REAL_CASES_BY_SPECIALTY['pmr'] ?? [])],
+  pediatrics: [...pediatrics, ...(REAL_CASES_BY_SPECIALTY['pediatrics'] ?? [])],
+  'general-surgery': [...generalSurgery, ...(REAL_CASES_BY_SPECIALTY['general-surgery'] ?? [])],
+  'cardiothoracic-vascular-surgery': [...cardiothoracicVascularSurgery, ...(REAL_CASES_BY_SPECIALTY['cardiothoracic-vascular-surgery'] ?? [])],
 };
 
 export const POLYCLINIC_CASES: Record<ClinicId, PatientCase[]> = {
@@ -6769,6 +6770,7 @@ export function getCaseSpecialty(caseId: string): ClinicId | undefined {
 }
 
 export const POLYCLINIC_DIAGNOSIS_LABELS: Record<string, string> = {
+  ...REAL_CASE_DIAGNOSIS_LABELS,
   // Internal medicine
   'iron-deficiency-anemia': 'Iron-deficiency Anemia',
   'b12-deficiency': 'Vitamin B12 Deficiency',
