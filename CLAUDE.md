@@ -25,8 +25,6 @@ Browser-based clinical training simulator, built for the "Build with Agora – B
 - `src/agents/managedAgent.ts` / `customTools.ts`: optional Anthropic Managed Agent attending (only if `ANTHROPIC_API_KEY` is set).
 - `backend/server.py`: FastAPI app, routes, CORS, shared-secret check.
 - `backend/voice.py`: Agora Conversational AI + Murf wiring. `backend/nurse.py`: nurse agent and tools. `backend/debrief.py`: debrief grading. `backend/llm_provider.py`: Sarvam/Groq/managed selection.
-- `backend/README.md`: endpoint reference.
-- `spec.md`: hackathon submission plan and requirements checklist.
 
 ## Commands
 
