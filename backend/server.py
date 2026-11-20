@@ -85,8 +85,16 @@ DEV_ORIGINS = {
 DEV_ORIGIN_RE = re.compile(r"^http://(localhost|127\.0\.0\.1)(:\d{2,5})?$")
 
 
+# Extra trusted browser origins (comma-separated), e.g. the deployed site URL.
+# Treated like dev origins: allowed by CORS and exempt from the shared secret.
+FRONTEND_ORIGINS = {
+    o.strip().rstrip("/") for o in os.environ.get("FRONTEND_ORIGINS", "").split(",") if o.strip()
+}
+ALLOWED_ORIGINS.extend(sorted(FRONTEND_ORIGINS - set(ALLOWED_ORIGINS)))
+
+
 def _is_dev_origin(origin: str) -> bool:
-    return origin in DEV_ORIGINS or bool(DEV_ORIGIN_RE.match(origin))
+    return origin in DEV_ORIGINS or origin in FRONTEND_ORIGINS or bool(DEV_ORIGIN_RE.match(origin))
 
 # Per-IP rate limit caps even authenticated abuse. SSE streams count as one
 # request, so 120/min leaves plenty of headroom for legitimate use.
@@ -1412,6 +1420,23 @@ app.include_router(voice_router)
 app.include_router(llm_proxy.router)
 app.include_router(nurse_router)
 app.include_router(debrief_router)
+
+
+# Production: serve the built SPA (../dist) from this same service so the
+# browser talks to one origin. Registered last so API routes win.
+_DIST = Path(__file__).resolve().parent.parent / "dist"
+if _DIST.is_dir():
+    from fastapi.responses import FileResponse
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str):
+        target = (_DIST / full_path).resolve()
+        if full_path and _DIST in target.parents and target.is_file():
+            headers = {}
+            if full_path.startswith("assets/"):
+                headers["Cache-Control"] = "public, max-age=604800"
+            return FileResponse(target, headers=headers)
+        return FileResponse(_DIST / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 if __name__ == "__main__":

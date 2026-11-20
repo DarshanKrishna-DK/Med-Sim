@@ -1,0 +1,40 @@
+# Render Blueprint: one web service serves the FastAPI backend AND the built
+# SPA (dist/), so the browser uses a single origin (no CORS, no rewrites).
+services:
+  - type: web
+    name: medsim
+    runtime: python
+    plan: free
+    region: singapore
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    buildCommand: pip install -r backend/requirements.txt && npm ci && npm run build
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: PATIENT_LLM_PROVIDER
+        value: sarvam
+      - key: MURF_REGION
+        sync: false
+      - key: PUBLIC_URL
+        sync: false        # https://<service>.onrender.com
+      - key: FRONTEND_ORIGINS
+        sync: false        # same URL as PUBLIC_URL
+      - key: AGORA_APP_ID
+        sync: false
+      - key: AGORA_APP_CERTIFICATE
+        sync: false
+      - key: AGORA_CUSTOMER_ID
+        sync: false
+      - key: AGORA_CUSTOMER_SECRET
+        sync: false
+      - key: MURF_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
