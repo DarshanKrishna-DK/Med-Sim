@@ -81,6 +81,10 @@ One FastAPI process serves the API and the built frontend. State lives in a sing
 
 Requires Node 22+, Python 3.12, and keys for Agora (App ID, certificate, Conversational AI customer ID and secret), Murf, Sarvam and Groq. Names are in `backend/.env.example`.
 
+**Windows, one click:** copy `backend/.env.example` to `backend/.env.local`, fill in the keys, then double-click **`start-medsim.bat`**. It installs what's missing on first run, starts the backend and the app in their own windows, and opens http://localhost:5173.
+
+**Manual:**
+
 ```bash
 npm ci
 python -m venv backend/.venv
