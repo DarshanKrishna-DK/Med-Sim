@@ -9,6 +9,9 @@ import type { CaseEvaluationInput } from '../agents/customTools';
 import type { ActivePatient, CoachAlert } from '../game/types';
 import type { ClinicId } from '../game/clinic';
 import type { OsceResult, SkillScores } from '../agents/osceCore';
+import type { FacultyMarks } from '../observer/messages';
+import type { SavedViva } from '../components/viva/vivaCore';
+import { facultyMarksFor } from '../observer/facultyMarks';
 
 const STORAGE_KEY = 'gr_eval_history';
 const MAX_ENTRIES = 100;
@@ -35,7 +38,11 @@ export interface EvalHistoryEntry {
   patientSnapshot: ActivePatient;
   // ── Progress-dashboard fields (optional: older rows predate them) ──
   /** 'practice' = regular consultation, 'osce' = timed exam station. */
-  mode?: 'practice' | 'osce';
+  mode?: 'practice' | 'osce' | 'ot' | 'viva';
+  /** Viva voce rows: the subject examined (e.g. "Pharmacology"). */
+  subject?: string;
+  /** Viva voce rows: the examiner's full marking (see components/viva/vivaCore.ts). */
+  viva?: SavedViva;
   /** Specialty (clinic) of the case. */
   specialty?: ClinicId;
   /** Overall 0-100. */
@@ -46,6 +53,8 @@ export interface EvalHistoryEntry {
   alerts?: Array<{ severity: CoachAlert['severity']; title: string }>;
   /** Full examiner marking for OSCE rows. */
   osce?: OsceResult & { candidateName?: string; durationSec: number; elapsedSec: number };
+  /** Marks sent by a live faculty observer during this encounter. */
+  facultyMarks?: FacultyMarks[];
 }
 
 function read(): EvalHistoryEntry[] {
@@ -77,14 +86,28 @@ export function listEvalHistory(): EvalHistoryEntry[] {
 export function saveEvalHistory(
   payload: Omit<EvalHistoryEntry, 'id' | 'savedAt'>,
 ): EvalHistoryEntry {
+  // Faculty marks that arrived during the encounter ride along with the row.
+  const marks = payload.facultyMarks ?? facultyMarksFor(payload.caseId, payload.patientSnapshot?.arrivedAt);
   const entry: EvalHistoryEntry = {
     ...payload,
+    ...(marks.length ? { facultyMarks: marks } : {}),
     id: `eh_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     savedAt: Date.now(),
   };
   const list = [entry, ...read()];
   write(list);
   return entry;
+}
+
+/** Attach faculty marks that arrived after the row was saved: the newest
+ *  row for that case and encounter gets them (same mark id replaces). */
+export function attachFacultyMarks(m: FacultyMarks): boolean {
+  const list = read();
+  const row = list.find((e) => e.caseId === m.caseId && (m.encounterAt === undefined || e.patientSnapshot?.arrivedAt === m.encounterAt));
+  if (!row) return false;
+  row.facultyMarks = [...(row.facultyMarks ?? []).filter((x) => x.id !== m.id), m];
+  write(list);
+  return true;
 }
 
 /** Remove a single entry by id. */

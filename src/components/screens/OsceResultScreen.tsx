@@ -15,6 +15,7 @@ import {
   type OsceResult,
 } from '../../agents/osceCore';
 import { AppHeader } from '../ui/chrome';
+import { FacultyMarksCard } from '../observer/FacultyMarksCard';
 import '../../styles/osce.css';
 
 type SavedOsce = NonNullable<EvalHistoryEntry['osce']>;
@@ -294,6 +295,7 @@ function Report({ entry, result, encounter }: { entry: EvalHistoryEntry; result:
         </section>
       )}
 
+      <FacultyMarksCard caseId={c.id} encounterAt={encounter.arrivedAt} saved={entry.facultyMarks} />
       <p className="osce-footnote">
         Synthetic training station marked by an AI examiner against the case checklist. Not a clinical or exam
         board assessment.

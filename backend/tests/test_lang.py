@@ -44,6 +44,26 @@ KN_OK = {
 }
 
 
+TA_OK = {
+    "en-IN-samar", "hi-IN-chirag", "hi-IN-pranav", "ta-IN-karthikeyan", "en-IN-pooja", "hi-IN-poonam",
+    "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "en-IN-anisha",
+}
+TE_OK = {
+    "en-IN-samar", "hi-IN-chirag", "hi-IN-pranav", "en-IN-pooja", "en-IN-alia", "hi-IN-poonam", "hi-IN-neeta",
+    "hi-IN-jaya", "hi-IN-rachna", "hi-IN-ayushi", "en-IN-anisha",
+}
+MR_OK = {
+    "en-IN-samar", "en-IN-abhinav", "hi-IN-chirag", "hi-IN-pranav", "mr-IN-prathamesh", "hi-IN-poonam",
+    "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "mr-IN-prajakta", "en-IN-anisha",
+}
+BN_OK = {
+    "hi-IN-chirag", "hi-IN-pranav", "bn-IN-subhankar", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya",
+    "hi-IN-rachna", "bn-IN-debarati", "en-IN-anisha",
+}
+NEW_LANGS = {"ta": TA_OK, "te": TE_OK, "mr": MR_OK, "bn": BN_OK}
+SAMPLE_TEXT = {"ta": "வணக்கம் டாக்டர்", "te": "నమస్కారం డాక్టర్", "mr": "नमस्कार डॉक्टर", "bn": "নমস্কার ডাক্তারবাবু"}
+
+
 class LangUnitTests(unittest.TestCase):
     def test_norm_and_locale(self) -> None:
         self.assertEqual(lang.norm_lang("hi-IN"), "hi")
@@ -61,8 +81,60 @@ class LangUnitTests(unittest.TestCase):
                     self.assertIn(v, ok, f"{v} not verified for {lg}")
             self.assertIn(lang.nurse_voice(lg), ok)
 
+    def test_new_languages_voices_and_locales(self) -> None:
+        self.assertEqual(lang.LANGS, ("en", "hi", "kn", "ta", "te", "mr", "bn"))
+        for lg, ok in NEW_LANGS.items():
+            self.assertEqual(lang.locale_for(f"{lg}-IN"), f"{lg}-IN")
+            self.assertEqual(lang.norm_lang(lg.upper()), lg)
+            for g in ("M", "F"):
+                self.assertTrue(lang.PATIENT_VOICE_POOLS[lg][g], f"{lg} {g} pool empty")
+                for v in lang.PATIENT_VOICE_POOLS[lg][g]:
+                    self.assertIn(v, ok, f"{v} not verified for {lg}")
+            self.assertIn(lang.nurse_voice(lg), ok)
+            self.assertEqual(len(lang.fillers(lg)), len(lang.fillers("hi")))
+            for p in lang.fillers(lg):
+                self.assertTrue(lang.has_script(p, lg), p)
+            self.assertTrue(lang.has_script(lang.failure_message(lg), lg))
+            self.assertTrue(lang.has_script(SAMPLE_TEXT[lg], lg))
+            self.assertFalse(lang.has_script("hello", lg))
+        self.assertEqual(lang.nurse_voice("mr"), "mr-IN-prajakta")
+        self.assertEqual(lang.nurse_voice("bn"), "bn-IN-debarati")
+        self.assertFalse(lang.has_script("வணக்கம்", "hi"))
+
+    def test_new_language_blocks(self) -> None:
+        for lg, script in (("ta", "Tamil script"), ("te", "Telugu script"), ("mr", "Devanagari script"), ("bn", "Bengali script")):
+            b = lang.language_block(lg, female=True)
+            self.assertIn(script, b)
+            self.assertIn("BP, sugar, test", b)
+            self.assertIn("language the doctor last spoke", b)
+            self.assertIn("JSON", lang.language_block(lg, role="coach"))
+            self.assertIn("lesson", lang.language_block(lg, role="teacher"))
+        self.assertIn("feminine Marathi", lang.language_block("mr", female=True))
+        self.assertIn("masculine Marathi", lang.language_block("mr", female=False))
+        self.assertNotIn("Hindi verb", lang.language_block("ta"))
+        self.assertIn("Tamil", teacher.lesson_system("student", "ta"))
+
+    def test_new_language_nurse_and_coach_text(self) -> None:
+        class St:
+            new_tests: list = []
+            new_rx: list = []
+            follow_up = None
+            tests: dict = {}
+            meds: dict = {}
+
+        for lg in NEW_LANGS:
+            self.assertTrue(lang.has_script(nurse._fallback_confirmation(St(), [], lg), lg))
+            req = coach.CoachCheckRequest(
+                event=coach.CoachEvent(kind="prescription", detail="Amoxicillin"),
+                patient=coach.CoachPatient(allergies="penicillin"),
+                lang=lg,
+            )
+            a = coach.rule_alert(req)
+            self.assertTrue(lang.has_script(a.title, lg), lg)
+            self.assertTrue(lang.has_script(a.explanation, lg), lg)
+
     def test_voice_stable_and_gendered(self) -> None:
-        for lg in ("en", "hi", "kn"):
+        for lg in lang.LANGS:
             a = lang.pick_patient_voice(lg, "F", "case-1")
             self.assertEqual(a, lang.pick_patient_voice(lg, "F", "case-1"))
             self.assertIn(a, lang.PATIENT_VOICE_POOLS[lg]["F"])
@@ -208,6 +280,25 @@ class VoiceLocaleTests(unittest.TestCase):
             self.assertIn(p["tts"]["params"]["voiceId"], KN_OK)
             self.assertEqual(p["llm"]["greeting_message"], "ನನಗೆ ಎದೆ ನೋವು ಇದೆ")
             self.assertIn("ಹೌದು ಡಾಕ್ಟರ್...", p["filler_words"]["content"]["static_config"]["phrases"])
+
+    def test_start_new_languages(self) -> None:
+        for lg, ok in NEW_LANGS.items():
+            for g in ("M", "F"):
+                p = self._start(f"{lg}-IN", g)
+                self.assertEqual(p["tts"]["params"]["locale"], f"{lg}-IN")
+                self.assertIn(p["tts"]["params"]["voiceId"], ok)
+                self.assertEqual(p["asr"]["params"]["language"], "unknown")
+                self.assertTrue(lang.has_script(p["llm"]["failure_message"], lg))
+                phrases = p["filler_words"]["content"]["static_config"]["phrases"]
+                self.assertEqual(phrases, lang.fillers(lg))
+
+    def test_tts_new_language_nurse(self) -> None:
+        for lg, ok in NEW_LANGS.items():
+            body = {"text": SAMPLE_TEXT[lg], "voice": "nurse", "locale": f"{lg}-IN"}
+            r = self.client.post("/voice/tts", headers=HDR, json=body)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(self.sent[-1]["locale"], f"{lg}-IN")
+            self.assertIn(self.sent[-1]["voiceId"], ok)
 
     def test_start_english_unchanged(self) -> None:
         p = self._start(None)

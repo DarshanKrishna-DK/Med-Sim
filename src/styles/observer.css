@@ -1,0 +1,634 @@
+/* Live faculty observer: invite control (encounter), faculty toasts (any
+ * screen), marks card (debrief / OSCE result) and the observer page.
+ * Same pixel system as app.css: square corners, hard bevels. */
+
+/* ── Invite control, pinned bottom-left of the encounter ──────────── */
+
+.obs-invite {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: 12;
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  pointer-events: none;
+}
+.obs-invite > * {
+  pointer-events: auto;
+}
+
+.obs-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  background: var(--bg-deep);
+  color: var(--ink-2);
+  box-shadow: var(--bevel-sm);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: color var(--d-fast) var(--ease-std), box-shadow var(--d-fast) var(--ease-std);
+}
+.obs-trigger:hover,
+.obs-trigger.is-active {
+  color: var(--text);
+  box-shadow: 0 0 0 2px var(--line-strong), 2px 2px 0 0 var(--bg-deep);
+}
+.obs-trigger:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+.obs-live-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--red);
+  animation: obs-blink 1.6s steps(2, start) infinite;
+}
+@keyframes obs-blink {
+  to { opacity: 0.25; }
+}
+
+.obs-pop {
+  width: min(340px, calc(100vw - 28px));
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: var(--background);
+  box-shadow: var(--bevel);
+}
+.obs-pop-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1;
+}
+.obs-pop-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.obs-pop-warn {
+  font-size: 13px;
+  color: var(--amber-strong);
+}
+
+.obs-share {
+  display: grid;
+  gap: 10px;
+}
+.obs-share-row {
+  display: flex;
+  gap: 8px;
+}
+.obs-url {
+  min-height: 40px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.obs-qr {
+  width: 148px;
+  height: 148px;
+  justify-self: center;
+  box-shadow: var(--bevel-sm);
+}
+.obs-share-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── Faculty toasts (student side) ─────────────────────────────────── */
+
+.faculty-toasts {
+  position: fixed;
+  top: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  width: min(460px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.faculty-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  background: var(--bg-deep);
+  color: var(--text);
+  box-shadow: 0 0 0 2px var(--accent2), 4px 4px 0 0 var(--bg-deep);
+  animation: faculty-in var(--d-mid) var(--ease-decel);
+}
+.faculty-toast--marks {
+  box-shadow: 0 0 0 2px var(--primary), 4px 4px 0 0 var(--bg-deep);
+}
+.faculty-toast-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.faculty-toast-who {
+  font-weight: 700;
+  color: var(--accent2);
+}
+.faculty-toast--marks .faculty-toast-who {
+  color: var(--primary);
+}
+.faculty-toast-close {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.faculty-toast-close:hover {
+  color: var(--text);
+}
+@keyframes faculty-in {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .faculty-toast,
+  .obs-live-dot {
+    animation: none;
+  }
+}
+
+/* ── Faculty marks card (debrief / OSCE result) ───────────────────── */
+
+.faculty-marks {
+  display: grid;
+  gap: 10px;
+  margin-top: var(--s-5);
+}
+.faculty-marks-sheet {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--surface);
+  box-shadow: var(--bevel-sm);
+}
+.faculty-marks-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.faculty-marks-who {
+  font-weight: 600;
+}
+.faculty-marks-avg {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1;
+  color: var(--primary);
+}
+.faculty-marks-avg small {
+  font-size: 16px;
+  color: var(--muted);
+}
+.faculty-marks-list {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.faculty-marks-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.faculty-marks-pips {
+  display: inline-flex;
+  gap: 3px;
+}
+.faculty-marks-pips i {
+  width: 14px;
+  height: 10px;
+  background: var(--secondary);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.faculty-marks-pips i.is-on {
+  background: var(--primary);
+  box-shadow: none;
+}
+.faculty-marks-comment {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+
+/* ── Observer page ─────────────────────────────────────────────────── */
+
+.obs-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.obs-top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 16px;
+  background: var(--bg-deep);
+  box-shadow: 0 2px 0 0 var(--line);
+}
+.obs-top .brand-word {
+  font-size: 26px;
+}
+.obs-top-case {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  padding-left: 18px;
+  border-left: 2px solid var(--line);
+}
+.obs-top-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.obs-top-label {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.obs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: var(--secondary);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+.obs-chip--live {
+  color: var(--red);
+  box-shadow: inset 0 0 0 1.5px var(--red);
+  background: var(--red-tint);
+}
+.obs-chip--live::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+}
+
+.obs-gate {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+}
+.obs-gate-card {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 28px;
+  background: var(--surface);
+  box-shadow: var(--bevel);
+}
+.obs-gate-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  font-weight: 400;
+  line-height: 0.95;
+}
+.obs-gate-body {
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.obs-gate-card .field-label {
+  margin: 4px 0 -6px;
+}
+.obs-error {
+  color: var(--red);
+  font-size: 14px;
+}
+
+.obs-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(300px, 360px);
+  gap: 16px;
+  padding: 16px;
+  height: calc(100dvh - 68px);
+}
+.obs-col {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.obs-col--right {
+  overflow: auto;
+}
+
+.obs-panel {
+  padding: 14px 16px;
+  background: var(--surface);
+  box-shadow: var(--bevel-sm);
+}
+.obs-empty,
+.obs-hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+.obs-hint--warn {
+  color: var(--amber-strong);
+}
+.obs-hint--ok {
+  color: var(--primary);
+}
+
+.obs-speakers {
+  display: grid;
+  gap: 10px;
+}
+.obs-speaker {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  box-shadow: var(--bevel-sm);
+  transition: box-shadow var(--d-fast) var(--ease-std);
+}
+.obs-speaker--student.is-speaking {
+  box-shadow: 0 0 0 2px var(--primary), 2px 2px 0 0 var(--bg-deep);
+}
+.obs-speaker--patient.is-speaking {
+  box-shadow: 0 0 0 2px var(--accent2), 2px 2px 0 0 var(--bg-deep);
+}
+.obs-speaker-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+}
+.obs-speaker-state {
+  font-size: 12px;
+  color: var(--muted);
+  align-self: center;
+}
+.obs-meter {
+  grid-column: 1 / -1;
+  height: 8px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.obs-meter-fill {
+  display: block;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: var(--primary);
+}
+.obs-speaker--patient .obs-meter-fill {
+  background: var(--accent2);
+}
+
+.obs-chart {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.obs-events {
+  list-style: none;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.obs-event {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.obs-event-kind {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  background: var(--secondary);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.obs-event--nurse .obs-event-kind,
+.obs-event--order .obs-event-kind,
+.obs-event--prescription .obs-event-kind {
+  color: var(--amber-strong);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+.obs-event--diagnosis .obs-event-kind {
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.obs-event.is-warning .obs-event-kind {
+  color: var(--amber-strong);
+}
+.obs-event.is-danger .obs-event-kind {
+  color: var(--red);
+  box-shadow: inset 0 0 0 1px var(--red);
+}
+.obs-event-detail {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.obs-event-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.obs-transcript {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.obs-lines {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding-right: 4px;
+}
+.obs-line {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.obs-line-who {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding-top: 3px;
+}
+.obs-line--doctor .obs-line-who {
+  color: var(--primary);
+}
+.obs-line--patient .obs-line-who {
+  color: var(--accent2);
+}
+.obs-line.is-partial .obs-line-text {
+  color: var(--muted);
+}
+
+.obs-whisper {
+  display: grid;
+  gap: 8px;
+}
+.obs-whisper .field-label {
+  margin: 0;
+}
+.obs-whisper-row {
+  display: flex;
+  gap: 8px;
+}
+.obs-sent {
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.obs-sent li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink-2);
+}
+.obs-tick {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+.obs-tick.is-done {
+  color: var(--primary);
+}
+
+.obs-marks {
+  display: grid;
+  gap: 10px;
+}
+.obs-marks .field-label {
+  margin: 0;
+}
+.obs-domain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.obs-domain legend {
+  float: left;
+  font-size: 14px;
+  padding: 0;
+}
+.obs-scale {
+  display: inline-flex;
+  gap: 4px;
+}
+.obs-scale label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 2px var(--line);
+  cursor: pointer;
+}
+.obs-scale label:hover {
+  box-shadow: inset 0 0 0 2px var(--line-strong);
+}
+.obs-scale label.is-on {
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: none;
+}
+.obs-scale input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.obs-scale label:has(input:focus-visible) {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+.obs-comment {
+  min-height: 72px;
+  padding: 10px var(--s-3);
+  resize: vertical;
+  line-height: 1.45;
+}
+
+@media (max-width: 1080px) {
+  .obs-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    height: auto;
+  }
+  .obs-col--mid {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-height: 50vh;
+  }
+}
+@media (max-width: 680px) {
+  .obs-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+  .obs-top {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .obs-top-case {
+    order: 3;
+    flex-basis: 100%;
+    padding-left: 0;
+    border-left: 0;
+  }
+}

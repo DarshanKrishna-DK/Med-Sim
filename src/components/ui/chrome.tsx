@@ -85,6 +85,7 @@ export function AppHeader({ overlay = false }: { overlay?: boolean }) {
     { label: 'How it works', active: false, go: () => goToLandingSection('how') },
     { label: 'Debriefs', active: screen === 'history' || screen === 'debrief', go: () => store.setScreen('history') },
     { label: 'OSCE', active: screen === 'osce' || screen === 'osceResult', go: () => store.openOsce() },
+    { label: 'Viva', active: screen === 'viva', go: () => store.setScreen('viva') },
     { label: 'Progress', active: screen === 'progress', go: () => store.setScreen('progress') },
   ];
 

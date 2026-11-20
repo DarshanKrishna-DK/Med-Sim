@@ -259,7 +259,7 @@ function Door({
           color={built ? '#9fe3b0' : '#ffc46b'}
           letterSpacing={0.08}
         >
-          {built ? (door.dept.special ? 'READING ROOM' : 'CLINIC OPEN') : 'COMING SOON'}
+          {built ? (door.dept.special === 'operation-theatre' ? 'THEATRE OPEN' : door.dept.special ? 'READING ROOM' : 'CLINIC OPEN') : 'COMING SOON'}
         </Text>
       </group>
       {/* click target */}

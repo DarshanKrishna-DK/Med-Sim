@@ -55,8 +55,14 @@ export function LibraryScreen({ briefOpen = false }: { briefOpen?: boolean }) {
           <button type="button" className="btn btn-secondary" onClick={() => store.setScreen('triage')}>
             Triage drill: 5 ED patients in 3 minutes
           </button>
+          <button type="button" className="btn btn-secondary" onClick={() => store.enterOT()}>
+            Operation theatre drill: assist the team in 4 minutes
+          </button>
           <button type="button" className="btn btn-primary osce-entry" onClick={() => store.openOsce()}>
             Start OSCE: one timed 8-minute station
+          </button>
+          <button type="button" className="btn btn-secondary viva-entry" onClick={() => store.setScreen('viva')}>
+            Viva voce: oral exam, any MBBS subject
           </button>
         </div>
 

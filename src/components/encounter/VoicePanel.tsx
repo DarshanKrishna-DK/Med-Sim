@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { ThinkingOrb } from 'thinking-orbs';
 import type { ConversationStatus } from '../../voice/conversation';
 import type { VoiceSession } from './useVoiceSession';
 import { isLive } from './useVoiceSession';
 import { Kbd } from '../ui/chrome';
-import { LangToggle } from '../ui/LangToggle';
+import { Icon, IconButton } from './HudControls';
 
 type OrbState = 'listening' | 'working' | 'composing' | 'connecting' | 'breathing';
 
@@ -35,7 +35,10 @@ function statusLabel(s: ConversationStatus, firstName: string, muted: boolean): 
   }
 }
 
-export function VoicePanel({ voice, patientName }: { voice: VoiceSession; patientName: string }) {
+/** Bottom voice dock: state orb + live subtitles, one primary control
+ *  (Connect, or Mute / Hang up once live), a typed fallback, and the
+ *  `footer` (keyboard hints) supplied by the HUD. */
+export function VoicePanel({ voice, patientName, footer }: { voice: VoiceSession; patientName: string; footer?: ReactNode }) {
   const first = patientName.split(' ')[0] ?? patientName;
   const live = isLive(voice.status);
   const [text, setText] = useState('');
@@ -65,7 +68,7 @@ export function VoicePanel({ voice, patientName }: { voice: VoiceSession; patien
           {orbState ? (
             <ThinkingOrb state={orbState} size={64} theme="dark" aria-label={statusLabel(voice.status, first, voice.micMuted)} />
           ) : (
-            <span className="voice-orb-off" />
+            <span className="voice-orb-off">{Icon.mic(voice.status === 'error')}</span>
           )}
         </div>
 
@@ -87,7 +90,7 @@ export function VoicePanel({ voice, patientName }: { voice: VoiceSession; patien
             <p className="voice-hint">
               {voice.engaged
                 ? `Waiting for ${first} to speak.`
-                : `Connect, then say hello. ${first} hears you the whole time; there's no push-to-talk.`}
+                : `Connect and just talk. ${first} hears you the whole time, no push-to-talk.`}
             </p>
           )}
 
@@ -100,31 +103,32 @@ export function VoicePanel({ voice, patientName }: { voice: VoiceSession; patien
         </div>
 
         <div className="voice-controls">
-          <LangToggle light />
           {voice.engaged && voice.status !== 'error' ? (
             <>
-              <button
-                type="button"
-                className={`icon-btn icon-btn--lg ${voice.micMuted ? 'is-off' : ''}`}
+              <IconButton
+                tip="top"
+                label={voice.micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                className={voice.micMuted ? 'is-off' : ''}
                 onClick={voice.toggleMic}
                 disabled={!live}
                 aria-pressed={voice.micMuted}
-                aria-label={voice.micMuted ? 'Unmute microphone' : 'Mute microphone'}
-                title={voice.micMuted ? 'Unmute' : 'Mute'}
               >
-                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                  <rect x="6" y="2" width="6" height="9.5" rx="3" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M3.5 9a5.5 5.5 0 0 0 11 0M9 14.5v2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  {voice.micMuted && <path d="m2.5 2.5 13 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />}
-                </svg>
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={voice.hangUp}>
-                Hang up
-              </button>
+                {Icon.mic(voice.micMuted)}
+              </IconButton>
+              <IconButton tip="top-end" label="Hang up" kbd="T" className="icon-btn--danger" onClick={voice.hangUp}>
+                {Icon.hangUp}
+              </IconButton>
             </>
           ) : (
-            <button type="button" className="btn btn-primary btn-lg" onClick={() => (voice.status === 'error' ? voice.toggle() : voice.connect())}>
+            <button
+              type="button"
+              className="btn btn-primary voice-connect"
+              aria-keyshortcuts="T"
+              onClick={() => (voice.status === 'error' ? voice.toggle() : voice.connect())}
+            >
+              {Icon.mic()}
               {voice.status === 'error' ? 'Try again' : 'Connect voice'}
+              <Kbd>T</Kbd>
             </button>
           )}
         </div>
@@ -140,14 +144,12 @@ export function VoicePanel({ voice, patientName }: { voice: VoiceSession; patien
           placeholder={`No mic? Type to ${first}`}
           autoComplete="off"
         />
-        <button type="submit" className="btn btn-quiet" disabled={!text.trim()}>
-          Say it
-        </button>
-        <span className="voice-keys" aria-hidden="true">
-          <Kbd>T</Kbd> voice on/off
-        </span>
+        <IconButton tip="top-end" type="submit" label={`Say it to ${first}`} className="icon-btn--send" disabled={!text.trim()}>
+          {Icon.send}
+        </IconButton>
       </form>
       {hint && <p className="voice-form-hint" role="status">{hint}</p>}
+      {footer}
     </section>
   );
 }

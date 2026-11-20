@@ -21,7 +21,7 @@ export const LOBBY_FRONT_Z = 11;
 export const LOBBY_CEILING_H = 4.2;
 export const DOOR_SPACING = 3.6;
 export const FIRST_DOOR_Z = -3.2;
-export const PAIRS = 18;
+export const PAIRS = 19; // door pairs: keep >= ceil(DEPARTMENTS.length / 2)
 export const END_Z = FIRST_DOOR_Z - (PAIRS - 1) * DOOR_SPACING - 2.8; // ≈ −67
 export const SPAWN = { x: 0, z: 7.2, yaw: Math.PI };
 
@@ -43,7 +43,7 @@ export interface Department {
   special?: SpecialRoom;
 }
 
-export type SpecialRoom = 'radiology';
+export type SpecialRoom = 'radiology' | 'operation-theatre';
 
 /** True when the door leads somewhere (a clinic or a special room). */
 export const isDoorOpen = (d: Department): boolean => !!d.clinic || !!d.special;
@@ -73,6 +73,7 @@ export const DEPARTMENTS: Department[] = [
   built('psychiatry', 'medicine'),
   built('geriatrics', 'medicine'),
   built('palliative-care', 'medicine'),
+  built('communication-skills', 'medicine'),
 
   built('pediatrics', 'surgical'),
   built('neonatology', 'surgical'),
@@ -88,6 +89,7 @@ export const DEPARTMENTS: Department[] = [
   built('ophthalmology', 'surgical'),
   built('plastic-surgery', 'surgical'),
   built('dentistry', 'surgical'),
+  { id: 'operation-theatre', label: 'Operation Theatre', wing: 'surgical', clinic: null, special: 'operation-theatre' },
 
   built('emergency-medicine', 'diagnostics'),
   soon('intensive-care', 'Intensive Care', 'diagnostics'),

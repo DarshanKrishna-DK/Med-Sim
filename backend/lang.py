@@ -14,9 +14,16 @@ from typing import Optional
 
 log = logging.getLogger("medsim.lang")
 
-LANGS = ("en", "hi", "kn")
-LOCALES = {"en": "en-IN", "hi": "hi-IN", "kn": "kn-IN"}
-LANG_NAMES = {"en": "English", "hi": "Hindi", "kn": "Kannada"}
+LANGS = ("en", "hi", "kn", "ta", "te", "mr", "bn")
+LOCALES = {"en": "en-IN", "hi": "hi-IN", "kn": "kn-IN", "ta": "ta-IN", "te": "te-IN", "mr": "mr-IN", "bn": "bn-IN"}
+LANG_NAMES = {
+    "en": "English", "hi": "Hindi", "kn": "Kannada", "ta": "Tamil", "te": "Telugu", "mr": "Marathi", "bn": "Bengali",
+}
+# Native-script Unicode block per language (Marathi shares Devanagari with Hindi).
+SCRIPT_RANGES = {
+    "hi": (0x0900, 0x097F), "mr": (0x0900, 0x097F), "kn": (0x0C80, 0x0CFF),
+    "ta": (0x0B80, 0x0BFF), "te": (0x0C00, 0x0C7F), "bn": (0x0980, 0x09FF),
+}
 
 # Patient voice pools per language. English and Hindi share the en-IN pool
 # (all of those voices list hi-IN), so a patient keeps the same voice when the
@@ -34,10 +41,30 @@ PATIENT_VOICE_POOLS: dict[str, dict[str, list[str]]] = {
         "M": ["en-IN-nikhil", "en-IN-samar", "hi-IN-chirag", "hi-IN-pranav"],
         "F": ["en-IN-pooja", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "kn-IN-harshitha"],
     },
+    # Verified live (Murf voices API, FALCON, 2026-11-21): each lists the locale in supportedLocales.
+    "ta": {
+        "M": ["en-IN-samar", "hi-IN-chirag", "hi-IN-pranav", "ta-IN-karthikeyan"],
+        "F": ["en-IN-pooja", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna"],
+    },
+    "te": {
+        "M": ["en-IN-samar", "hi-IN-chirag", "hi-IN-pranav"],
+        "F": ["en-IN-pooja", "en-IN-alia", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "hi-IN-ayushi"],
+    },
+    "mr": {
+        "M": ["en-IN-samar", "en-IN-abhinav", "hi-IN-chirag", "hi-IN-pranav", "mr-IN-prathamesh"],
+        "F": ["hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "mr-IN-prajakta"],
+    },
+    "bn": {
+        "M": ["hi-IN-chirag", "hi-IN-pranav", "bn-IN-subhankar"],
+        "F": ["hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "bn-IN-debarati"],
+    },
 }
 
 # Nurse (female) voice per language; each lists the locale.
-NURSE_VOICES = {"en": "en-IN-anisha", "hi": "en-IN-anisha", "kn": "kn-IN-harshitha"}
+NURSE_VOICES = {
+    "en": "en-IN-anisha", "hi": "en-IN-anisha", "kn": "kn-IN-harshitha",
+    "ta": "en-IN-anisha", "te": "en-IN-anisha", "mr": "mr-IN-prajakta", "bn": "bn-IN-debarati",
+}
 
 FILLERS: dict[str, list[str]] = {
     "en": ["Hmm...", "Haan, doctor...", "Umm, let me think...", "Achha...", "One second, doctor...",
@@ -46,12 +73,24 @@ FILLERS: dict[str, list[str]] = {
            "एक सेकंड डॉक्टर...", "हाँ... जी..."],
     "kn": ["ಹ್ಮ್...", "ಹೌದು ಡಾಕ್ಟರ್...", "ಒಂದು ನಿಮಿಷ...", "ಅಚ್ಛಾ...", "ಹ್ಮ್, ನೋಡಿ...", "ಸರಿ ಡಾಕ್ಟರ್...",
            "ಒಂದು ಸೆಕೆಂಡ್ ಡಾಕ್ಟರ್...", "ಹೌದು... ಹೌದು..."],
+    "ta": ["ம்ம்...", "ஆமா டாக்டர்...", "ஒரு நிமிஷம்...", "சரி...", "ம்ம், பாருங்க...", "சரி டாக்டர்...",
+           "ஒரு செகண்ட் டாக்டர்...", "ஆமா... ஆமா..."],
+    "te": ["హ్మ్...", "అవును డాక్టర్...", "ఒక్క నిమిషం...", "సరే...", "హ్మ్, చూడండి...", "సరే డాక్టర్...",
+           "ఒక్క సెకను డాక్టర్...", "అవును... అవును..."],
+    "mr": ["हम्म...", "हो डॉक्टर...", "एक मिनिट...", "अच्छा...", "हम्म, बघा...", "ठीक आहे डॉक्टर...",
+           "एक सेकंद डॉक्टर...", "हो... हो..."],
+    "bn": ["হুম...", "হ্যাঁ ডাক্তারবাবু...", "এক মিনিট...", "আচ্ছা...", "হুম, দেখুন...", "ঠিক আছে ডাক্তারবাবু...",
+           "এক সেকেন্ড ডাক্তারবাবু...", "হ্যাঁ... হ্যাঁ..."],
 }
 
 FAILURE_MESSAGES = {
     "en": "Sorry doctor, I didn't catch that. Could you say it again?",
     "hi": "माफ़ कीजिए डॉक्टर, मैं सुन नहीं पाया। क्या आप दोबारा बोल सकते हैं?",
     "kn": "ಕ್ಷಮಿಸಿ ಡಾಕ್ಟರ್, ನನಗೆ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಇನ್ನೊಮ್ಮೆ ಹೇಳಿ.",
+    "ta": "மன்னிக்கவும் டாக்டர், எனக்குக் கேட்கவில்லை. தயவுசெய்து மீண்டும் சொல்லுங்கள்.",
+    "te": "క్షమించండి డాక్టర్, నాకు వినిపించలేదు. దయచేసి మళ్లీ చెప్పండి.",
+    "mr": "माफ करा डॉक्टर, मला ऐकू आले नाही. कृपया पुन्हा सांगा.",
+    "bn": "দুঃখিত ডাক্তারবাবু, আমি শুনতে পাইনি। দয়া করে আরেকবার বলুন।",
 }
 
 
@@ -104,6 +143,27 @@ _KN_RULES = (
     "language the doctor last spoke."
 )
 
+
+def _rules(name: str, script: str, region: str, you: str) -> str:
+    return (
+        f"LANGUAGE: Speak natural, everyday spoken {name}, written in {script} only (never Roman letters "
+        f"for {name} words). Common English medical loanwords are natural in spoken {name} and allowed, for "
+        "example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. "
+        f"Keep sentences short and conversational, the way a person in {region} really talks to a doctor. "
+        f"Address the doctor respectfully as \"{you}\". If the doctor switches to English or Hindi, reply in the "
+        "language the doctor last spoke."
+    )
+
+
+_LANG_RULES = {
+    "hi": _HI_RULES,
+    "kn": _KN_RULES,
+    "ta": _rules("Tamil", "Tamil script", "Tamil Nadu", "நீங்கள்"),
+    "te": _rules("Telugu", "Telugu script", "Andhra Pradesh or Telangana", "మీరు"),
+    "mr": _rules("Marathi", "Devanagari script", "Maharashtra", "तुम्ही"),
+    "bn": _rules("Bengali", "Bengali script", "West Bengal", "আপনি"),
+}
+
 _ROLE_TAIL = {
     "patient": (
         "Your very first line and every reply must follow this language rule, even though the instructions "
@@ -130,7 +190,13 @@ def language_block(lang: Optional[str], *, female: bool = False, role: str = "pa
     lg = norm_lang(lang)
     if lg == "en":
         return ""
-    out = [_HI_RULES if lg == "hi" else _KN_RULES, _ROLE_TAIL.get(role, _ROLE_TAIL["patient"])]
+    out = [_LANG_RULES[lg], _ROLE_TAIL.get(role, _ROLE_TAIL["patient"])]
+    if lg == "mr":
+        out.append(
+            "You are a woman: use feminine Marathi verb forms for yourself (\"मी आले होते\", \"मी करत आहे\")."
+            if female
+            else "You are a man: use masculine Marathi verb forms for yourself (\"मी आलो होतो\", \"मी करत आहे\")."
+        )
     if lg == "hi":
         out.append(
             "You are a woman: use feminine Hindi verb forms for yourself (\"मैं आई थी\", \"मैं कर रही हूँ\")."
@@ -151,7 +217,9 @@ _greeting_cache: dict[tuple[str, str], str] = {}
 
 
 def has_script(text: str, lang: str) -> bool:
-    lo, hi = (0x0900, 0x097F) if lang == "hi" else (0x0C80, 0x0CFF)
+    if lang not in SCRIPT_RANGES:
+        return False
+    lo, hi = SCRIPT_RANGES[lang]
     return any(lo <= ord(ch) <= hi for ch in text)
 
 

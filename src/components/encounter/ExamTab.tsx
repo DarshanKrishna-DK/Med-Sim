@@ -50,7 +50,7 @@ export function ExamTab({ patient }: { patient: ActivePatient }) {
               type="button"
               className={`exam-sys ${done.includes(s.id) ? 'is-done' : ''} ${busy ? 'is-busy' : ''}`}
               aria-pressed={done.includes(s.id)}
-              title={`Examine: ${s.label}`}
+              aria-label={`Examine: ${s.label}`}
               onClick={() => void runExam(s.id, 'click')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">

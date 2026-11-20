@@ -21,6 +21,9 @@ export interface CharacterControl {
   lookAt?: THREE.Vector3 | null;
   /** Seat height in metres for the `sit` action. */
   seatHeight?: number;
+  /** Static working pose layered on idle: 'surgeon' = leaning in, gloved
+   *  hands forward at table height (no surgical animation). */
+  pose?: 'surgeon';
 }
 
 export function makeControl(partial: Partial<CharacterControl> = {}): CharacterControl {
@@ -64,6 +67,8 @@ interface Bones {
   rArm?: THREE.Bone;
   lForeArm?: THREE.Bone;
   rForeArm?: THREE.Bone;
+  lHand?: THREE.Bone;
+  rHand?: THREE.Bone;
 }
 
 interface Built {
@@ -89,6 +94,7 @@ function build(rigScene: THREE.Object3D, animGltf: { scene: THREE.Object3D; anim
     LeftUpLeg: 'lUpLeg', RightUpLeg: 'rUpLeg', LeftLeg: 'lLeg', RightLeg: 'rLeg',
     LeftFoot: 'lFoot', RightFoot: 'rFoot',
     LeftArm: 'lArm', RightArm: 'rArm', LeftForeArm: 'lForeArm', RightForeArm: 'rForeArm',
+    LeftHand: 'lHand', RightHand: 'rHand',
   };
   model.traverse((o) => {
     if ((o as THREE.Bone).isBone) {
@@ -221,6 +227,20 @@ export function HumanCharacter({ look, control }: { look: Look; control: Charact
     } else {
       root.position.y = built.baseY;
       root.position.z = 0;
+    }
+    if (control.pose === 'surgeon' && w < 0.01) {
+      // Lean over the table, hands forward and together over the field.
+      const fwd = _v2.set(0, 0, 1).applyQuaternion(rq).normalize();
+      const sway = Math.sin(s.t * 0.9) * 0.03;
+      rotateWorld(b.spine, right, -0.16);
+      rotateWorld(b.neck, right, -0.22);
+      rotateWorld(b.head, right, -0.18);
+      rotateWorld(b.lArm, right, 0.62 + sway);
+      rotateWorld(b.rArm, right, 0.62 - sway);
+      rotateWorld(b.lArm, fwd, -0.22);
+      rotateWorld(b.rArm, fwd, 0.22);
+      rotateWorld(b.lForeArm, right, 1.05);
+      rotateWorld(b.rForeArm, right, 1.05);
     }
 
     // Speech → mouth morph + small head motion.

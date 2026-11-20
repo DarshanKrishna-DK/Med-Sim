@@ -59,6 +59,8 @@ export interface Look {
   /** Draped scarf over both shoulders (salwar kameez). */
   dupatta?: string;
   stethoscope?: boolean;
+  /** Theatre attire: bouffant cap over the hair, surgical mask, gloves. */
+  surgical?: { cap: string; mask: string; gloves?: string };
 }
 
 export function lookKey(l: Look): string {

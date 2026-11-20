@@ -36,8 +36,10 @@ from pydantic import BaseModel
 
 from agora_token import RtcTokenBuilder, Role_Publisher
 from llm_provider import require_provider
+import observer
 import llm_proxy
 import lang as langmod
+import viva
 
 log = logging.getLogger("medsim.voice")
 router = APIRouter()
@@ -86,6 +88,8 @@ def _voice_for(kind: str, case_id: str | None = None, lang: str | None = "en") -
     """Murf voice id. English honours the MURF_* env overrides; hi/kn always pick
     from voices that list the locale (an override could lack hi-IN/kn-IN support)."""
     lg = langmod.norm_lang(lang)
+    if case_id == viva.VIVA_CASE_ID:
+        return viva.examiner_voice(lg)
     if lg == "en":
         env = {"M": "MURF_VOICE_MALE", "F": "MURF_VOICE_FEMALE", "nurse": "MURF_NURSE_VOICE"}[kind]
         override = os.environ.get(env, "").strip()
@@ -137,13 +141,14 @@ FILLER_PHRASES = langmod.FILLERS["en"]
 FILLER_WAIT_MS = 1100
 
 
-def filler_block(lang: str | None = "en") -> dict[str, Any]:
+def filler_block(lang: str | None = "en", case_id: str | None = None) -> dict[str, Any]:
+    phrases = viva.examiner_fillers(lang) if case_id == viva.VIVA_CASE_ID else langmod.fillers(lang)
     return {
         "enable": True,
         "trigger": {"fixed_time_config": {"response_wait_ms": FILLER_WAIT_MS}},
         "content": {
             "mode": "static",
-            "static_config": {"phrases": langmod.fillers(lang), "selection_rule": "shuffle"},
+            "static_config": {"phrases": phrases, "selection_rule": "shuffle"},
         },
     }
 
@@ -239,11 +244,11 @@ def build_join_body(
             # short so a crashed tab or lost /voice/stop burns few ConvoAI minutes.
             "idle_timeout": AGENT_IDLE_TIMEOUT_S,
             "advanced_features": {"enable_rtm": True},
-            "parameters": {"data_channel": "rtm", "enable_error_message": True},
+            "parameters": {"data_channel": "rtm", "enable_error_message": True, "enable_metrics": True},
             "asr": asr,
             "llm": _llm_block(req.systemPrompt, req.initialLine, lang=lang),
             "turn_detection": copy.deepcopy(TURN_DETECTION),
-            "filler_words": filler_block(lang),
+            "filler_words": filler_block(lang, req.caseId),
             "tts": {
                 "vendor": "murf",
                 "params": {
@@ -290,6 +295,7 @@ async def voice_start(req: VoiceStartRequest):
         agent_id = r.json()["agent_id"]
     except Exception:  # noqa: BLE001
         raise _agora_fail(r, "join (no agent_id)")
+    observer.register_session(channel, user_uid, req.caseId, AGENT_UID)
     return VoiceStartResponse(
         appId=app_id, channel=channel, uid=user_uid, token=user_token, agentUid=AGENT_UID, agentId=agent_id
     )

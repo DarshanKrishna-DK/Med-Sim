@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type FormEvent, type ReactNode } from 'react';
 import { store, useAgentRuns } from '../../game/store';
 import type { ActivePatient } from '../../game/types';
 import { runNurseAction } from '../../agents/nurseAgent';
@@ -12,8 +12,19 @@ import type { CoachAlert } from '../../game/types';
 import { coachAfterDiagnosis, coachAfterManualPrescription, coachAfterManualTest } from '../../agents/coach';
 import { useExamUi } from '../../agents/examAgent';
 import { ExamTab } from './ExamTab';
+import { VoiceRx } from './VoiceRx';
+import { Icon, IconButton } from './HudControls';
 
 type Tab = 'nurse' | 'exam' | 'results' | 'diagnosis' | 'rx';
+
+// 16px stroke icons for the segmented tab control.
+const TAB_ICON: Record<Tab, ReactNode> = {
+  nurse: <><path d="M3.5 14v-2.5A3.5 3.5 0 0 1 7 8h2a3.5 3.5 0 0 1 3.5 3.5V14" /><path d="M5 2.5h6V6a3 3 0 0 1-6 0Z" /><path d="M8 3v2M7 4h2" /></>,
+  exam: <><path d="M3 1.5v4a3 3 0 0 0 6 0v-4" /><path d="M6 8.5v2a3.5 3.5 0 0 0 7 0V9" /><circle cx="13" cy="7.5" r="1.5" /></>,
+  results: <><path d="M6 1.5h4M6.5 1.5v4.5L3 13a1 1 0 0 0 .9 1.5h8.2A1 1 0 0 0 13 13L9.5 6V1.5" /><path d="M4.5 10.5h7" /></>,
+  diagnosis: <><rect x="3" y="2.5" width="10" height="12" /><path d="M6 1.5h4v2H6ZM5.5 9l2 2 3-3.5" /></>,
+  rx: <><rect x="2" y="6" width="12" height="5" rx="2.5" transform="rotate(-35 8 8.5)" /><path d="m6.6 6.3 2.9 4.2" /></>,
+};
 
 const dxLabel = (id: string) =>
   POLYCLINIC_DIAGNOSIS_LABELS[id] ?? id.replace(/-/g, ' ').replace(/^\w/, (m) => m.toUpperCase());
@@ -62,7 +73,7 @@ export function AgentPanel({ patient, voiceStatus }: { patient: ActivePatient; v
     <aside className="agent-panel hud-panel" aria-label="Chart and nurse agent">
       <NurseAshaHeader voiceStatus={voiceStatus} onExplain={setExplaining} />
       <div className="agent-body">
-        <div className="tabs" role="tablist" aria-label="Chart sections" onKeyDown={onTabKey}>
+        <div className="tabs tabs--seg" role="tablist" aria-label="Chart sections" onKeyDown={onTabKey}>
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -76,9 +87,15 @@ export function AgentPanel({ patient, voiceStatus }: { patient: ActivePatient; v
               className="tab"
               onClick={() => setTab(t.id)}
             >
-              {t.id === 'nurse' && <span className={`nurse-dot ${running ? 'is-busy' : ''}`} aria-hidden="true" />}
-              {t.label}
-              {t.count ? <span className="tab-count">{t.count}</span> : null}
+              <span className="tab-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  {TAB_ICON[t.id]}
+                </svg>
+                {t.id === 'nurse' && running && <span className="nurse-dot is-busy" />}
+                {t.count ? <span className="tab-count">{t.count}</span> : null}
+              </span>
+              <span className="tab-label">{t.label}</span>
+              {t.count ? <span className="sr-only">, {t.count}</span> : null}
             </button>
           ))}
         </div>
@@ -125,12 +142,12 @@ function NurseCommand() {
         className="input command-input"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Tell the nurse: “CBC and a urine dip, please”"
+        placeholder="Order, e.g. “CBC and urine dip”"
         autoComplete="off"
       />
-      <button type="submit" className="btn btn-nurse" disabled={!text.trim() || busy}>
-        Send order
-      </button>
+      <IconButton tip="top-end" type="submit" label="Send order to Asha" className="icon-btn--nurse" disabled={!text.trim() || busy}>
+        {Icon.send}
+      </IconButton>
     </form>
   );
 }
@@ -285,6 +302,8 @@ function PlanTab({ patient }: { patient: ActivePatient }) {
       ) : (
         <p className="muted-note">None booked. Ask the nurse to schedule one.</p>
       )}
+
+      <VoiceRx patient={patient} />
 
       <div className="manual">
         <label className="field-label" htmlFor="med-search">Prescribe yourself</label>

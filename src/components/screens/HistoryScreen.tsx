@@ -47,12 +47,14 @@ export function HistoryScreen() {
             <ul className="history-list">
               {entries.map((e) => (
                 <li key={e.id}>
-                  <button type="button" className="history-row" onClick={() => (e.osce ? store.viewOsceResult(e.id) : store.viewEvalHistory(e.id))}>
+                  <button type="button" className="history-row" onClick={() => (e.viva ? store.viewVivaResult(e.id) : e.osce ? store.viewOsceResult(e.id) : store.viewEvalHistory(e.id))}>
                     <span className="history-name">
-                      {e.caseName}, {e.caseAge}{e.caseGender}
+                      {e.viva ? e.caseName : `${e.caseName}, ${e.caseAge}${e.caseGender}`}
                     </span>
                     <span className="history-dx">
-                      {e.mode === 'osce' && <span className="chip">OSCE</span>} {e.diagnosisLabel}
+                      {e.mode === 'osce' && <span className="chip">OSCE</span>}
+                      {e.mode === 'ot' && <span className="chip">OT</span>}
+                      {e.mode === 'viva' && <span className="chip">Viva</span>} {e.diagnosisLabel}
                     </span>
                     <span className={`tag tag--${VERDICT_TONE[e.verdict] ?? 'urgent'}`}>{VERDICT_WORD[e.verdict] ?? e.verdict}</span>
                     <time className="history-time" dateTime={new Date(e.savedAt).toISOString()}>

@@ -1,0 +1,491 @@
+/* Viva voce exam hall. Same pixel system as app.css: square corners, hard
+ * bevels, Jersey 10 numbers, Amarna labels. Teal = the examiner's voice. */
+
+.viva {
+  padding-top: calc(64px + var(--section-y));
+  padding-bottom: calc(var(--section-y) * 1.5);
+}
+
+.library-head .viva-entry {
+  margin-left: 12px;
+}
+
+/* ── setup ──────────────────────────────────────────────────────────── */
+
+.viva-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: clamp(20px, 3vw, 40px);
+  align-items: start;
+}
+
+.viva-setup,
+.viva-side {
+  display: grid;
+  gap: 22px;
+  padding: clamp(20px, 3vw, 32px);
+  background: var(--surface);
+  box-shadow: var(--bevel);
+}
+
+.viva-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.viva-fields .input {
+  width: 100%;
+}
+
+.viva-field-wide {
+  grid-column: 1 / -1;
+}
+
+.viva-custom {
+  margin-top: 10px;
+}
+
+.viva-summary {
+  font-family: var(--font-display);
+  font-size: var(--t-xl);
+  line-height: 1;
+  color: var(--teal);
+}
+
+.viva-rules {
+  display: grid;
+  gap: 10px;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.viva-rules li::marker {
+  color: var(--primary);
+}
+
+/* ── examiner portrait ─────────────────────────────────────────────── */
+
+.viva-portrait {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.viva-portrait-canvas {
+  width: min(100%, 320px);
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: var(--bg-deep);
+  box-shadow: 0 0 0 2px var(--line), 6px 6px 0 0 var(--bg-deep);
+}
+
+.viva-portrait.is-speaking .viva-portrait-canvas {
+  box-shadow: 0 0 0 2px var(--teal), 6px 6px 0 0 var(--bg-deep);
+}
+
+.viva-lipsync {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  width: min(100%, 320px);
+}
+
+.viva-lipsync span {
+  flex: 1;
+  max-width: 18px;
+  height: 100%;
+  background: var(--teal);
+  transform-origin: bottom;
+  transform: scaleY(0.08);
+}
+
+.viva-nameplate {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.viva-nameplate strong {
+  font-family: var(--font-display);
+  font-size: var(--t-xl);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.viva-nameplate span {
+  font-size: var(--t-sm);
+  color: var(--muted);
+}
+
+/* ── exam hall HUD ─────────────────────────────────────────────────── */
+
+.viva-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto auto auto;
+  gap: clamp(12px, 2vw, 28px);
+  align-items: center;
+  padding: 14px 18px;
+  background: var(--surface);
+  box-shadow: var(--bevel);
+}
+
+.viva-bar-topic {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.viva-bar-title {
+  font-family: var(--font-display);
+  font-size: var(--t-xl);
+  line-height: 1;
+}
+
+.viva-counter {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.viva-counter-text {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.viva-pips {
+  display: flex;
+  gap: 4px;
+}
+
+.viva-pips i {
+  width: 10px;
+  height: 10px;
+  background: var(--secondary);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+
+.viva-pips i.is-done {
+  background: var(--primary);
+  box-shadow: none;
+}
+
+.viva-clock {
+  display: grid;
+  gap: 4px;
+  min-width: 110px;
+}
+
+.viva-clock-time {
+  font-family: var(--font-display);
+  font-size: var(--t-2xl);
+  line-height: 0.9;
+  color: var(--teal);
+  font-variant-numeric: tabular-nums;
+}
+
+.viva-clock-bar {
+  display: block;
+  height: 6px;
+  background: var(--bg-deep);
+}
+
+.viva-clock-bar i {
+  display: block;
+  height: 100%;
+  background: var(--teal);
+  transform-origin: left;
+  transition: transform 0.5s linear;
+}
+
+.viva-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: clamp(20px, 3vw, 36px);
+  margin-top: clamp(20px, 3vw, 32px);
+  align-items: start;
+}
+
+.viva-examiner {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  padding: clamp(18px, 3vw, 28px);
+  background: var(--surface);
+  box-shadow: var(--bevel);
+}
+
+.viva-caption {
+  width: 100%;
+  min-height: 3.2em;
+  padding: 12px 14px;
+  background: var(--teal-tint);
+  box-shadow: inset 0 0 0 2px var(--teal);
+  font-size: var(--t-lg);
+  line-height: 1.45;
+}
+
+.viva-status {
+  font-size: 11px !important;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.viva-status--speaking,
+.viva-status--listening,
+.viva-status--ready {
+  color: var(--teal) !important;
+}
+
+.viva-warn {
+  width: 100%;
+  font-size: var(--t-sm);
+  color: var(--amber-strong);
+}
+
+.viva-transcript {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+  height: min(70vh, 640px);
+  padding: clamp(16px, 2.5vw, 24px);
+  background: var(--surface);
+  box-shadow: var(--bevel);
+}
+
+.viva-log {
+  list-style: none;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.viva-line {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--secondary);
+}
+
+.viva-line--examiner {
+  box-shadow: inset 3px 0 0 0 var(--teal);
+}
+
+.viva-line--student {
+  box-shadow: inset 3px 0 0 0 var(--primary);
+  background: var(--field);
+}
+
+.viva-line-who {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.viva-log-end {
+  height: 1px;
+}
+
+.viva-answer {
+  display: flex;
+  gap: 10px;
+}
+
+.viva-answer .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.viva-mic {
+  justify-self: start;
+}
+
+/* ── marking + result ─────────────────────────────────────────────── */
+
+.viva-marking {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+}
+
+.viva-result {
+  display: grid;
+  gap: clamp(22px, 3vw, 34px);
+  max-width: 1040px;
+}
+
+.viva-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.viva-result-head .muted-note {
+  margin-top: 10px;
+}
+
+.viva-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 14px 20px;
+  background: var(--surface);
+  box-shadow: var(--bevel);
+}
+
+.viva-score-num {
+  font-family: var(--font-display);
+  font-size: clamp(3.4rem, 7vw, 5rem);
+  line-height: 0.8;
+  color: var(--primary);
+}
+
+.viva-score-max {
+  font-family: var(--font-display);
+  font-size: var(--t-xl);
+  color: var(--muted);
+  margin-right: 8px;
+}
+
+.viva-comment {
+  margin: 0;
+  padding: 16px 20px;
+  background: var(--teal-tint);
+  box-shadow: inset 4px 0 0 0 var(--teal);
+  font-size: var(--t-lg);
+}
+
+.viva-comment footer {
+  margin-top: 8px;
+  font-size: var(--t-sm);
+  color: var(--muted);
+}
+
+.viva-marks {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.viva-mark {
+  display: grid;
+  gap: 8px;
+  padding: 14px 18px;
+  background: var(--surface);
+  box-shadow: var(--bevel-sm);
+}
+
+.viva-mark--not-asked {
+  opacity: 0.72;
+}
+
+.viva-mark-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.viva-mark-n {
+  font-family: var(--font-display);
+  font-size: var(--t-xl);
+  line-height: 1;
+  color: var(--muted);
+  min-width: 1.4em;
+}
+
+.viva-mark-q {
+  font-weight: 600;
+}
+
+.viva-mark-said,
+.viva-mark-expected {
+  display: grid;
+  gap: 2px;
+  padding-left: calc(1.4em + 12px);
+}
+
+.viva-mark-said .field-label,
+.viva-mark-expected .field-label {
+  margin-bottom: 0;
+}
+
+.viva-mark-said {
+  color: var(--ink-2);
+}
+
+.viva-mark .muted-note {
+  padding-left: calc(1.4em + 12px);
+}
+
+.tag--muted {
+  color: var(--muted);
+}
+
+.viva-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.viva-box {
+  padding: 16px 18px;
+  background: var(--surface);
+  box-shadow: var(--bevel-sm);
+}
+
+.viva-box ul {
+  display: grid;
+  gap: 8px;
+  padding-left: 18px;
+  font-size: var(--t-sm);
+}
+
+@media (max-width: 960px) {
+  .viva-setup-grid,
+  .viva-stage,
+  .viva-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .viva-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .viva-transcript {
+    height: auto;
+    max-height: 70vh;
+  }
+}
+
+@media (max-width: 560px) {
+  .viva-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .library-head .viva-entry {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viva-clock-bar i {
+    transition: none;
+  }
+}

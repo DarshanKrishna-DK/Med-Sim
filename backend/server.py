@@ -43,11 +43,6 @@ def _load_env_local() -> None:
 
 _load_env_local()
 
-def _env_with_legacy(name: str, legacy: str) -> Optional[str]:
-    """Read ``name``, falling back to its pre-rename (medkit) spelling."""
-    return os.environ.get(name) or os.environ.get(legacy) or None
-
-
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -65,17 +60,19 @@ from debrief import router as debrief_router
 from teacher import router as teacher_router
 from coach import router as coach_router
 from radiology import router as radiology_router
+from ot import router as ot_router
 from osce import router as osce_router
+from rx_audio import router as rx_audio_router
 from exam import router as exam_router
+from observer import router as observer_router
+from viva import router as viva_router
 
-# Shared secret protects /agent/* and /voice/* against direct curl abuse.
-# Vercel Edge Middleware injects this header for browser traffic; a
-# missing/wrong value returns 401 before we burn any Anthropic / LiveKit
-# credits. Localhost origins bypass for `npm run dev`.
+# The API (/agent, /voice, /teach, /coach, /llm) is only served to trusted
+# browser origins: localhost for `npm run dev`, plus the deployed site via
+# FRONTEND_ORIGINS. Anything else needs the optional shared-secret header, or
+# gets a 401 before any Agora / Murf / LLM credits are spent.
 SHARED_SECRET = os.environ.get("BACKEND_SHARED_SECRET", "")
 ALLOWED_ORIGINS = [
-    "https://medsim.vercel.app",
-    "https://medkit.vercel.app",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
@@ -158,7 +155,7 @@ async def require_shared_secret(request: Request, call_next):
     ref_origin = re.match(r"^(https?://[^/]+)/", referer)
     if ref_origin and _is_dev_origin(ref_origin.group(1)):
         return await call_next(request)
-    if SHARED_SECRET and (request.headers.get("x-medsim-auth") or request.headers.get("x-medkit-auth")) == SHARED_SECRET:
+    if SHARED_SECRET and (request.headers.get("x-medsim-auth")) == SHARED_SECRET:
         return await call_next(request)
     return JSONResponse({"detail": "unauthorized"}, status_code=401)
 
@@ -179,8 +176,8 @@ def health():
     API key or unbootstrapped agent surfaces a clearer error than a blank
     SSE failure."""
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    agent_id = _env_with_legacy("MEDSIM_AGENT_ID", "MEDKIT_AGENT_ID") or None
-    env_id = _env_with_legacy("MEDSIM_ENV_ID", "MEDKIT_ENV_ID") or None
+    agent_id = os.environ.get("MEDSIM_AGENT_ID", "") or None
+    env_id = os.environ.get("MEDSIM_ENV_ID", "") or None
     bootstrapped = bool(agent_id and env_id)
     return {
         "ok": True,
@@ -777,8 +774,8 @@ def bootstrap_agent():
         # Re-read env vars under the lock: if an earlier racing call
         # persisted the IDs (process-wide only; operator still needs to
         # write .env.local for cross-restart), we skip the create.
-        agent_id = _env_with_legacy("MEDSIM_AGENT_ID", "MEDKIT_AGENT_ID")
-        env_id = _env_with_legacy("MEDSIM_ENV_ID", "MEDKIT_ENV_ID")
+        agent_id = os.environ.get("MEDSIM_AGENT_ID", "")
+        env_id = os.environ.get("MEDSIM_ENV_ID", "")
         if agent_id and env_id:
             return BootstrapResponse(
                 agent_id=agent_id,
@@ -839,7 +836,7 @@ def refresh_agent():
     Use this whenever you edit ``MEDSIM_ATTENDING_SYSTEM_PROMPT`` or
     ``MEDSIM_CUSTOM_TOOLS`` so the change takes effect without creating a
     whole new Agent."""
-    agent_id = _env_with_legacy("MEDSIM_AGENT_ID", "MEDKIT_AGENT_ID")
+    agent_id = os.environ.get("MEDSIM_AGENT_ID", "")
     if not agent_id:
         raise HTTPException(
             status_code=400,
@@ -882,8 +879,8 @@ class CreateSessionResponse(BaseModel):
 
 @app.post("/agent/sessions", response_model=CreateSessionResponse)
 def create_session(req: CreateSessionRequest):
-    agent_id = _env_with_legacy("MEDSIM_AGENT_ID", "MEDKIT_AGENT_ID")
-    env_id = _env_with_legacy("MEDSIM_ENV_ID", "MEDKIT_ENV_ID")
+    agent_id = os.environ.get("MEDSIM_AGENT_ID", "")
+    env_id = os.environ.get("MEDSIM_ENV_ID", "")
     if not agent_id or not env_id:
         raise HTTPException(
             status_code=400,
@@ -1184,7 +1181,7 @@ def vault_ehr_lookup(req: EhrLookupRequest):
 #   • Pure function `run_triage_reasoning(client, request)` so unit
 #     tests can mock the Anthropic client without spinning HTTP.
 #   • The system prompt inlines the 5 ESI rules we actually apply. It
-#     mirrors `.claude/skills/medkit-triage-logic.md` so keep them in sync
+#     mirrors the ESI triage rules so keep them in sync
 #     when either changes.
 #   • Model output is constrained to JSON via explicit instruction +
 #     assistant prefill; we parse defensively and raise on malformed
@@ -1431,14 +1428,18 @@ async def patient_stream(req: PatientStreamRequest):
 
 
 app.include_router(voice_router)
+app.include_router(rx_audio_router)
 app.include_router(llm_proxy.router)
 app.include_router(nurse_router)
 app.include_router(debrief_router)
 app.include_router(teacher_router)
 app.include_router(coach_router)
 app.include_router(radiology_router)
+app.include_router(ot_router)
 app.include_router(osce_router)
 app.include_router(exam_router)
+app.include_router(observer_router)
+app.include_router(viva_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the

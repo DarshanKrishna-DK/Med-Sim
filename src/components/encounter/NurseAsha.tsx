@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import { store, useAgentRuns, useCoachAlerts, useOsceLive } from '../../game/store';
 import type { CoachAlert } from '../../game/types';
 import { isNurseSpeaking, speakAsNurse, subscribeNurseSpeaking } from '../../agents/nurseAgent';
 import { explainAlert } from '../../agents/coach';
 import { activeAlert } from '../../agents/coachRules';
 import { visibleRuns } from './NurseFeed';
+import { Icon, IconButton } from './HudControls';
 
 /* Nurse Asha: an original pixel-art mascot for the nurse agent. Drawn as
  * SVG rects (crispEdges) on a 24x22 grid; the face is a fixed base sprite
@@ -225,6 +226,23 @@ const NO_ALERTS: CoachAlert[] = [];
 
 const SEV_LABEL: Record<CoachAlert['severity'], string> = { danger: 'Danger', warning: 'Warning', info: 'Note' };
 
+/** Severity as shape + colour (never colour alone): octagon danger,
+ *  triangle warning, square note. */
+function SevGlyph({ severity }: { severity: CoachAlert['severity'] }) {
+  return (
+    <svg className={`asha-sev asha-sev--${severity}`} width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      {severity === 'danger' && <path d="M6 1.5h6L16.5 6v6L12 16.5H6L1.5 12V6Z" fill="currentColor" />}
+      {severity === 'warning' && <path d="M9 1.5 17 16H1Z" fill="currentColor" />}
+      {severity === 'info' && <rect x="2" y="2" width="14" height="14" fill="currentColor" />}
+      {severity === 'info' ? (
+        <path d="M9 7.5v5M9 4.5v1.2" stroke="#0b1f4b" strokeWidth="2" />
+      ) : (
+        <path d={severity === 'warning' ? 'M9 6.5v4.5M9 12.6v1.4' : 'M9 4.5v5.5M9 11.6v1.8'} stroke="#0b1f4b" strokeWidth="2" />
+      )}
+    </svg>
+  );
+}
+
 export function NurseAshaHeader({
   voiceStatus,
   onExplain,
@@ -240,6 +258,17 @@ export function NurseAshaHeader({
   const alerts = osceLive ? NO_ALERTS : allAlerts;
   const speaking = useNurseSpeaking();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const alertBar = useRef<HTMLDivElement>(null);
+
+  // The history list is a popover: an outside click closes it.
+  useEffect(() => {
+    if (!historyOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!alertBar.current?.contains(e.target as Node)) setHistoryOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [historyOpen]);
 
   const latest = runs[runs.length - 1];
   const running = runs.some((r) => r.status === 'running');
@@ -281,16 +310,19 @@ export function NurseAshaHeader({
           ? "I'm listening, doctor. Just say the order."
           : "Hi doctor, I'm Asha. Say or type an order and I'll take care of it.";
 
+  const closeHistory = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || !historyOpen) return;
+    // Keep Esc from also opening the room's pause menu.
+    e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
+    setHistoryOpen(false);
+  };
+
   return (
     <div className="asha-head-wrap">
       <div className="asha-row">
         <div className="asha-frame">
-          <AshaSprite mood={mood} />
-          {badgeSev && (
-            <span className={`asha-badge asha-badge--${badgeSev}`} aria-label={`${open.length} open alert${open.length === 1 ? '' : 's'}`}>
-              {open.length}
-            </span>
-          )}
+          <AshaSprite mood={mood} size={56} />
         </div>
         <div className="asha-say">
           <p className="asha-name">
@@ -302,38 +334,51 @@ export function NurseAshaHeader({
         </div>
       </div>
 
-      {toast && (
-        <div className={`asha-toast asha-toast--${toast.severity}`} role="alert">
-          <span className="asha-toast-sev">{SEV_LABEL[toast.severity]}</span>
-          <span className="asha-toast-title">{toast.title}</span>
-          <button
-            type="button"
-            className="asha-q"
-            aria-label={`Ask Asha why: ${toast.title}`}
-            title="Why? Ask Asha"
-            onClick={() => onExplain(toast)}
-          >
-            ?
-          </button>
-          <button
-            type="button"
-            className="asha-x"
-            aria-label="Dismiss alert"
-            onClick={() => store.dismissCoachAlert(toast.id)}
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="m2 2 6 6M8 2 2 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="square" /></svg>
-          </button>
-        </div>
-      )}
-
-      {alerts.length > 0 && (
-        <div className="asha-history">
-          <button type="button" className="asha-history-toggle" aria-expanded={historyOpen} onClick={() => setHistoryOpen((o) => !o)}>
-            Alert history <span className="tab-count">{alerts.length}</span>
-            <span className="asha-caret" aria-hidden="true">{historyOpen ? '-' : '+'}</span>
-          </button>
-          {historyOpen && (
-            <ol className="asha-history-list">
+      {/* Fixed-height alert bar: the active alert takes this slot instead of
+          pushing the chart down. Hidden for the whole OSCE station (no hints). */}
+      {!osceLive && (
+        <div
+          ref={alertBar}
+          className={`asha-alertbar ${toast ? `asha-alertbar--${toast.severity}` : ''}`}
+          onKeyDown={closeHistory}
+        >
+          {toast ? (
+            <div className="asha-toast" role="alert">
+              <SevGlyph severity={toast.severity} />
+              <span className="sr-only">{SEV_LABEL[toast.severity]}: </span>
+              <span className="asha-toast-title">{toast.title}</span>
+            </div>
+          ) : (
+            <p className="asha-allclear">{alerts.length ? 'No open alerts' : 'No alerts yet'}</p>
+          )}
+          {toast && (
+            <>
+              <IconButton tip="bottom" label="Ask Asha why" className="icon-btn--nurse" onClick={() => onExplain(toast)}>
+                <span className="asha-q-glyph" aria-hidden="true">?</span>
+              </IconButton>
+              <IconButton tip="bottom" label="Dismiss alert" className="icon-btn--bare" onClick={() => store.dismissCoachAlert(toast.id)}>
+                {Icon.close}
+              </IconButton>
+            </>
+          )}
+          {alerts.length > 0 && (
+            <span className="tip-wrap tip-wrap--left">
+              <button
+                type="button"
+                className={`icon-btn asha-history-toggle ${historyOpen ? 'is-active' : ''} ${badgeSev ? `has-open--${badgeSev}` : ''}`}
+                aria-expanded={historyOpen}
+                aria-controls="asha-history"
+                aria-label={`Alert history, ${alerts.length} alert${alerts.length === 1 ? '' : 's'}, ${open.length} open`}
+                onClick={() => setHistoryOpen((o) => !o)}
+              >
+                {Icon.bell}
+                <span className="asha-history-count">{alerts.length}</span>
+              </button>
+              {!historyOpen && <span className="tip" aria-hidden="true">Alert history</span>}
+            </span>
+          )}
+          {historyOpen && alerts.length > 0 && (
+            <ol className="asha-history-list" id="asha-history" aria-label="Alert history">
               {[...alerts].reverse().map((a) => (
                 <li key={a.id} className={`asha-hist asha-hist--${a.severity}`}>
                   <span className="asha-hist-dot" aria-hidden="true" />
@@ -341,8 +386,16 @@ export function NurseAshaHeader({
                   <time className="asha-hist-time" dateTime={new Date(a.createdAt).toISOString()}>
                     {new Date(a.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </time>
-                  <button type="button" className="asha-q asha-q--sm" aria-label={`Ask Asha about: ${a.title}`} onClick={() => onExplain(a)}>
-                    ?
+                  <button
+                    type="button"
+                    className="asha-hist-ask"
+                    aria-label={`Ask Asha about: ${a.title}`}
+                    onClick={() => {
+                      setHistoryOpen(false);
+                      onExplain(a);
+                    }}
+                  >
+                    Why?
                   </button>
                 </li>
               ))}
@@ -392,16 +445,25 @@ export function AshaExplain({ alert, onClose }: { alert: CoachAlert; onClose: ()
   };
 
   return (
-    <section className={`asha-explain asha-explain--${alert.severity}`} aria-label={`Asha explains: ${alert.title}`}>
+    <section
+      className={`asha-explain asha-explain--${alert.severity}`}
+      aria-label={`Asha explains: ${alert.title}`}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return;
+        e.stopPropagation();
+        e.nativeEvent.stopImmediatePropagation();
+        onClose();
+      }}
+    >
       <header className="asha-explain-head">
         <AshaSprite mood="talking" size={40} />
         <div className="asha-explain-titles">
           <p className="asha-explain-kicker">{SEV_LABEL[alert.severity]} · Asha explains</p>
           <h3 className="asha-explain-title">{alert.title}</h3>
         </div>
-        <button type="button" className="asha-x" aria-label="Close explanation" onClick={onClose}>
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="m2 2 6 6M8 2 2 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="square" /></svg>
-        </button>
+        <IconButton tip="left" label="Close explanation" kbd="Esc" className="icon-btn--bare" onClick={onClose}>
+          {Icon.close}
+        </IconButton>
       </header>
       <div className="asha-explain-body" ref={scrollRef}>
         <p className="asha-explain-text">{alert.explanation}</p>

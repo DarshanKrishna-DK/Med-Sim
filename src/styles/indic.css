@@ -1,10 +1,10 @@
-/* Indic scripts for Hindi / Kannada voice lines and subtitles. The UI is
+/* Indic scripts for Hindi / Kannada / Tamil / Telugu / Marathi / Bengali voice lines and subtitles. The UI is
    English; only agent lines and the language toggle use these glyphs. */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500;600&family=Noto+Sans+Tamil:wght@400;500;600&family=Noto+Sans+Telugu:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500;600&display=swap');
 
 :root {
-  --font-sans: 'Amarna', system-ui, 'Noto Sans Devanagari', 'Noto Sans Kannada', sans-serif;
-  --font-indic: 'Noto Sans Devanagari', 'Noto Sans Kannada', 'Nirmala UI', system-ui, sans-serif;
+  --font-sans: 'Amarna', system-ui, 'Noto Sans Devanagari', 'Noto Sans Kannada', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Bengali', sans-serif;
+  --font-indic: 'Noto Sans Devanagari', 'Noto Sans Kannada', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Bengali', 'Nirmala UI', system-ui, sans-serif;
 }
 
 /* Taller line box so matras and Kannada conjuncts are not clipped by line clamps. */
@@ -12,7 +12,7 @@
   line-height: 1.6;
 }
 
-/* Language toggle (EN / हिं / ಕನ್ನಡ) */
+/* Language toggle (EN / हिं / ಕನ್ನಡ + More) */
 .lang-toggle {
   display: inline-flex;
   align-items: stretch;
@@ -62,4 +62,55 @@
 
 .lang-toggle--end {
   margin-left: auto;
+}
+
+/* "More" dropdown for the extra Indian languages (Tamil, Telugu, Marathi, Bengali). */
+.lang-toggle .lang-more {
+  appearance: none;
+  border: 0;
+  border-left: 2px solid var(--line, #2b4c8a);
+  margin: 0;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text, #f3f1e2);
+  max-width: 96px;
+}
+
+.lang-toggle .lang-more option {
+  background: var(--bg, #0b1f4b);
+  color: var(--text, #f3f1e2);
+}
+
+.lang-toggle .lang-more.is-active {
+  background: var(--primary, #a8e27c);
+  color: #0b1f4b;
+}
+
+.lang-toggle .lang-more.is-active option {
+  background: #fff;
+  color: #141414;
+}
+
+.lang-toggle .lang-more:focus-visible {
+  outline: 2px solid var(--primary, #a8e27c);
+  outline-offset: -2px;
+}
+
+/* Voice prescription (Plan tab) */
+.voice-rx-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+.voice-rx-script {
+  margin: 8px 0;
+  white-space: pre-wrap;
 }

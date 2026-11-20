@@ -10,12 +10,20 @@ import { ProgressScreen } from './components/screens/ProgressScreen';
 import { RouteProgress } from './components/ui/chrome';
 import { lazy, Suspense } from 'react';
 import { CorridorRoute } from './components/corridorRoute';
+import { VoiceMetricsPanel } from './components/ui/VoiceMetricsPanel';
+import { FacultyToasts } from './components/observer/FacultyToasts';
 
 // Teacher Portal lecture hall (3D + whiteboard), loaded on first visit.
 const TriageDrillScreen = lazy(() => import('./components/screens/TriageDrillScreen'));
 const ClassroomScreen = lazy(() => import('./components/screens/ClassroomScreen'));
 // Radiology reading room (3D + film viewer + consultant voice), loaded on first visit.
 const RadiologyScreen = lazy(() => import('./components/screens/RadiologyScreen'));
+// Operation theatre drill (3D OT + stations + call-outs), loaded on first visit.
+const OTScreen = lazy(() => import('./components/screens/OTScreen'));
+// Viva voce exam hall (2D + voice examiner), loaded on first visit.
+const VivaScreen = lazy(() => import('./components/screens/VivaScreen'));
+// Live faculty observer (?observe=<code>), loaded on first visit.
+const ObserverScreen = lazy(() => import('./components/screens/ObserverScreen'));
 
 /** Screen router. The Screen union in game/types.ts still carries legacy
  *  values (splash, onboarding, mode, gpRoom, endConfirm, agenticRounds…);
@@ -26,6 +34,8 @@ export default function App() {
     <>
       <RouteProgress />
       <ScreenView screen={screen} />
+      <VoiceMetricsPanel />
+      <FacultyToasts />
     </>
   );
 }
@@ -69,6 +79,24 @@ function ScreenView({ screen }: { screen: ReturnType<typeof useScreen> }) {
       return (
         <Suspense fallback={<div className="route-loading">Opening the reading room...</div>}>
           <RadiologyScreen />
+        </Suspense>
+      );
+    case 'ot':
+      return (
+        <Suspense fallback={<div className="route-loading">Opening the operation theatre...</div>}>
+          <OTScreen />
+        </Suspense>
+      );
+    case 'viva':
+      return (
+        <Suspense fallback={<div className="route-loading">Opening the examination hall...</div>}>
+          <VivaScreen />
+        </Suspense>
+      );
+    case 'observe':
+      return (
+        <Suspense fallback={<div className="route-loading">Joining as observer...</div>}>
+          <ObserverScreen />
         </Suspense>
       );
     default:

@@ -37,7 +37,9 @@ const HI: Record<string, string> = {
   'emergency-medicine': 'आपातकालीन चिकित्सा',
   'intensive-care': 'गहन चिकित्सा इकाई',
   anesthesiology: 'निश्चेतना विभाग',
+  'communication-skills': 'संवाद कौशल',
   radiology: 'रेडियोलॉजी',
+  'operation-theatre': 'ऑपरेशन थिएटर',
   'nuclear-medicine': 'नाभिकीय चिकित्सा',
   'pathology-lab': 'पैथोलॉजी एवं प्रयोगशाला',
   // Teacher Portal + lecture hall (not departments).

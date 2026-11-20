@@ -38,7 +38,8 @@ export type ClinicId =
   | 'plastic-surgery'
   | 'dentistry'
   | 'emergency-medicine'
-  | 'anesthesiology';
+  | 'anesthesiology'
+  | 'communication-skills';
 
 /** Display order, also used by the specialty selector UI. The first entry
  *  is the "mixed" option that pulls cases from every specialty, so the
@@ -78,6 +79,7 @@ export const CLINIC_IDS: ClinicId[] = [
   'dentistry',
   'emergency-medicine',
   'anesthesiology',
+  'communication-skills',
 ];
 
 /** English display labels for each specialty. */
@@ -115,6 +117,7 @@ export const CLINIC_LABELS: Record<ClinicId, string> = {
   dentistry: 'Dentistry',
   'emergency-medicine': 'Emergency Medicine',
   anesthesiology: 'Anesthesiology',
+  'communication-skills': 'Communication Skills',
 };
 
 export const DEFAULT_CLINIC: ClinicId = 'internal-medicine';

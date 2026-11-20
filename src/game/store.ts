@@ -21,9 +21,9 @@ import type { Case as SimCase } from '../data/cases';
 import { CASES, getCase, getCaseClinic, getPatientCase } from '../data/cases';
 import { ensureAudioContext } from '../voice/conversationStore';
 import { readLang, writeLang, type Lang } from './lang';
+import { observeCodeFromUrl } from '../observer/observeParam';
 
 const ONBOARDED_KEY = 'medsim:onboarded';
-const LEGACY_ONBOARDED_KEY = 'medkit:onboarded';
 
 /** Sentinel used as `bedIndex` for polyclinic patients across the store,
  *  the conversation cache, and the 3D scene. `voice/conversationStore.ts`
@@ -34,7 +34,7 @@ function readOnboarded(): boolean {
   try {
     if (typeof window === 'undefined') return false;
     const ls = window.localStorage;
-    return ls.getItem(ONBOARDED_KEY) === '1' || ls.getItem(LEGACY_ONBOARDED_KEY) === '1';
+    return ls.getItem(ONBOARDED_KEY) === '1';
   } catch {
     return false;
   }
@@ -116,7 +116,7 @@ function toActivePatient(c: SimCase): ActivePatient {
 
 class Store {
   private state: GameState = {
-    screen: 'splash',
+    screen: observeCodeFromUrl() ? 'observe' : 'splash',
     lang: readLang(),
     tweaks: { ...DEFAULT_TWEAKS },
     onboardingStep: 0,
@@ -274,6 +274,22 @@ class Store {
   /** Leave the reading room: the doctor reappears outside the Radiology door. */
   exitRadiologyToCorridor = () =>
     this.set({ screen: 'corridor', corridorReturnClinic: null, corridorReturnPortal: false, corridorReturnRoom: 'radiology' });
+
+  /** Corridor Operation Theatre door (or the library / Esc menu) → OT drill.
+   *  Call inside the click/keydown so the AudioContext is unlocked for the
+   *  surgeons' call-outs. */
+  enterOT = () => {
+    try {
+      ensureAudioContext();
+    } catch {
+      /* no Web Audio; call-outs still show as bubbles */
+    }
+    this.set({ screen: 'ot', corridorReturnRoom: 'operation-theatre' });
+  };
+
+  /** Leave the theatre: the doctor reappears outside the Operation Theatre door. */
+  exitOTToCorridor = () =>
+    this.set({ screen: 'corridor', corridorReturnClinic: null, corridorReturnPortal: false, corridorReturnRoom: 'operation-theatre' });
 
   /** Corridor Teacher Portal → lecture hall. Call inside the click/keydown
    *  so the AudioContext is unlocked for the teacher's voice. */
@@ -509,6 +525,9 @@ class Store {
 
   /** Open a saved OSCE marking sheet from history / progress. */
   viewOsceResult = (historyId: string) => this.set({ viewedEvalHistoryId: historyId, screen: 'osceResult' });
+
+  /** Open a saved viva voce result from history. */
+  viewVivaResult = (historyId: string) => this.set({ viewedEvalHistoryId: historyId, screen: 'viva' });
 
   /** Leave OSCE mode entirely. */
   exitOsce = (screen: Screen = 'library') => this.set({ osce: null, screen });

@@ -5,8 +5,6 @@ import type { ChatMessage } from './claude';
 import { LANG_LOCALE, type Lang } from '../game/lang';
 
 const HISTORY_PREFIX = 'medsim:conv:';
-/** Pre-rename (medkit) prefix, still swept by clearAllConversationStorage. */
-const LEGACY_HISTORY_PREFIX = 'conv_history_';
 
 /** Transcript snapshots taken when a conversation is disposed, keyed by
  *  caseId. The debrief runs after the patient has walked out (and the
@@ -126,7 +124,7 @@ export function clearAllConversationStorage() {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith(HISTORY_PREFIX) || k.startsWith(LEGACY_HISTORY_PREFIX))) keys.push(k);
+      if (k && k.startsWith(HISTORY_PREFIX)) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
   } catch {

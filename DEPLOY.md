@@ -19,4 +19,3 @@ tunnel; do not set PATIENT_LLM_TUNNEL), FRONTEND_ORIGINS=https://<service>.onren
 ## Notes
 
 - Free plan sleeps after 15 minutes idle; the first request takes about 50 s.
-- `vercel.json` and `middleware.ts` are the legacy Vercel setup and are unused.

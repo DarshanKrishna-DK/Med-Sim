@@ -395,6 +395,14 @@ async def _run_json_plan(st: NurseState, req: NurseActRequest, steps: list[dict[
     return str(plan_obj.get("plan", "")), strip_think(msg2.get("content") or "")
 
 
+NURSE_FALLBACK = {
+    "ta": ("சரி டாக்டர், உங்கள் ஆர்டர் ஆகிவிட்டது. வேறு ஏதாவது?", "டாக்டர், அந்த ஆர்டரை முடிக்க முடியவில்லை."),
+    "te": ("సరే డాక్టర్, మీ ఆర్డర్ అయింది. ఇంకేమైనా?", "డాక్టర్, ఆ ఆర్డర్ పూర్తి చేయలేకపోయాను."),
+    "mr": ("ठीक आहे डॉक्टर, तुमची ऑर्डर झाली. आणखी काही?", "डॉक्टर, ती ऑर्डर पूर्ण करता आली नाही."),
+    "bn": ("ঠিক আছে ডাক্তারবাবু, আপনার অর্ডার হয়ে গেছে। আর কিছু?", "ডাক্তারবাবু, ওই অর্ডারটা শেষ করতে পারলাম না।"),
+}
+
+
 def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]], lang: Optional[str] = None) -> str:
     bits = []
     if st.new_tests:
@@ -411,6 +419,9 @@ def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]], lang: Op
         return "ठीक है डॉक्टर, आपका ऑर्डर हो गया। और कुछ?" if bits else "डॉक्टर, मैं वह ऑर्डर पूरा नहीं कर पाई।"
     if lg == "kn":
         return "ಸರಿ ಡಾಕ್ಟರ್, ನಿಮ್ಮ ಆರ್ಡರ್ ಆಯಿತು. ಇನ್ನೇನಾದರೂ?" if bits else "ಡಾಕ್ಟರ್, ಆ ಆರ್ಡರ್ ಮುಗಿಸಲು ಆಗಲಿಲ್ಲ."
+    if lg in NURSE_FALLBACK:
+        ok, fail = NURSE_FALLBACK[lg]
+        return ok if bits else fail
     return ("Okay doctor, " + ", ".join(bits) + ". Anything else?") if bits else "I couldn't complete that order."
 
 

@@ -58,6 +58,7 @@ export const CLINIC_GLYPH: Record<ClinicId, GlyphName> = {
   dentistry: 'tooth',
   'emergency-medicine': 'cross',
   anesthesiology: 'lungs',
+  'communication-skills': 'hand',
 };
 
 export function PixelGlyph({

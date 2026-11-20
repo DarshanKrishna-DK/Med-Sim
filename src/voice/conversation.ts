@@ -33,7 +33,9 @@ import AgoraRTC, {
   type IRemoteAudioTrack,
 } from 'agora-rtc-sdk-ng';
 import AgoraRTM, { type RTMClient } from 'agora-rtm';
+import { voiceMetrics } from './voiceMetrics';
 import { streamClaude, type ChatMessage } from './claude';
+import { decodeRtmJson, mergeTurnText, parseAgentMessage, type AgentRtmMessage } from './transcriptParser';
 
 const LOG = '[medsim:voice]';
 
@@ -86,7 +88,15 @@ function detectEmotion(text: string): PatientEmotion {
   return 'neutral';
 }
 
+/** Sessions that are NOT a patient consultation. Their utterances must never
+ *  reach the clinical agents (nurse orders, exam detection): a viva answer
+ *  like "give atropine" is not an order for the patient in the clinic. */
+const NON_PATIENT_SESSIONS = new Set(['teacher', 'viva-examiner', 'radiologist']);
+
 export interface ConversationOptions {
+  /** Run the nurse/exam agents on this session's utterances. Defaults to true
+   *  for patient consultations and false for teacher, viva and radiology. */
+  clinicalAgents?: boolean;
   systemPrompt?: string;
   initialMessage?: { role: 'assistant'; content: string };
   /** Speaker gender ('M'|'F'), used by backend voice picker. */
@@ -229,6 +239,7 @@ export class Conversation {
   private initialMessage: { role: 'assistant'; content: string };
   private voiceGender: 'M' | 'F';
   private caseId: string;
+  private clinicalAgents: boolean;
   private locale: string | undefined;
   private storageKey: string | null = null;
 
@@ -263,6 +274,7 @@ export class Conversation {
     this.initialMessage = options.initialMessage ?? FALLBACK_INITIAL;
     this.voiceGender = options.voiceGender ?? 'M';
     this.caseId = options.caseId ?? 'unknown';
+    this.clinicalAgents = options.clinicalAgents ?? !NON_PATIENT_SESSIONS.has(this.caseId);
     this.locale = options.locale;
     this.storageKey = options.storageKey ?? null;
 
@@ -340,6 +352,12 @@ export class Conversation {
     return this.session?.agentId ?? null;
   }
 
+  /** Agora channel identity of the live call (observer invites), or null. */
+  getSessionInfo(): { appId: string; channel: string; uid: number; agentUid: number } | null {
+    const s = this.session;
+    return s ? { appId: s.appId, channel: s.channel, uid: s.uid, agentUid: s.agentUid } : null;
+  }
+
   getCaseId(): string {
     return this.caseId;
   }
@@ -391,12 +409,8 @@ export class Conversation {
     const key = turnId === undefined || turnId === null ? null : `${role}:${String(turnId)}`;
     const idx = key ? this.turnIndex.get(key) : undefined;
     if (idx !== undefined && this.messages[idx]?.role === role) {
-      const prev = this.messages[idx].content;
       // Cumulative updates replace; segmented finals append.
-      const next =
-        text.startsWith(prev) || prev.startsWith(text) || role === 'assistant'
-          ? text
-          : `${prev} ${text}`;
+      const next = mergeTurnText(this.messages[idx].content, text, role);
       this.messages[idx] = { role, content: next };
       return next;
     }
@@ -405,11 +419,9 @@ export class Conversation {
     return text;
   }
 
-  private handleUserTranscription(msg: Record<string, unknown>) {
-    const text = typeof msg.text === 'string' ? msg.text.trim() : '';
-    if (!text) return;
-    const isFinal = msg.final === true || msg.final === 'true';
-    if (!isFinal) {
+  private handleUserTranscription(msg: Extract<AgentRtmMessage, { kind: 'user' }>) {
+    const { text } = msg;
+    if (!msg.final) {
       this.listeners.onSubtitle?.({ who: 'you', text, partial: true });
       if (this.status !== 'listening') this.setStatus('listening');
       return;
@@ -421,7 +433,7 @@ export class Conversation {
       this.pendingTyped.splice(echoAt, 1);
       return;
     }
-    const full = this.upsertTurnMessage('user', msg.turn_id, text);
+    const full = this.upsertTurnMessage('user', msg.turnId, text);
     this.listeners.onSubtitle?.({ who: 'you', text: full });
     this.saveMessages();
     this.emitMessages();
@@ -431,18 +443,16 @@ export class Conversation {
     this.scheduleNurseCheck(full);
   }
 
-  private handleAgentTranscription(msg: Record<string, unknown>) {
-    const text = typeof msg.text === 'string' ? msg.text.trim() : '';
-    if (!text) return;
-    const turnStatus = Number(msg.turn_status ?? 1);
-    if (turnStatus === 0) {
+  private handleAgentTranscription(msg: Extract<AgentRtmMessage, { kind: 'assistant' }>) {
+    const { text } = msg;
+    if (msg.turnStatus === 0) {
       this.setEmotion(detectEmotion(text));
       this.listeners.onSubtitle?.({ who: 'patient', text, partial: true });
       if (this.status !== 'speaking') this.setStatus('speaking');
       return;
     }
     // END (1) or INTERRUPTED (2)
-    const full = this.upsertTurnMessage('assistant', msg.turn_id, text);
+    const full = this.upsertTurnMessage('assistant', msg.turnId, text);
     this.setEmotion(detectEmotion(full));
     this.listeners.onSubtitle?.({ who: 'patient', text: full });
     this.saveMessages();
@@ -468,29 +478,23 @@ export class Conversation {
   }
 
   private handleRtmPayload(raw: string | Uint8Array) {
-    let parsed: unknown;
-    try {
-      const text = typeof raw === 'string' ? raw : new TextDecoder('utf-8').decode(raw);
-      parsed = JSON.parse(text);
-    } catch {
-      return;
-    }
-    if (!parsed || typeof parsed !== 'object') return;
-    const msg = parsed as Record<string, unknown>;
-    switch (msg.object) {
-      case 'user.transcription':
-        this.handleUserTranscription(msg);
+    const msg = decodeRtmJson(raw);
+    if (!msg) return;
+    voiceMetrics.ingestRtm(this.caseId, msg); // diagnostics panel + debrief stats
+    const m = parseAgentMessage(msg);
+    if (!m) return;
+    switch (m.kind) {
+      case 'user':
+        this.handleUserTranscription(m);
         break;
-      case 'assistant.transcription':
-        this.handleAgentTranscription(msg);
+      case 'assistant':
+        this.handleAgentTranscription(m);
         break;
-      case 'message.interrupt':
+      case 'interrupt':
         if (this.status === 'speaking') this.setStatus('listening');
         break;
-      case 'message.error':
-        console.warn(LOG, 'agent error:', msg);
-        break;
-      default:
+      case 'error':
+        console.warn(LOG, 'agent error:', m.raw);
         break;
     }
   }
@@ -502,7 +506,7 @@ export class Conversation {
       this.nurseTimer = null;
       const utterance = this.nurseCandidate;
       this.nurseCandidate = '';
-      if (this.disposed || !utterance) return;
+      if (this.disposed || !utterance || !this.clinicalAgents) return;
       // Dynamic import breaks the conversation ↔ nurseAgent ↔ store cycle.
       void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent')])
         .then(([ex, m]) => {
@@ -734,12 +738,14 @@ export class Conversation {
     this.emitMessages();
     this.setStatus('thinking', 'Thinking…');
 
-    void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent')])
-      .then(([ex, m]) => {
-        if (ex.maybeRunExamFromSpeech(clean)) return;
-        if (m.looksLikeOrder(clean)) void m.runNurseAction(clean, 'typed');
-      })
-      .catch(() => undefined);
+    if (this.clinicalAgents) {
+      void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent')])
+        .then(([ex, m]) => {
+          if (ex.maybeRunExamFromSpeech(clean)) return;
+          if (m.looksLikeOrder(clean)) void m.runNurseAction(clean, 'typed');
+        })
+        .catch(() => undefined);
+    }
 
     const session = this.session;
     if (this.rtm && session && opts?.speak !== false) {

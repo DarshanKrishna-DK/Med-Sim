@@ -26,12 +26,18 @@ export type Screen =
   | 'classroom'
   /** Radiology reading room: describe films to a consultant radiologist. */
   | 'radiology'
+  /** Operation theatre drill: assist the team, fix intra-op problems. */
+  | 'ot'
   /** OSCE exam mode: station setup + candidate instructions. */
   | 'osce'
   /** OSCE examiner marking sheet (live or a saved one). */
   | 'osceResult'
   /** "My progress" dashboard built from saved debriefs. */
-  | 'progress';
+  | 'progress'
+  /** Viva voce exam hall: oral exam with a voice examiner (live or a saved result). */
+  | 'viva'
+  /** Live faculty observer (opened by ?observe=<code>): listen in, whisper, mark. */
+  | 'observe';
 
 export type AvatarStyle = 'cute' | 'portrait' | 'animal' | 'initials';
 export type RoomLayout = 'side' | 'front';
@@ -82,6 +88,24 @@ export interface CaseSource {
   license: string;
 }
 
+/** Emotional persona for communication-skills cases (see data/commsCases.ts). */
+export interface EmotionProfile {
+  /** Mood when the doctor walks in. */
+  opening: 'calm' | 'anxious' | 'angry' | 'grieving' | 'defensive' | 'fearful' | 'ambivalent';
+  /** Who is speaking, if not the patient (e.g. "son of the patient"). */
+  speakerRole?: string;
+  /** Why they feel this way, in the speaker's own situation. */
+  notes: string;
+  /** Doctor behaviours that settle them. */
+  softenedBy: string[];
+  /** Doctor behaviours that make them worse. */
+  escalatedBy: string[];
+  /** Concrete in-character reactions (cry, go silent, "why me?"). */
+  reactions: string[];
+  /** The one thing the doctor must achieve in this conversation. */
+  goal: string;
+}
+
 export interface PatientCase {
   id: string;
   name: string;
@@ -104,6 +128,10 @@ export interface PatientCase {
   criticalTreatmentIds: string[];
   diagnosisOptions: string[];
   rubric?: CaseRubric;
+  /** Communication-skills stations: how the person in the room feels and how
+   *  they react to the doctor. When set, the voice persona is emotional
+   *  (may cry, go silent, get angry, ask "why me?") instead of a plain patient. */
+  emotionProfile?: EmotionProfile;
   /** Set on cases adapted from a real published case report. */
   source?: CaseSource;
   /** True when `source` is set (published case adaptation). */
@@ -126,7 +154,10 @@ export type RubricFramework =
   | 'SEGUE'
   | 'ICE'
   | 'SOCRATES'
-  | 'OS-12';
+  | 'OS-12'
+  | 'SPIKES'
+  | '5As'
+  | 'TEACH-BACK';
 
 export type RubricDomain =
   | 'data_gathering'
@@ -342,7 +373,7 @@ export interface GameState {
   corridorReturnPortal: boolean;
   /** Non-clinic room (e.g. 'radiology') whose corridor door the doctor last
    *  walked out of; checked after the portal and clinic. */
-  corridorReturnRoom?: 'radiology' | null;
+  corridorReturnRoom?: 'radiology' | 'operation-theatre' | null;
   /** OSCE exam station (setup, running or just finished); null outside
    *  OSCE mode. See `isOsceLive` in store.ts. */
   osce: OsceSession | null;

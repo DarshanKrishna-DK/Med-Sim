@@ -6,7 +6,7 @@ import { disposePatientConversation, ensureAudioContext } from '../../voice/conv
 import { ClinicRoomWorld, DOCTOR_SEAT, EXIT_POINT, ROOM_COLLIDERS } from '../world/ClinicRoom';
 import { ThirdPersonPlayer, isTypingTarget, makeRuntime, type PlayerRuntime } from '../world/ThirdPersonPlayer';
 import { PostFX, WorldEnvironment, type FxQuality } from '../world/WorldFX';
-import { Fade, KeyCap, MenuButton, PauseMenu, PromptPill, UI, labelStyle, panel } from '../world/worldUi';
+import { Fade, MenuButton, PauseMenu, PromptPill } from '../world/worldUi';
 import { loadSignFonts } from '../world/hindi';
 
 const CAMERA_RIG = {
@@ -46,12 +46,28 @@ function pickQuality(): FxQuality | null {
   return null;
 }
 
+/** Room-level actions the HUD's overflow menu drives. */
+export interface RoomControls {
+  /** A patient is seated, so "next patient" makes sense. */
+  canNext: boolean;
+  nextPatient: () => void;
+  leaveRoom: () => void;
+}
+
 /** The clinic room: realistic 3D consultation room in third person. The
  *  doctor starts seated at the desk; the case walks in and sits across.
- *  T toggles voice (handled by the encounter controller), N or the HUD
- *  button finishes the case and calls the next patient, E at the door or
- *  Esc → Leave room returns to the corridor. */
-export function Scene({ onTalk: _onTalk, lookEnabled }: { onTalk: () => void; lookEnabled: boolean }) {
+ *  T toggles voice (handled by the encounter controller), N or the HUD's
+ *  overflow menu finishes the case and calls the next patient, E at the
+ *  door, Esc → Leave room or the overflow menu returns to the corridor. */
+export function Scene({
+  onTalk: _onTalk,
+  lookEnabled,
+  onRoom,
+}: {
+  onTalk: () => void;
+  lookEnabled: boolean;
+  onRoom?: (r: RoomControls) => void;
+}) {
   const patient = useStore((s) => s.polyclinic.patient);
   const clinic = useStore((s) => s.polyclinic.clinic);
   const forced = useMemo(pickQuality, []);
@@ -125,7 +141,11 @@ export function Scene({ onTalk: _onTalk, lookEnabled }: { onTalk: () => void; lo
   }, [near, menu, lookEnabled, leaveRoom, nextPatient, patient, seated]);
 
   const onPhase = useCallback((p: string) => setSeated(p === 'seated'), []);
-  const firstName = patient?.case.name.split(' ')[0] ?? 'the patient';
+  const canNext = !!patient && seated;
+
+  useEffect(() => {
+    onRoom?.({ canNext, nextPatient, leaveRoom });
+  }, [onRoom, canNext, nextPatient, leaveRoom]);
 
   return (
     <>
@@ -159,36 +179,7 @@ export function Scene({ onTalk: _onTalk, lookEnabled }: { onTalk: () => void; lo
         </Suspense>
       </Canvas>
 
-      {/* in-room actions (bottom-left, clear of the HUD's centre voice panel) */}
-      <div style={{ position: 'fixed', left: 16, bottom: 16, zIndex: 12, display: 'grid', gap: 8, width: 230 }}>
-        <button
-          type="button"
-          disabled={!patient || !seated}
-          onClick={nextPatient}
-          style={{ ...panel, ...labelStyle, padding: '12px 14px', textAlign: 'left', cursor: patient && seated ? 'pointer' : 'default', background: patient && seated ? UI.primary : UI.surface, color: patient && seated ? '#0b1f4b' : UI.text, opacity: patient ? 1 : 0.6 }}
-        >
-          Done · next patient <span style={{ float: 'right', opacity: 0.8 }}>N</span>
-        </button>
-        <button
-          type="button"
-          onClick={leaveRoom}
-          style={{ ...panel, ...labelStyle, padding: '10px 14px', textAlign: 'left', cursor: 'pointer' }}
-        >
-          Leave room <span style={{ float: 'right', opacity: 0.8 }}>Esc</span>
-        </button>
-      </div>
-
       {!menu && near === 'exit' && <PromptPill title="Return to corridor" sub="Leave room" />}
-      {!menu && near === 'patient' && patient && (
-        <div style={{ ...panel, position: 'fixed', left: '50%', top: 92, transform: 'translateX(-50%)', padding: '8px 14px', zIndex: 12, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-          <KeyCap>T</KeyCap>
-          <span style={{ ...labelStyle }}>Talk to {firstName}</span>
-          <span style={{ width: 14 }} />
-          <KeyCap>N</KeyCap>
-          <span style={{ ...labelStyle }}>Done, next patient</span>
-        </div>
-      )}
-
       {menu && (
         <PauseMenu title="Consultation paused">
           <MenuButton primary autoFocus onClick={() => setMenu(false)}>Resume</MenuButton>

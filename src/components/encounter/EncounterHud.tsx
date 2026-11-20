@@ -1,42 +1,82 @@
 import { useState } from 'react';
-import { Brand, Kbd, ThemeToggle } from '../ui/chrome';
+import { Brand, Kbd } from '../ui/chrome';
+import { LangToggle } from '../ui/LangToggle';
 import { PatientCard } from './PatientCard';
 import { VoicePanel } from './VoicePanel';
 import { AgentPanel } from './AgentPanel';
 import { useCoachWatch } from './useCoachWatch';
 import type { EncounterController } from './useEncounterController';
+import type { RoomControls } from './Scene';
 import { OsceTimer } from './OsceTimer';
+import { Icon, OverflowMenu, type MenuEntry } from './HudControls';
 import { useOsceLive, useStore } from '../../game/store';
+import { ObserverInvite } from '../observer/ObserverInvite';
 
 /** The encounter HUD as a pure overlay layer. Position it over any
  *  full-bleed canvas inside a `position: relative|fixed` parent; empty
- *  regions pass pointer events through to the scene underneath. */
-export function EncounterHud({ ctl, compact = false }: { ctl: EncounterController; compact?: boolean }) {
-  // compact: the chart collapses to a tab so the 3D room stays in view;
-  // the nurse panel (Nurse Asha) is always shown as a slim right column.
+ *  regions pass pointer events through to the scene underneath.
+ *
+ *  Layout: one top bar (case + chart toggle, timer, End, overflow menu),
+ *  one bottom voice dock, Nurse Asha as the right column. `room` (from the
+ *  3D scene) adds Next patient / Leave room to the overflow menu. */
+export function EncounterHud({
+  ctl,
+  compact = false,
+  room = null,
+}: {
+  ctl: EncounterController;
+  compact?: boolean;
+  room?: RoomControls | null;
+}) {
+  // compact: the chart collapses behind the case name so the 3D room stays in view.
   const [chartOpen, setChartOpen] = useState(!compact);
   const { patient, voice, elapsed, pointerLocked, ending, confirmEnd, setConfirmEnd, endConsultation } = ctl;
   const c = patient?.case;
   useCoachWatch(voice.messages, c?.id ?? null);
   const osceLive = useOsceLive();
   const osce = useStore((s) => s.osce);
+
+  const menuItems: MenuEntry[] = room
+    ? [
+        {
+          label: 'Next patient',
+          kbd: 'N',
+          disabled: !room.canNext || ending,
+          note: room.canNext ? 'Finish this case, call the next one' : 'Once the patient is seated',
+          onSelect: room.nextPatient,
+        },
+        { label: 'Leave room', note: 'Back to the corridor', disabled: ending, onSelect: room.leaveRoom },
+      ]
+    : [];
+
   return (
     <>
       {pointerLocked && <div className="crosshair" aria-hidden="true" />}
+      <ObserverInvite caseId={c?.id ?? null} voiceStatus={voice.status} />
 
       <div className={compact ? 'hud hud--compact' : 'hud'}>
         <header className="hud-top hud-panel">
           <Brand />
-          <div className="hud-case">
-            {c ? (
-              <>
-                <span className="hud-case-name">{c.name}, {c.age}{c.gender}</span>
-                <span className="hud-case-cc">{c.chiefComplaint}</span>
-              </>
-            ) : (
+          {c ? (
+            <button
+              type="button"
+              className="hud-case"
+              aria-expanded={chartOpen}
+              aria-controls="hud-chart"
+              onClick={() => setChartOpen((o) => !o)}
+            >
+              <span className="hud-case-name">{c.name}, {c.age}{c.gender}</span>
+              <span className="hud-case-cc">{c.chiefComplaint}</span>
+              <span className="hud-case-toggle">
+                {chartOpen ? 'Hide chart' : 'Chart'}
+                {Icon.chevron(chartOpen)}
+              </span>
+            </button>
+          ) : (
+            <div className="hud-case">
               <span className="hud-case-name">The patient is on their way in…</span>
-            )}
-          </div>
+            </div>
+          )}
           {osceLive && osce?.startedAt ? (
             <OsceTimer startedAt={osce.startedAt} durationMs={osce.durationMs} onTimeUp={() => void ctl.endConsultation()} />
           ) : (
@@ -45,7 +85,6 @@ export function EncounterHud({ ctl, compact = false }: { ctl: EncounterControlle
               {elapsed}
             </span>
           )}
-          <ThemeToggle />
           <button
             type="button"
             className="btn btn-end"
@@ -54,27 +93,42 @@ export function EncounterHud({ ctl, compact = false }: { ctl: EncounterControlle
           >
             {osceLive ? 'End station' : 'End consultation'}
           </button>
+          <OverflowMenu
+            label="More options"
+            items={menuItems}
+            extra={
+              <div className="hud-menu-lang">
+                <span className="hud-menu-label">Voice language</span>
+                <LangToggle />
+              </div>
+            }
+          />
         </header>
 
         {patient && (
           <>
-            <div className="hud-left">
-              {compact && (
-                <button type="button" className="hud-tab hud-panel" aria-expanded={chartOpen} onClick={() => setChartOpen((o) => !o)}>
-                  {chartOpen ? 'Hide chart' : 'Patient chart'}
-                </button>
-              )}
-              {chartOpen && <PatientCard patient={patient} />}
+            <div className="hud-left" id="hud-chart">
+              {chartOpen && <PatientCard patient={patient} bare={compact} />}
             </div>
             <div className="hud-bottom">
-              <VoicePanel voice={voice} patientName={patient.case.name} />
-              <p className="hud-hint">
-                {pointerLocked ? (
-                  <>Mouse look · <Kbd>Esc</Kbd> free cursor · <Kbd>T</Kbd> voice on/off</>
-                ) : (
-                  <>Click the room for mouse look · <Kbd>T</Kbd> voice on/off</>
-                )}
-              </p>
+              <VoicePanel
+                voice={voice}
+                patientName={patient.case.name}
+                footer={
+                  <p className="voice-keys" aria-hidden="true">
+                    <span><Kbd>T</Kbd> Voice on/off</span>
+                    {room && <span><Kbd>N</Kbd> Next patient</span>}
+                    {pointerLocked ? (
+                      <span><Kbd>Esc</Kbd> Free cursor</span>
+                    ) : (
+                      <>
+                        <span><Kbd>Esc</Kbd> Pause</span>
+                        <span>Click the room to look around</span>
+                      </>
+                    )}
+                  </p>
+                }
+              />
             </div>
             <div className="hud-right">
               <AgentPanel patient={patient} voiceStatus={voice.status} />

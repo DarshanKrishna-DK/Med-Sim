@@ -170,7 +170,10 @@ export function CorridorScreen() {
       runtime.inputEnabled = false;
       fx.openTarget = 1;
       setFade(1);
-      window.setTimeout(() => (clinic ? store.enterClinic(clinic) : store.enterRadiology()), 650);
+      window.setTimeout(
+        () => (clinic ? store.enterClinic(clinic) : special === 'operation-theatre' ? store.enterOT() : store.enterRadiology()),
+        650,
+      );
     },
     [doorFx, runtime],
   );
@@ -277,7 +280,11 @@ export function CorridorScreen() {
       {active && !menu && fade < 0.5 && (
         <PromptPill
           title={isDoorOpen(active.dept) ? `Enter ${active.dept.label}` : active.dept.label}
-          sub={isDoorOpen(active.dept) ? `Room ${active.room}${active.dept.special ? ' · reading room' : ''}` : `Room ${active.room} · coming soon`}
+          sub={
+            isDoorOpen(active.dept)
+              ? `Room ${active.room}${active.dept.special === 'operation-theatre' ? ' · ऑपरेशन थिएटर' : active.dept.special ? ' · reading room' : ''}`
+              : `Room ${active.room} · coming soon`
+          }
           tone={isDoorOpen(active.dept) ? 'go' : 'soon'}
         />
       )}
@@ -292,6 +299,7 @@ export function CorridorScreen() {
             <LangToggle className="lang-toggle--end" />
           </div>
           <MenuButton onClick={() => store.setScreen('triage')}>Triage drill</MenuButton>
+          <MenuButton onClick={() => store.enterOT()}>Operation theatre drill</MenuButton>
           <MenuButton onClick={() => store.setScreen('library')}>Case library</MenuButton>
           <MenuButton onClick={() => store.setScreen('splash')}>Leave the hospital</MenuButton>
         </PauseMenu>

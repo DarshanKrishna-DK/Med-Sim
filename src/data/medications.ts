@@ -1658,6 +1658,9 @@ export const SPECIALTY_MEDICATION_CATEGORIES: Record<ClinicId, MedicationCategor
   anesthesiology: [
     'cardiovascular', 'antiplatelet-anticoagulant', 'endocrine', 'respiratory', 'emergency',
   ],
+
+  // Communication stations are conversations, no prescribing categories.
+  'communication-skills': ['analgesic'],
 };
 
 export function isCategoryAllowedForSpecialty(

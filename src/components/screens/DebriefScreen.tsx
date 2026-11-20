@@ -12,6 +12,8 @@ import { testById } from '../../data/tests';
 import { medicationById } from '../../data/medications';
 import type { ActivePatient } from '../../game/types';
 import { AppHeader } from '../ui/chrome';
+import { FacultyMarksCard } from '../observer/FacultyMarksCard';
+import { fmtMs, voiceMetrics } from '../../voice/voiceMetrics';
 
 const VERDICT: Record<VerdictBand, { word: string; tone: 'good' | 'mid' | 'bad' }> = {
   excellent: { word: 'Excellent', tone: 'good' },
@@ -189,6 +191,7 @@ function DebriefBody({
           </p>
           <h1 className={`verdict-word verdict-word--${v.tone}`}>{v.word}</h1>
           <p className="verdict-narrative">{evaluation.narrative}</p>
+          {(() => { const vs = voiceMetrics.statsFor(encounter.case.id); return vs && vs.avgE2eMs !== null ? <p className="muted-note">Voice: average response {fmtMs(vs.avgE2eMs)} over {vs.turns} turns, {vs.interruptions} interruptions (Agora Conversational AI + Murf Falcon).</p> : null; })()}
           {source === 'simple' && (
             <p className="muted-note">Quick debrief: the full rubric marker was unavailable.</p>
           )}
@@ -250,6 +253,7 @@ function DebriefBody({
         </section>
       )}
 
+      <FacultyMarksCard caseId={c.id} encounterAt={encounter.arrivedAt} />
       <EncounterSummary encounter={encounter} />
     </article>
   );

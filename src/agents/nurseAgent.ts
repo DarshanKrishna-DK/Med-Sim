@@ -155,7 +155,7 @@ export function speakAsNurse(text: string): Promise<void> {
       const r = await fetch('/voice/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: line, voice: 'nurse', locale: LANG_LOCALE[langOfText(line)] }),
+        body: JSON.stringify({ text: line, voice: 'nurse', locale: LANG_LOCALE[langOfText(line, store.getState().lang)] }),
       });
       if (!r.ok) throw new Error(`/voice/tts ${r.status}`);
       url = URL.createObjectURL(await r.blob());

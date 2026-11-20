@@ -8,6 +8,10 @@ export interface AttachBones {
   spine2?: THREE.Bone;
   lArm?: THREE.Bone;
   rArm?: THREE.Bone;
+  lForeArm?: THREE.Bone;
+  rForeArm?: THREE.Bone;
+  lHand?: THREE.Bone;
+  rHand?: THREE.Bone;
 }
 
 /** Per-layer alpha cutoff and shade for the Hair_Shell_N meshes (inner
@@ -89,11 +93,20 @@ export function applyLook(mesh: THREE.Mesh, look: Look, owned: THREE.Material[])
       case 'Wolf3D_Outfit_Footwear':
         if (look.shoes) c.color.set(look.shoes);
         break;
+      case 'Doctor_Shirt':
+        // Theatre gown: the shirt collar takes the gown colour too.
+        if (look.surgical) garment(look.top);
+        break;
     }
     return c;
   });
   mesh.material = Array.isArray(mesh.material) ? next : next[0];
   const names = mats.map((m) => m.name);
+  // The bouffant cap covers all hair (and a mask hides any beard).
+  if (look.surgical && names.some((n) => /^Hair_Shell_|^Wolf3D_Hair$|^Wolf3D_Beard$/.test(n))) {
+    mesh.visible = false;
+    return;
+  }
   if (names.includes('Wolf3D_Headwear')) mesh.visible = false;
   if (names.includes('Wolf3D_Glasses')) mesh.visible = !!look.glasses;
   if (names.includes('Wolf3D_Beard') && look.beard === 'hide') mesh.visible = false;
@@ -169,6 +182,7 @@ const wp = (o: THREE.Object3D | undefined, fb: THREE.Vector3) => (o ? o.getWorld
  *  Call with the model detached and in bind pose. */
 export function addAttachments(model: THREE.Object3D, bones: AttachBones, look: Look, owned: THREE.Material[]) {
   model.updateMatrixWorld(true);
+  if (look.surgical) addTheatreAttire(model, bones, look.surgical, owned);
   const chest = bones.spine2;
 
   if (!chest) return;
@@ -236,5 +250,89 @@ export function addAttachments(model: THREE.Object3D, bones: AttachBones, look: 
     badge.position.set(bx, ny - 0.25, front(bx, ny - 0.25, 0.006));
     badge.updateMatrix();
     attach(chest, badge);
+  }
+}
+
+/** Bouffant cap, surgical mask and gloves for theatre staff, fitted to the
+ *  head mesh (Wolf3D_Skin) and parented to the head / hand bones. */
+function addTheatreAttire(model: THREE.Object3D, bones: AttachBones, kit: NonNullable<Look['surgical']>, owned: THREE.Material[]) {
+  const head = bones.head;
+  const pts = head ? bodyPoints(model, /^Wolf3D_Skin$/) : [];
+  if (head && pts.length > 20) {
+    const box = new THREE.Box3().setFromPoints(pts);
+    const halfW = (box.max.x - box.min.x) / 2;
+    const cx = (box.min.x + box.max.x) / 2;
+    const cz = (box.min.z + box.max.z) / 2;
+    const crown = box.max.y;
+    const hh = Math.min(box.max.y - box.min.y, halfW * 2 * 1.45);
+    const frontR = box.max.z - cz;
+    const backR = cz - box.min.z;
+
+    const capMat = new THREE.MeshStandardMaterial({ color: kit.cap, roughness: 0.92, side: THREE.DoubleSide });
+    const maskMat = new THREE.MeshStandardMaterial({ color: kit.mask, roughness: 0.85, side: THREE.DoubleSide });
+    owned.push(capMat, maskMat);
+
+    // Cap: a slightly puffed dome from the hairline up, a touch lower at the back.
+    const capH = 0.42 * hh;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), capMat);
+    cap.scale.set(halfW * 1.16, capH + 0.02 * hh, Math.max(frontR, backR) * 1.12);
+    cap.position.set(cx, crown - capH, cz - 0.04 * hh);
+    cap.rotation.x = -0.12;
+    cap.castShadow = true;
+    cap.updateMatrix();
+    attach(head, cap);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 28, 1, true), capMat);
+    band.scale.set(halfW * 1.15, 0.08 * hh, Math.max(frontR, backR) * 1.11);
+    band.position.set(cx, crown - capH - 0.02 * hh, cz - 0.04 * hh);
+    band.rotation.x = -0.12;
+    band.updateMatrix();
+    attach(head, band);
+
+    // Mask: a pleated curve over nose, mouth and chin.
+    const maskH = 0.36 * hh;
+    const mask = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.92, 1, 22, 3, true, -1.3, 2.6), maskMat);
+    mask.scale.set(halfW * 1.04, maskH, frontR * 1.03);
+    mask.position.set(cx, crown - 0.76 * hh, cz);
+    mask.castShadow = true;
+    mask.updateMatrix();
+    attach(head, mask);
+    for (const sx of [-1, 1]) {
+      const loop = new THREE.Mesh(new THREE.TorusGeometry(0.035 * hh * 4, 0.004, 4, 16, Math.PI), maskMat);
+      loop.position.set(cx + sx * halfW * 0.98, crown - 0.62 * hh, cz - 0.01);
+      loop.rotation.set(0, Math.PI / 2, Math.PI / 2);
+      loop.updateMatrix();
+      attach(head, loop);
+    }
+  }
+
+  if (kit.gloves) {
+    const gloveMat = new THREE.MeshStandardMaterial({ color: kit.gloves, roughness: 0.45 });
+    owned.push(gloveMat);
+    const pairs: Array<[THREE.Bone | undefined, THREE.Bone | undefined]> = [
+      [bones.lHand, bones.lForeArm],
+      [bones.rHand, bones.rForeArm],
+    ];
+    for (const [hand, fore] of pairs) {
+      if (!hand || !fore) continue;
+      const H = hand.getWorldPosition(new THREE.Vector3());
+      const F = fore.getWorldPosition(new THREE.Vector3());
+      const dir = H.clone().sub(F);
+      const len = dir.length();
+      if (len < 1e-4) continue;
+      dir.normalize();
+      const r = len * 0.17;
+      const glove = new THREE.Mesh(new THREE.CapsuleGeometry(r, len * 0.32, 4, 10), gloveMat);
+      glove.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      glove.position.copy(H).addScaledVector(dir, len * 0.3);
+      glove.scale.set(1, 1, 0.62);
+      glove.castShadow = true;
+      glove.updateMatrix();
+      attach(hand, glove);
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.95, r * 1.05, len * 0.22, 12), gloveMat);
+      cuff.quaternion.copy(glove.quaternion);
+      cuff.position.copy(H).addScaledVector(dir, -len * 0.08);
+      cuff.updateMatrix();
+      attach(hand, cuff);
+    }
   }
 }
