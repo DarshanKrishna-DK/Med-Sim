@@ -212,11 +212,28 @@ class NurseState:
         if medicationId in self.prescribed:
             return {"ok": True, "alreadyPrescribed": True, "warnings": soft}
         m = self.meds[medicationId]
+        substitute = not self._named_by_doctor(medicationId, m.name)
+        if substitute:
+            # Safety: a drug the doctor did NOT name (e.g. doxycycline offered
+            # instead of a held amoxicillin) must never inherit the dose the
+            # doctor spoke for the original drug. Use the catalogue's standard
+            # dosing for the substitute instead.
+            dose = m.dosing or "standard dose"
         dose = dose or (m.dosing or "standard dose")
         duration = duration or "as directed"
         self.prescribed.append(medicationId)
         self.new_rx.append({"medicationId": medicationId, "dose": dose, "duration": duration})
-        return {"ok": True, "medicationId": medicationId, "name": m.name, "dose": dose, "duration": duration, "warnings": soft}
+        out = {"ok": True, "medicationId": medicationId, "name": m.name, "dose": dose, "duration": duration, "warnings": soft}
+        if substitute:
+            out["substitute"] = True
+            out["note"] = "Not the drug the doctor named; standard catalogue dose used. Tell the doctor and ask them to confirm."
+        return out
+
+    def _named_by_doctor(self, medication_id: str, name: str) -> bool:
+        """True if the doctor's words mention this drug (by its base name)."""
+        said = re.sub(r"[^a-z0-9 ]+", " ", (self.req.utterance or "").lower())
+        stems = {re.split(r"[\s\-_0-9]", medication_id.lower())[0], re.split(r"[\s\-_0-9(]", name.lower())[0]}
+        return any(len(s) >= 4 and s in said for s in stems)
 
     def schedule_follow_up(self, inDays: Any, reason: str = "") -> dict[str, Any]:
         try:
@@ -302,6 +319,9 @@ SYSTEM_PROMPT = (
     "If the only catalog product has a different strength than the doctor asked for, still prescribe it but keep the "
     "doctor's dose in the dose field, and say the difference out loud in your final sentence "
     "(e.g. 'aspirin is stocked as 100 mg, prescribed 75 mg daily as you asked, please confirm').\n"
+    "- Substitutes: NEVER give an alternative drug the dose the doctor said for a different drug. If you offer or "
+    "prescribe a substitute (e.g. a macrolide instead of a held penicillin), the server uses that drug's own standard "
+    "dose; say the substitute's name and its dose, and ask the doctor to confirm.\n"
     "- Finish with a short spoken confirmation, max 30 words, in the warm natural voice of an experienced Indian charge "
     "nurse talking to the doctor. Use contractions, say doses and numbers as words, and use commas and '...' for "
     "natural pauses. Never start with 'Done -', never use lists or markdown. Say what you did, flag anything held or "

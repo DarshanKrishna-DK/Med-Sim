@@ -163,6 +163,33 @@ def _req(**over) -> nurse.NurseActRequest:
 
 
 class NurseToolTests(unittest.TestCase):
+    def test_substitute_never_inherits_the_original_drugs_dose(self) -> None:
+        # Doctor ordered amoxicillin 500 mg TDS (held for allergy); the nurse
+        # offers azithromycin. It must NOT be given "500 mg three times a day".
+        req = _req(
+            utterance="Start amoxicillin 500 mg three times a day",
+            patient={"name": "A", "allergies": "Penicillin (rash)", "anamnesis": [], "testResults": []},
+            catalog={"tests": [], "medications": [
+                {"id": "amoxicillin", "name": "Amoxicillin", "dosing": "500mg TID"},
+                {"id": "azithromycin-500", "name": "Azithromycin 500mg", "dosing": "500 mg once daily for 3 days"},
+            ]},
+        )
+        st = nurse.NurseState(req)
+        self.assertTrue(st.prescribe("amoxicillin", "500 mg three times a day", "5 days")["refused"])
+        sub = st.prescribe("azithromycin-500", "500 mg three times a day", "5 days")
+        self.assertTrue(sub["ok"])
+        self.assertTrue(sub.get("substitute"))
+        self.assertEqual(sub["dose"], "500 mg once daily for 3 days")
+
+    def test_named_drug_keeps_the_doctors_dose(self) -> None:
+        req = _req(utterance="Start aspirin 75 mg once daily",
+                   catalog={"tests": [], "medications": [{"id": "aspirin-100", "name": "Aspirin 100mg", "dosing": "100 mg OD"}]},
+                   patient={"name": "A", "allergies": "", "anamnesis": [], "testResults": []})
+        st = nurse.NurseState(req)
+        rx = st.prescribe("aspirin-100", "75 mg once daily", "ongoing")
+        self.assertEqual(rx["dose"], "75 mg once daily")
+        self.assertNotIn("substitute", rx)
+
     def test_find_in_catalog(self) -> None:
         st = nurse.NurseState(_req())
         self.assertEqual(st.find_in_catalog("blood count", "test")["matches"][0]["id"], "cbc")
