@@ -112,8 +112,8 @@ Reference: <500 ng/mL FEU
 Interpretation: Negative. Low likelihood of VTE in a low-pretest-probability patient.`,
 
   troponin: `HIGH-SENSITIVITY TROPONIN I
-Value: 0.01 ng/mL
-Reference (99th percentile): <0.04 ng/mL
+Value: 4 ng/L
+Reference (99th percentile URL): <26 ng/L (sex-specific <16 F / <34 M)
 Interpretation: Below threshold for myocardial injury. Consider serial trend per chest-pain pathway.`,
 
   tsh: `THYROID-STIMULATING HORMONE
@@ -485,7 +485,7 @@ HPV high-risk panel: Negative.
 Interpretation: Negative. Routine screening interval.`,
 
   'skin-biopsy': `SKIN BIOPSY (punch / shave)
-Histology: Specimen pending, preliminary impression consistent with benign inflammatory dermatosis.
+Histology: Normal epidermis and dermis. No inflammatory infiltrate.
 No atypical melanocytes. No malignancy.
 Interpretation: No malignant features on preliminary review.`,
 };
