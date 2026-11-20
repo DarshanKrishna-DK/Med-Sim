@@ -288,6 +288,7 @@ export function CorridorScreen() {
             <span style={{ ...labelStyle, fontSize: 11, color: UI.primary }}>Voice language</span>
             <LangToggle className="lang-toggle--end" />
           </div>
+          <MenuButton onClick={() => store.setScreen('triage')}>Triage drill</MenuButton>
           <MenuButton onClick={() => store.setScreen('library')}>Case library</MenuButton>
           <MenuButton onClick={() => store.setScreen('splash')}>Leave the hospital</MenuButton>
         </PauseMenu>

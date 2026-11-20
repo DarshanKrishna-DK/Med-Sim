@@ -1,0 +1,68 @@
+/* Triage drill. Night surfaces, hard bevels, Jersey headings, lime accent. */
+.tri-page { min-height: 100vh; padding: 20px 16px 48px; max-width: 1280px; margin: 0 auto; color: var(--ink); }
+.tri-top { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; }
+.tri-top-right { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.tri-title { font-family: var(--font-display); font-size: 44px; line-height: 1; margin: 0; color: var(--primary); }
+.tri-sub, .tri-hint, .tri-muted { color: var(--ink-3); margin: 4px 0 0; }
+.tri-h2 { font-family: var(--font-display); font-size: 30px; margin: 0 0 6px; }
+.tri-clock { font-family: var(--font-display); font-size: 34px; color: var(--primary); min-width: 64px; text-align: right; }
+.tri-check { display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); font-size: 14px; }
+.tri-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+
+.bevel-card { background: var(--surface); box-shadow: var(--bevel); padding: 16px; }
+.tri-ready { max-width: 640px; }
+.tri-legend { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; }
+.tri-legend li { display: flex; gap: 8px; align-items: center; }
+.tri-dot { width: 14px; height: 14px; display: inline-block; box-shadow: 0 0 0 2px var(--bg-deep); }
+
+.tri-cmd { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+.tri-cmd-form { display: flex; gap: 8px; flex: 1 1 320px; }
+.tri-cmd-form .input { flex: 1; }
+.tri-heard { color: var(--ink-3); font-size: 13px; }
+
+.tri-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.tri-card { background: var(--surface); box-shadow: var(--bevel); border: 2px solid transparent; padding: 14px; display: grid; gap: 8px; height: 100%; align-content: start; }
+.tri-card.is-selected { outline: 2px solid var(--primary); outline-offset: 2px; }
+.tri-card.is-det { border-color: var(--destructive); animation: tri-pulse 1.1s steps(2) infinite; }
+.tri-empty { min-height: 160px; place-content: center; text-align: center; opacity: 0.6; }
+@keyframes tri-pulse { 50% { box-shadow: var(--bevel), 0 0 0 4px rgba(255, 101, 104, 0.35); } }
+@media (prefers-reduced-motion: reduce) { .tri-card.is-det { animation: none; } }
+
+.tri-card-head { display: flex; gap: 10px; align-items: center; }
+.tri-avatar { width: 40px; height: 40px; flex: none; }
+.tri-who { display: grid; flex: 1; }
+.tri-bed { font-family: var(--font-display); font-size: 20px; color: var(--accent2); }
+.tri-wait { color: var(--ink-3); font-size: 13px; }
+.tri-complaint { margin: 0; font-weight: 700; }
+.tri-detail { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+.tri-vitals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tri-vital { background: var(--field); box-shadow: 0 0 0 2px var(--line); padding: 4px 6px; display: grid; grid-template-columns: 1fr auto; align-items: baseline; }
+.tri-vital small { grid-column: 1 / -1; color: var(--ink-3); font-size: 11px; }
+.tri-vital b { font-family: var(--font-display); font-size: 22px; }
+.tri-vital i { font-style: normal; font-size: 10px; color: var(--ink-3); }
+.tri-vital.is-warn b { color: var(--gold); }
+.tri-vital.is-bad { box-shadow: 0 0 0 2px var(--destructive); }
+.tri-vital.is-bad b { color: var(--destructive); }
+.tri-alert { margin: 0; color: var(--destructive); font-weight: 700; font-size: 14px; }
+
+.tri-assign { display: grid; gap: 8px; }
+.tri-levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.tri-level { appearance: none; border: 0; cursor: pointer; background: var(--field); color: var(--ink); font-family: var(--font-display); font-size: 22px; padding: 6px 0 4px; box-shadow: 0 0 0 2px var(--lv); display: grid; justify-items: center; }
+.tri-level small { font-family: inherit; font-size: 11px; color: var(--ink-2); }
+.tri-level.is-on { background: var(--lv); color: #0b1f4b; }
+.tri-level.is-on small { color: #0b1f4b; }
+.tri-level:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.tri-done { margin: 0; }
+.tri-pill { color: #0b1f4b; padding: 1px 8px; font-weight: 700; font-size: 13px; display: inline-block; }
+
+.tri-end { display: grid; gap: 16px; }
+.tri-score { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.tri-score-num { font-family: var(--font-display); font-size: 84px; line-height: 1; color: var(--primary); }
+.tri-results { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.tri-result { border-left: 8px solid var(--line); }
+.tri-result-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.tri-pts { font-family: var(--font-display); font-size: 24px; color: var(--primary); }
+.tri-correct { margin: 6px 0; }
+.tri-fb { margin: 0 0 6px; padding-left: 18px; color: var(--ink-2); }
+.tri-rule { margin: 0; color: var(--ink-2); }

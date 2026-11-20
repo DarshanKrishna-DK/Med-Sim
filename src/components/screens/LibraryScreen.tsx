@@ -52,6 +52,9 @@ export function LibraryScreen({ briefOpen = false }: { briefOpen?: boolean }) {
             Each case is one outpatient consultation. Pick a specialty, open a chart, and start when
             you're ready to talk.
           </p>
+          <button type="button" className="btn btn-secondary" onClick={() => store.setScreen('triage')}>
+            Triage drill: 5 ED patients in 3 minutes
+          </button>
         </div>
 
         <div className="library-body">

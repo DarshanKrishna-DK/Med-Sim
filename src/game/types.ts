@@ -21,7 +21,9 @@ export type Screen =
   /** 3D hospital corridor hub: walk to a specialty door to enter its clinic. */
   | 'corridor'
   /** Teacher Portal lecture hall: whiteboard lessons with a voice teacher. */
-  | 'classroom';
+  | 'classroom'
+  /** Emergency triage drill (2D + HUD). */
+  | 'triage';
 
 export type AvatarStyle = 'cute' | 'portrait' | 'animal' | 'initials';
 export type RoomLayout = 'side' | 'front';

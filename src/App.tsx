@@ -9,6 +9,7 @@ import { lazy, Suspense } from 'react';
 import { CorridorRoute } from './components/corridorRoute';
 
 // Teacher Portal lecture hall (3D + whiteboard), loaded on first visit.
+const TriageDrillScreen = lazy(() => import('./components/screens/TriageDrillScreen'));
 const ClassroomScreen = lazy(() => import('./components/screens/ClassroomScreen'));
 
 /** Screen router. The Screen union in game/types.ts still carries legacy
@@ -41,6 +42,12 @@ function ScreenView({ screen }: { screen: ReturnType<typeof useScreen> }) {
       return <HistoryScreen />;
     case 'corridor':
       return <CorridorRoute fallback={<LibraryScreen />} />;
+    case 'triage':
+      return (
+        <Suspense fallback={<div className="route-loading">Opening the triage bay...</div>}>
+          <TriageDrillScreen />
+        </Suspense>
+      );
     case 'classroom':
       return (
         <Suspense fallback={<div className="route-loading">Opening the lecture hall…</div>}>
