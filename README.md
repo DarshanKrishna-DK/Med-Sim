@@ -14,7 +14,8 @@
   <img alt="Voice: Agora ConvoAI" src="https://img.shields.io/badge/voice-Agora_ConvoAI-0b1f4b" />
   <img alt="TTS: Murf Falcon" src="https://img.shields.io/badge/TTS-Murf_Falcon-a8e27c" />
   <img alt="LLM: Sarvam" src="https://img.shields.io/badge/LLM-Sarvam-0b1f4b" />
-  <img alt="Cases: 255" src="https://img.shields.io/badge/cases-255-a8e27c" />
+  <img alt="Cases: 319" src="https://img.shields.io/badge/cases-319-a8e27c" />
+  <img alt="Clinics: 32" src="https://img.shields.io/badge/clinics-32-0b1f4b" />
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0b1f4b" />
 </p>
 
@@ -35,20 +36,25 @@ You practise the full loop by voice (interview, order, adapt, prescribe, follow 
 
 ## What it does
 
-- **3D hospital, third person.** Walk your doctor down a corridor of 36 specialty doors. 24 clinics are open with 255 Indian patients; the rest show "Coming soon".
+- **3D hospital, third person.** Walk your doctor down a corridor of 36 doors. 32 clinics are open with 319 Indian patients, plus a Radiology reading room and a Teacher Portal.
 - **Talk to the patient.** A real-time voice conversation through Agora. Patients answer only what you ask, hesitate, worry and ask questions back.
+- **Examine by voice.** "Let me listen to your chest." Findings consistent with the case appear on the chart, with real heart and lung sounds on a stethoscope button.
 - **English, Hindi or Kannada.** One toggle switches the patient, nurse, coach and teacher. Murf speaks the language and Sarvam understands whichever you use.
 - **Speak orders, the nurse does them.** "Get an ECG and a troponin, start aspirin 75." Nurse Asha plans and runs tool calls (`find_in_catalog`, `order_test`, `check_allergies_and_interactions`, `prescribe`, `schedule_follow_up`), puts the results on the chart, and confirms by voice.
 - **She adapts.** A penicillin allergy blocks amoxicillin: she holds it and tells you why. A stocked strength differs from your dose: she says so.
 - **Mistake alerts.** Allergy conflicts, prescribing before any history, or an irrelevant or harmful test raise an alert. Press "?" and she explains the principle.
-- **Teacher Portal.** A 3D lecture hall where Dr. Meera Iyer teaches any topic by voice, drawing it step by step on a whiteboard, then quizzes you.
-- **Real cases.** 15 cases are adapted from open-access (CC BY) published case reports, mostly from Indian hospitals, each with its citation.
+- **Radiology reading room.** 18 real X-rays, ECGs, CT heads and ultrasounds (credited Wikimedia images). Describe the film aloud, Dr. Vikram Rao asks one probing question, and you're graded on the findings you caught and missed.
+- **OSCE exam mode.** A timed 8-minute station with no hints, marked like a real examiner: a checklist with evidence quotes, critical errors and a pass/fail global rating. Save it as a PDF.
+- **Triage drill.** Five ED arrivals in three minutes whose vitals worsen if you leave them untriaged. Assign the colour and the first action by click or by voice.
+- **My progress.** Score trend, weakest domains, recurring mistakes, a streak, and what to practise next.
+- **Teacher Portal.** A 3D lecture hall where Dr. Meera Iyer teaches any topic by voice, drawing it step by step on a whiteboard (ECG, Wiggers and other physiology curves are drawn from accurate code presets), then quizzes you.
+- **Clinically audited cases.** Every case passes an automated consistency check (diagnosis supported, abnormal flags match reference ranges, age-appropriate doses), and a review fixed about 160 errors ([CLINICAL_AUDIT.md](src/data/CLINICAL_AUDIT.md)). 15 cases are adapted from open-access (CC BY) case reports with citations.
 - **Debrief.** An overall score plus scores for history taking, diagnostic reasoning, test selection, treatment and safety, communication and disposition, with what went well and what to work on.
 
 ## How Agora, Murf and Sarvam are used
 
-- **Agora Conversational AI** runs every voice: patient and teacher. The backend mints RTC + RTM tokens and starts an agent with REST v2 `/join`. The browser joins with `agora-rtc-sdk-ng`. Transcripts arrive over Agora RTM and drive the subtitles and the nurse.
-- **Sarvam** is the speech recognition inside Agora (language auto-detect) and the LLM for the patient, nurse, coach, teacher and debrief, with Groq as the fallback.
+- **Agora Conversational AI** runs every voice: the patient, the teacher and the radiologist. The backend mints RTC + RTM tokens and starts an agent with REST v2 `/join`. The browser joins with `agora-rtc-sdk-ng`. Transcripts arrive over Agora RTM and drive the subtitles and the nurse.
+- **Sarvam** is the speech recognition inside Agora (language auto-detect) and the LLM for the patient, nurse, coach, exam findings, radiology grading, OSCE marking, teacher and debrief, with Groq as the fallback.
 - **Murf Falcon** is the TTS inside Agora (Indian English voices, a stable voice per patient), and the nurse's own voice through the Murf HTTP API.
 - **Custom LLM route.** Agora calls `/llm/patient/chat/completions` on our backend. It turns noise-only turns into "(inaudible)" before Sarvam sees them, so the patient never breaks. A per-agent token guards it, and the Sarvam key never leaves the server.
 - **Live context.** `/voice/context` updates the running agent's prompt, so the patient knows which tests and drugs were ordered. Filler words and tuned turn detection keep it sounding human.
