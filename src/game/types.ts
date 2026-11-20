@@ -18,7 +18,9 @@ export type Screen =
   | 'agenticRounds'
   | 'agentTopology'
   /** 3D hospital corridor hub: walk to a specialty door to enter its clinic. */
-  | 'corridor';
+  | 'corridor'
+  /** Teacher Portal lecture hall: whiteboard lessons with a voice teacher. */
+  | 'classroom';
 
 export type AvatarStyle = 'cute' | 'portrait' | 'animal' | 'initials';
 export type RoomLayout = 'side' | 'front';
@@ -293,4 +295,7 @@ export interface GameState {
    *  corridor respawns the player in front of that door on return;
    *  null = spawn in the lobby. */
   corridorReturnClinic: ClinicId | null;
+  /** True when the doctor walks back out of the Teacher Portal classroom:
+   *  the corridor respawns them in front of the portal. */
+  corridorReturnPortal: boolean;
 }

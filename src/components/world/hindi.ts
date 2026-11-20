@@ -40,6 +40,9 @@ const HI: Record<string, string> = {
   radiology: 'रेडियोलॉजी',
   'nuclear-medicine': 'नाभिकीय चिकित्सा',
   'pathology-lab': 'पैथोलॉजी एवं प्रयोगशाला',
+  // Teacher Portal + lecture hall (not departments).
+  'teacher-portal': 'शिक्षक पोर्टल',
+  'lecture-hall': 'व्याख्यान कक्ष',
 };
 
 export function hindiLabel(id: string): string | null {

@@ -123,6 +123,7 @@ class Store {
     agentRuns: [],
     coachAlerts: [],
     corridorReturnClinic: null,
+    corridorReturnPortal: false,
   };
 
   private listeners = new Set<() => void>();
@@ -241,7 +242,23 @@ class Store {
     this.set({
       screen: 'corridor',
       corridorReturnClinic: fromLobby ? null : this.state.corridorReturnClinic,
+      corridorReturnPortal: fromLobby ? false : this.state.corridorReturnPortal,
     });
+
+  /** Corridor Teacher Portal → lecture hall. Call inside the click/keydown
+   *  so the AudioContext is unlocked for the teacher's voice. */
+  enterClassroom = () => {
+    try {
+      ensureAudioContext();
+    } catch {
+      /* no Web Audio; the classroom voice panel surfaces it */
+    }
+    this.set({ screen: 'classroom', corridorReturnPortal: false });
+  };
+
+  /** Leave the lecture hall: the doctor reappears in front of the portal. */
+  exitClassroomToCorridor = () =>
+    this.set({ screen: 'corridor', corridorReturnClinic: null, corridorReturnPortal: true });
 
   /** Corridor door → clinic room. Must run inside the user's click/keydown
    *  handler (acceptNextPatient warms the AudioContext for voice). */
@@ -255,7 +272,7 @@ class Store {
    *  the doctor reappears in the corridor outside the same door. */
   exitToCorridor = () => {
     this.finishPolyclinicCase();
-    this.set({ screen: 'corridor', corridorReturnClinic: this.state.polyclinic.clinic });
+    this.set({ screen: 'corridor', corridorReturnClinic: this.state.polyclinic.clinic, corridorReturnPortal: false });
   };
 
   // ── per-screen state ──────────────────────────

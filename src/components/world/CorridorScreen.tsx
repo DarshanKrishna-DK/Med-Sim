@@ -8,6 +8,22 @@ import { DOORS, SPAWN, WINGS, doorForClinic, wingStartZ, type DoorSpec } from '.
 import { ThirdPersonPlayer, isTypingTarget, makeRuntime, type PlayerRuntime } from './ThirdPersonPlayer';
 import { PostFX, WorldEnvironment, type FxQuality } from './WorldFX';
 import { ControlsCard, Fade, MenuButton, PauseMenu, PromptPill, Toast, UI, labelStyle, panel } from './worldUi';
+import { PORTAL, PORTAL_COLLIDERS, TeacherPortal, nearPortal } from './TeacherPortal';
+
+const WORLD_COLLIDERS = [...CORRIDOR_COLLIDERS, ...PORTAL_COLLIDERS];
+
+/** Tracks whether the doctor stands at the Teacher Portal. */
+function PortalProbe({ runtime, onChange }: { runtime: PlayerRuntime; onChange: (near: boolean) => void }) {
+  const cur = useRef(false);
+  useFrame(() => {
+    const n = nearPortal(runtime);
+    if (n !== cur.current) {
+      cur.current = n;
+      onChange(n);
+    }
+  });
+  return null;
+}
 
 const CAMERA_RIG = { distance: 3.3, minDistance: 1.4, maxDistance: 6, pivotHeight: 1.58, shoulder: 0.42, ceiling: 3.0 };
 const USE_RADIUS = 1.7;
@@ -94,6 +110,7 @@ export function CorridorScreen() {
   const [quality, setQuality] = useState<FxQuality>(forced ?? 'high');
   const [dpr, setDpr] = useState(1);
   const runtime = useMemo(() => {
+    if (store.getState().corridorReturnPortal) return makeRuntime(PORTAL.standX, PORTAL.standZ, PORTAL.exitYaw);
     const door = doorForClinic(store.getState().corridorReturnClinic);
     if (door) return makeRuntime(door.standX, door.standZ, 0);
     return makeRuntime(SPAWN.x, SPAWN.z, SPAWN.yaw);
@@ -103,6 +120,7 @@ export function CorridorScreen() {
   }, [runtime]);
   const doorFx = useMemo<DoorFx[]>(() => DOORS.map(() => ({ open: 0, openTarget: 0, shake: 0 })), []);
   const [active, setActive] = useState<DoorSpec | null>(null);
+  const [atPortal, setAtPortal] = useState(false);
   const [toast, setToast] = useState<{ title: string; body: string; id: number } | null>(null);
   const [fade, setFade] = useState(1);
   const [menu, setMenu] = useState(false);
@@ -153,6 +171,27 @@ export function CorridorScreen() {
     [doorFx, runtime],
   );
 
+  const usePortal = useCallback(() => {
+    if (busy.current) return;
+    // Warm the AudioContext inside this gesture for the teacher's voice.
+    try {
+      ensureAudioContext();
+    } catch {
+      /* no Web Audio, the classroom panel will surface it */
+    }
+    busy.current = true;
+    runtime.inputEnabled = false;
+    setFade(1);
+    window.setTimeout(() => store.enterClassroom(), 650);
+  }, [runtime]);
+
+  const onPortalClick = useCallback(() => {
+    if (runtime.dragPx > 6 || menu) return;
+    // Clicking from across the lobby does nothing; walk up first.
+    if (Math.hypot(PORTAL.x - runtime.pos.x, PORTAL.z - runtime.pos.z) > 3.4) return;
+    usePortal();
+  }, [runtime, menu, usePortal]);
+
   const onDoorClick = useCallback(
     (door: DoorSpec) => {
       if (runtime.dragPx > 6 || menu) return;
@@ -177,11 +216,14 @@ export function CorridorScreen() {
       if (e.code === 'KeyE' && !menu && active) {
         e.preventDefault();
         useDoor(active);
+      } else if (e.code === 'KeyE' && !menu && atPortal) {
+        e.preventDefault();
+        usePortal();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, menu, useDoor]);
+  }, [active, atPortal, menu, useDoor, usePortal]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#050b1a', overflow: 'hidden', userSelect: 'none' }}>
@@ -208,8 +250,10 @@ export function CorridorScreen() {
         <Suspense fallback={null}>
           <WorldEnvironment intensity={0.5} />
           <CorridorWorld runtime={runtime} doorFx={doorFx} onDoorClick={onDoorClick} reflections={quality === 'high'} />
-          <ThirdPersonPlayer runtime={runtime} colliders={CORRIDOR_COLLIDERS} rig={CAMERA_RIG} />
+          <TeacherPortal active={atPortal} onClick={onPortalClick} />
+          <ThirdPersonPlayer runtime={runtime} colliders={WORLD_COLLIDERS} rig={CAMERA_RIG} />
           <DoorProbe runtime={runtime} onChange={setActive} />
+          <PortalProbe runtime={runtime} onChange={setAtPortal} />
           <PostFX quality={quality} />
         </Suspense>
       </Canvas>
@@ -233,6 +277,7 @@ export function CorridorScreen() {
           tone={active.dept.clinic ? 'go' : 'soon'}
         />
       )}
+      {!active && atPortal && !menu && fade < 0.5 && <PromptPill title="Enter the Teacher Portal" sub="Lecture hall · शिक्षक पोर्टल" />}
       {toast && <Toast key={toast.id} title={toast.title} body={toast.body} />}
 
       {menu && (

@@ -5,7 +5,11 @@ import { EncounterScreen } from './components/screens/EncounterScreen';
 import { DebriefScreen } from './components/screens/DebriefScreen';
 import { HistoryScreen } from './components/screens/HistoryScreen';
 import { RouteProgress } from './components/ui/chrome';
+import { lazy, Suspense } from 'react';
 import { CorridorRoute } from './components/corridorRoute';
+
+// Teacher Portal lecture hall (3D + whiteboard), loaded on first visit.
+const ClassroomScreen = lazy(() => import('./components/screens/ClassroomScreen'));
 
 /** Screen router. The Screen union in game/types.ts still carries legacy
  *  values (splash, onboarding, mode, gpRoom, endConfirm, agenticRounds…);
@@ -37,6 +41,12 @@ function ScreenView({ screen }: { screen: ReturnType<typeof useScreen> }) {
       return <HistoryScreen />;
     case 'corridor':
       return <CorridorRoute fallback={<LibraryScreen />} />;
+    case 'classroom':
+      return (
+        <Suspense fallback={<div className="route-loading">Opening the lecture hall…</div>}>
+          <ClassroomScreen />
+        </Suspense>
+      );
     default:
       return <LandingScreen />;
   }
