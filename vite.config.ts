@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Backend for the dev proxy. Override to point a second dev server at another backend copy.
+const BACKEND = process.env.MEDSIM_BACKEND_URL || 'http://127.0.0.1:8787';
+
 const PROXY = {
   '/ollama': {
     target: 'http://localhost:11434',
@@ -13,12 +16,17 @@ const PROXY = {
   // server side (see backend/server.py). Trailing slash is required
   // so the prefix doesn't catch frontend routes like /agentic-rounds.
   '^/agent/': {
-    target: 'http://127.0.0.1:8787',
+    target: BACKEND,
     changeOrigin: true,
   },
   // Real-time voice, backend mints Agora RTC/RTM tokens and starts the Conversational AI agent.
   '^/voice/': {
-    target: 'http://127.0.0.1:8787',
+    target: BACKEND,
+    changeOrigin: true,
+  },
+  // Teacher Portal lessons + typed Q&A (backend/teacher.py).
+  '^/teach/': {
+    target: BACKEND,
     changeOrigin: true,
   },
 };
@@ -27,7 +35,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    open: true,
+    open: false, // never auto-open a browser tab; reuse the one already open
     proxy: PROXY,
   },
   preview: {
