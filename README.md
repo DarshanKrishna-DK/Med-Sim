@@ -33,7 +33,8 @@
 MedSim gives every student an unlimited, always-available ward: patients who talk back in Indian English, and a nurse agent who executes orders, catches mistakes and explains why.
 You practise the full loop by voice (interview, order, adapt, prescribe, follow up) and get graded at the end.
 
-<p align="center"><img src="media/landing.png" alt="MedSim landing page" width="900" /></p>
+<p align="center"><a href="media/trailer.mp4"><img src="media/trailer.webp" width="900" alt="MedSim trailer" /></a></p>
+<p align="center"><a href="media/trailer.mp4">Watch the full 65-second trailer with sound (MP4)</a></p>
 
 ## What it does
 
