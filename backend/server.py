@@ -5,6 +5,7 @@ Hosts:
   /agent/*            Claude Managed Agents proxy (medsim-attending; optional)
   /agent/nurse/act    agentic charge-nurse tool-use loop (Sarvam / Groq)
   /agent/debrief/simple  JSON debrief without Anthropic
+  /agent/debrief/osce    OSCE examiner marking (checklist + global rating)
   /voice/*            Agora Conversational AI Engine + Murf Falcon TTS
 """
 
@@ -63,6 +64,9 @@ from nurse import router as nurse_router
 from debrief import router as debrief_router
 from teacher import router as teacher_router
 from coach import router as coach_router
+from radiology import router as radiology_router
+from osce import router as osce_router
+from exam import router as exam_router
 
 # Shared secret protects /agent/* and /voice/* against direct curl abuse.
 # Vercel Edge Middleware injects this header for browser traffic; a
@@ -1432,6 +1436,9 @@ app.include_router(nurse_router)
 app.include_router(debrief_router)
 app.include_router(teacher_router)
 app.include_router(coach_router)
+app.include_router(radiology_router)
+app.include_router(osce_router)
+app.include_router(exam_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the

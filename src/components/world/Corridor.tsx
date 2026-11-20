@@ -214,7 +214,7 @@ function Door({
   const pivot = useRef<THREE.Group>(null);
   const textGroup = useRef<THREE.Group>(null);
   const { camera } = useThree();
-  const built = !!door.dept.clinic;
+  const built = !!door.dept.clinic || !!door.dept.special;
   const wp = useMemo(() => new THREE.Vector3(door.x, 1.5, door.z), [door]);
 
   useFrame((_, dt) => {
@@ -259,7 +259,7 @@ function Door({
           color={built ? '#9fe3b0' : '#ffc46b'}
           letterSpacing={0.08}
         >
-          {built ? 'CLINIC OPEN' : 'COMING SOON'}
+          {built ? (door.dept.special ? 'READING ROOM' : 'CLINIC OPEN') : 'COMING SOON'}
         </Text>
       </group>
       {/* click target */}
@@ -726,7 +726,7 @@ function Directory({ position, rotY }: { position: [number, number, number]; rot
   const cols = (Object.keys(WINGS) as WingId[]).map((w) => ({
     w,
     text: DOORS.filter((d) => d.dept.wing === w)
-      .map((d) => `${d.room}  ${d.dept.label}${d.dept.clinic ? '' : '  · soon'}`)
+      .map((d) => `${d.room}  ${d.dept.label}${d.dept.clinic || d.dept.special ? '' : '  · soon'}`)
       .join('\n'),
   }));
   return (

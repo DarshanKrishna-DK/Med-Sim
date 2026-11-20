@@ -1,0 +1,470 @@
+{
+  "_note": "Radiology reading-room cases. Synthetic Indian vignettes paired with openly licensed images (Wikimedia Commons). Read by src/data/radiology.ts and backend/radiology.py. Keywords are lower-case phrases for the offline grader.",
+  "cases": [
+    {
+      "id": "rad-cxr-normal",
+      "modality": "cxr",
+      "study": "Chest X-ray, PA view",
+      "image": "/assets/radiology/cxr-normal.jpg",
+      "credit": { "author": "Stillwaterising", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/", "source": "https://commons.wikimedia.org/wiki/File:Chest_Xray_PA_3-8-2010.png", "changes": "resized" },
+      "patient": { "name": "Priya Menon", "age": 24, "sex": "F", "place": "Kochi" },
+      "vignette": "Pre-employment health check for a nursing job in Bengaluru. No cough, fever or breathlessness. Never smoked. No TB contact. Examination normal, SpO2 99% on air.",
+      "findings": [
+        { "id": "adequacy", "label": "Adequate PA film: not rotated, good inspiration, well penetrated", "keywords": ["pa film", "pa view", "posteroanterior", "not rotated", "adequate inspiration", "good inspiration", "well penetrated", "adequate film", "adequate exposure"], "probe": "Before the pathology, is this film technically adequate? How would you check?" },
+        { "id": "trachea", "label": "Trachea central, mediastinum not shifted", "keywords": ["trachea central", "trachea is central", "trachea midline", "trachea is midline", "no mediastinal shift", "mediastinum central"], "probe": "Where is the trachea?" },
+        { "id": "lungs-clear", "label": "Both lung fields clear, no consolidation, mass or nodules", "keywords": ["lungs clear", "lung fields clear", "lung fields are clear", "lungs are clear", "no consolidation", "clear lung fields", "no focal lesion"], "critical": true, "probe": "Go through the lungs zone by zone. Anything in either lung?" },
+        { "id": "cp-angles", "label": "Costophrenic angles sharp, no effusion", "keywords": ["costophrenic angles sharp", "costophrenic angles are sharp", "cp angles clear", "cp angles sharp", "costophrenic angles clear", "no effusion", "no pleural effusion"], "probe": "What about the costophrenic angles?" },
+        { "id": "heart", "label": "Heart size normal (cardiothoracic ratio under 0.5)", "keywords": ["heart size normal", "normal heart size", "ctr normal", "ctr less than", "cardiothoracic ratio normal", "ctr under", "no cardiomegaly", "heart is normal"], "critical": true, "probe": "Is the heart a normal size? How do you measure it?" },
+        { "id": "diaphragm-bones", "label": "Diaphragms normal, no free gas; bones and soft tissues intact", "keywords": ["diaphragm normal", "diaphragms normal", "no free air", "no free gas", "bones normal", "bones intact", "no fracture", "no rib fracture"], "probe": "Have you looked at the diaphragms and the bones?" }
+      ],
+      "diagnosis": "Normal chest radiograph",
+      "diagnosisKeywords": ["normal", "no abnormality", "no acute abnormality", "within normal limits", "unremarkable"],
+      "diagnosisExclude": ["pneumonia", "tuberculosis", "pneumothorax", "effusion"],
+      "distractors": ["Early miliary tuberculosis", "Right lower lobe pneumonia", "Small left apical pneumothorax"],
+      "teaching": [
+        "Calling a film normal is a finding too: say it only after you have been through every area in order.",
+        "Review areas where lesions hide: apices, behind the heart, below the diaphragm, hila.",
+        "Cardiothoracic ratio is only valid on a PA film; an AP film magnifies the heart."
+      ]
+    },
+    {
+      "id": "rad-cxr-lobar-pneumonia",
+      "modality": "cxr",
+      "study": "Chest X-ray, PA view",
+      "image": "/assets/radiology/cxr-lobar-pneumonia.jpg",
+      "credit": { "author": "Mikael Häggström, M.D.", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/", "source": "https://commons.wikimedia.org/wiki/File:X-ray_of_lobar_pneumonia.jpg", "changes": "resized" },
+      "patient": { "name": "Ramesh Patil", "age": 67, "sex": "M", "place": "Pune" },
+      "vignette": "Four days of high fever with chills, cough with rusty sputum and right-sided chest pain on breathing. RR 26/min, SpO2 91% on air, BP 110/70. Bronchial breath sounds over the right lower front of the chest.",
+      "findings": [
+        { "id": "consolidation", "label": "Homogeneous airspace opacity (consolidation) in the right mid to lower zone", "keywords": ["right lower zone consolidation", "consolidation in the right", "right sided consolidation", "right mid zone", "right lower zone", "right middle lobe", "opacity in the right", "right consolidation", "consolidation right"], "critical": true, "probe": "Compare the two lungs zone by zone. Is one side whiter than the other?" },
+        { "id": "silhouette", "label": "Right heart border obscured (silhouette sign), localising it to the right middle lobe", "keywords": ["right heart border", "silhouette sign", "loss of the right heart border", "heart border obscured", "obscured right heart border", "middle lobe"], "critical": true, "probe": "Can you see the right heart border clearly? What does that tell you?" },
+        { "id": "air-bronchogram", "label": "Air bronchograms within the opacity", "keywords": ["air bronchogram", "air bronchograms"], "probe": "Inside that white area, do you see any dark branching lines?" },
+        { "id": "no-collapse", "label": "Trachea central, no volume loss (so consolidation, not collapse)", "keywords": ["trachea central", "no volume loss", "no mediastinal shift", "trachea is central", "fissure normal"], "probe": "Is there any volume loss? How would you tell consolidation from collapse?" },
+        { "id": "cp-angles", "label": "Costophrenic angles clear, no significant effusion", "keywords": ["costophrenic angles clear", "costophrenic angles sharp", "no effusion", "no pleural effusion", "cp angles clear"], "probe": "Any fluid at the bases?" },
+        { "id": "left-clear", "label": "Left lung clear", "keywords": ["left lung clear", "left lung is clear", "left side clear", "left lung normal"], "probe": "And the left lung?" }
+      ],
+      "diagnosis": "Right middle lobe pneumonia",
+      "diagnosisKeywords": ["middle lobe pneumonia", "lobar pneumonia", "right pneumonia", "community acquired pneumonia", "pneumonia", "rml pneumonia"],
+      "diagnosisExclude": ["collapse", "effusion", "tuberculosis", "tb", "tumour", "tumor", "cancer"],
+      "distractors": ["Right pleural effusion", "Right middle lobe collapse from an endobronchial tumour", "Post-primary pulmonary tuberculosis"],
+      "teaching": [
+        "Silhouette sign: an opacity touching the right heart border lies in the middle lobe; one that blurs the hemidiaphragm lies in the lower lobe.",
+        "Consolidation keeps lung volume (trachea central); collapse pulls the trachea and fissures toward it.",
+        "Score CURB-65 at the bedside; this man is 67 with RR 26, so think about admission.",
+        "Repeat the film at about 6 weeks in older smokers to make sure it clears and nothing was hiding behind it."
+      ]
+    },
+    {
+      "id": "rad-cxr-pneumothorax",
+      "modality": "cxr",
+      "study": "Chest X-ray, PA view",
+      "image": "/assets/radiology/cxr-pneumothorax.jpg",
+      "credit": { "author": "Bonilla A, Blair AJ, Alamro SM, et al., J Med Case Reports 2019", "license": "CC BY 4.0", "licenseUrl": "https://creativecommons.org/licenses/by/4.0/", "source": "https://commons.wikimedia.org/wiki/File:Chest_X-ray_of_pneumothorax.png", "changes": "cropped to panel A, resized" },
+      "patient": { "name": "Arjun Nair", "age": 21, "sex": "M", "place": "Thiruvananthapuram" },
+      "vignette": "Tall, thin engineering student who smokes. Sudden sharp right-sided chest pain and breathlessness while sitting in class two hours ago. HR 98, BP 124/78, SpO2 95%. Reduced breath sounds and hyper-resonance on the right.",
+      "findings": [
+        { "id": "pleural-line", "label": "Visible visceral pleural line on the right (arrows)", "keywords": ["pleural line", "visceral pleura", "visceral pleural line", "lung edge", "edge of the lung", "pleural edge"], "critical": true, "probe": "Look carefully at the right upper and lateral chest. Can you see a fine white line?" },
+        { "id": "no-markings", "label": "No lung markings lateral to the pleural line on the right", "keywords": ["absent lung markings", "no lung markings", "loss of lung markings", "absence of lung markings", "no vascular markings", "hyperlucent", "hyperlucency"], "critical": true, "probe": "What do you see beyond that line, out toward the chest wall?" },
+        { "id": "side", "label": "Right side involved, partially collapsed right lung", "keywords": ["right pneumothorax", "right sided pneumothorax", "right lung collapsed", "right lung partially collapsed", "on the right"], "probe": "Which side is it, and how much lung has collapsed?" },
+        { "id": "no-tension", "label": "No mediastinal shift, so no radiological tension", "keywords": ["no mediastinal shift", "trachea central", "no tension", "no shift", "mediastinum central", "trachea is central"], "critical": true, "probe": "Is there anything here that makes this an emergency right now? Where is the mediastinum?" },
+        { "id": "size", "label": "Size estimate: rim of air under 2 cm at the hilum level (small)", "keywords": ["less than 2 cm", "under 2 cm", "small pneumothorax", "2 cm", "two centimetres", "two centimeters"], "probe": "How would you size it, and why does the size matter?" }
+      ],
+      "diagnosis": "Right primary spontaneous pneumothorax",
+      "diagnosisKeywords": ["spontaneous pneumothorax", "primary spontaneous pneumothorax", "right pneumothorax", "pneumothorax"],
+      "diagnosisExclude": ["tension", "bulla", "bullous", "effusion"],
+      "distractors": ["Right tension pneumothorax", "Large right apical bulla", "Right pleural effusion"],
+      "teaching": [
+        "Look for the thin white visceral pleural line with no lung markings beyond it; arrows here help, a real film will not.",
+        "Tension is a clinical diagnosis (hypotension, hypoxia, shift); never wait for a film to decompress it.",
+        "BTS: a primary spontaneous pneumothorax that is small and not breathless can be observed; larger or symptomatic ones need aspiration or a small drain.",
+        "Advise him to stop smoking and avoid flying until resolved; he must never scuba dive without definitive surgery."
+      ]
+    },
+    {
+      "id": "rad-cxr-pleural-effusion",
+      "modality": "cxr",
+      "study": "Chest X-ray, PA view (film on a light box)",
+      "image": "/assets/radiology/cxr-pleural-effusion.jpg",
+      "credit": { "author": "Sara Nabih", "license": "CC BY-SA 4.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/", "source": "https://commons.wikimedia.org/wiki/File:Bilateral_Pleural_Effusion.jpg", "changes": "resized" },
+      "patient": { "name": "Shanthamma", "age": 58, "sex": "F", "place": "Mysuru" },
+      "vignette": "Chronic kidney disease on irregular dialysis. Two weeks of worsening breathlessness, can only sleep propped up, swollen legs. RR 28, SpO2 89% on air. Stony dull percussion and absent breath sounds over both lower chests.",
+      "findings": [
+        { "id": "bilateral-opacity", "label": "Dense homogeneous opacity in both lower zones", "keywords": ["bilateral opacity", "both lower zones", "bilateral lower zone", "opacity in both", "bilateral homogeneous", "both bases", "bilateral basal"], "critical": true, "probe": "Compare the lower halves of both lungs. What do you see?" },
+        { "id": "cp-blunt", "label": "Both costophrenic angles obliterated", "keywords": ["blunted costophrenic", "costophrenic angles blunted", "obliterated costophrenic", "cp angle blunting", "blunting of the costophrenic", "loss of costophrenic", "costophrenic angles obliterated"], "critical": true, "probe": "Can you see the costophrenic angles?" },
+        { "id": "meniscus", "label": "Meniscus sign: concave upper border rising toward the lateral chest wall", "keywords": ["meniscus", "meniscus sign", "concave upper border", "curved upper border"], "probe": "Look at the shape of the upper edge of that white area. What shape is it?" },
+        { "id": "diaphragm-lost", "label": "Hemidiaphragms and lower heart borders not visible", "keywords": ["diaphragm not seen", "loss of diaphragm", "hemidiaphragms obscured", "diaphragm obscured", "heart borders obscured", "cannot see the diaphragm"], "probe": "Can you see the diaphragms?" },
+        { "id": "bilateral", "label": "Effusions are bilateral, which points to a systemic cause (fluid overload, heart failure)", "keywords": ["bilateral effusion", "bilateral effusions", "bilateral pleural effusion", "both sides", "transudate", "fluid overload"], "probe": "Is it one side or both, and what does that suggest about the cause?" }
+      ],
+      "diagnosis": "Bilateral pleural effusions",
+      "diagnosisKeywords": ["bilateral pleural effusion", "bilateral pleural effusions", "pleural effusion", "pleural effusions", "bilateral effusions", "hydrothorax"],
+      "diagnosisExclude": ["pericardial", "pneumonia", "consolidation"],
+      "distractors": ["Bilateral lower lobe pneumonia", "Pericardial effusion", "Bilaterally raised hemidiaphragms"],
+      "teaching": [
+        "About 200 mL blunts the angle on a PA film; a lateral decubitus film or ultrasound picks up much less.",
+        "Bilateral effusions are usually transudates (fluid overload, heart failure, low albumin); a one-sided exudate in India is TB until proven otherwise.",
+        "Tap the fluid if the cause is unclear and use Light's criteria; do the tap under ultrasound.",
+        "For her, the treatment is dialysis and fluid removal, not a chest drain."
+      ]
+    },
+    {
+      "id": "rad-cxr-cardiomegaly",
+      "modality": "cxr",
+      "study": "Chest X-ray, PA view",
+      "image": "/assets/radiology/cxr-cardiomegaly.jpg",
+      "credit": { "author": "SCiardullo", "license": "CC BY-SA 3.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/", "source": "https://commons.wikimedia.org/wiki/File:Cardiomegalia.JPG", "changes": "resized" },
+      "patient": { "name": "Mohammed Rafiq", "age": 61, "sex": "M", "place": "Hyderabad" },
+      "vignette": "Long-standing hypertension, poorly controlled. Three months of breathlessness on climbing stairs and ankle swelling. Displaced, heaving apex beat in the 6th intercostal space. BP 170/100.",
+      "findings": [
+        { "id": "pa", "label": "PA film, so the heart size can be judged", "keywords": ["pa film", "pa view", "posteroanterior", "pa projection"], "probe": "Can you comment on heart size on any film? What projection is this?" },
+        { "id": "ctr", "label": "Cardiothoracic ratio more than 0.5", "keywords": ["ctr more than", "ctr greater than", "cardiothoracic ratio more than", "cardiothoracic ratio greater than", "cardiothoracic ratio is increased", "increased cardiothoracic ratio", "ctr increased", "ctr is increased", "ctr above"], "critical": true, "probe": "How big is the heart compared with the chest? Give me a number." },
+        { "id": "enlarged-heart", "label": "Enlarged cardiac silhouette with the apex displaced to the left and down", "keywords": ["enlarged heart", "cardiomegaly", "enlarged cardiac silhouette", "apex displaced", "large heart", "heart is enlarged", "enlarged cardiac shadow"], "critical": true, "probe": "Describe the shape of the heart shadow. Where is the apex?" },
+        { "id": "failure-signs", "label": "Look for failure: upper lobe diversion, Kerley B lines, effusions (lungs here largely clear)", "keywords": ["upper lobe diversion", "kerley b", "kerley", "no effusion", "lungs clear", "no pulmonary oedema", "no pulmonary edema", "pulmonary congestion"], "probe": "With a big heart, what else would you look for in the lungs?" },
+        { "id": "cp-angles", "label": "Costophrenic angles visible", "keywords": ["costophrenic angles", "cp angles", "costophrenic angle"], "probe": "Any fluid at the bases?" }
+      ],
+      "diagnosis": "Cardiomegaly",
+      "diagnosisKeywords": ["cardiomegaly", "enlarged heart", "dilated cardiomyopathy", "hypertensive heart disease", "left ventricular enlargement", "lv enlargement", "heart failure"],
+      "diagnosisExclude": ["pericardial effusion", "normal"],
+      "distractors": ["Pericardial effusion", "Normal chest radiograph (AP magnification)", "Mediastinal mass"],
+      "teaching": [
+        "CTR = widest heart diameter divided by widest inner chest diameter; over 0.5 on a PA film is cardiomegaly.",
+        "A big heart on X-ray needs an echo: it tells you which chamber, the ejection fraction and the valves.",
+        "A globular 'water bottle' heart with clear lungs makes you think of pericardial effusion instead.",
+        "Control his BP and start heart-failure therapy once the echo confirms LV dysfunction."
+      ]
+    },
+    {
+      "id": "rad-cxr-tb-cavitation",
+      "modality": "cxr",
+      "study": "Chest X-ray, AP view",
+      "image": "/assets/radiology/cxr-tb-cavitation.jpg",
+      "credit": { "author": "CDC Public Health Image Library", "license": "Public domain", "licenseUrl": "https://commons.wikimedia.org/wiki/File:Tuberculosis-x-ray-1.jpg", "source": "https://commons.wikimedia.org/wiki/File:Tuberculosis-x-ray-1.jpg", "changes": "re-encoded" },
+      "patient": { "name": "Suresh Yadav", "age": 38, "sex": "M", "place": "Gaya, Bihar" },
+      "vignette": "Construction worker. Two months of cough, two episodes of blood-streaked sputum, evening fevers, night sweats and 7 kg weight loss. Brother was treated for TB last year. Thin, febrile, crackles over the right upper chest.",
+      "findings": [
+        { "id": "ruz-infiltrate", "label": "Patchy infiltrates in the right upper zone (arrowheads)", "keywords": ["right upper zone", "right upper lobe", "upper zone infiltrate", "upper zone opacity", "infiltrates in the right upper", "patchy opacity", "patchy consolidation"], "critical": true, "probe": "Which zones are involved? Start at the apices." },
+        { "id": "cavity", "label": "Cavity: a thick-walled lucency within the right upper zone opacity", "keywords": ["cavity", "cavitation", "cavitating", "cavitary", "thick walled lucency", "lucency"], "critical": true, "probe": "Inside the right upper zone, is there a dark area surrounded by white? What do you call that?" },
+        { "id": "bilateral", "label": "Bilateral disease: infiltrates in the left upper and mid zone too", "keywords": ["bilateral", "both upper zones", "left upper zone", "left side too", "both lungs", "left mid zone"], "probe": "Is the other lung completely clear?" },
+        { "id": "upper-predominance", "label": "Upper zone predominance, typical of post-primary TB", "keywords": ["upper zone predominance", "upper lobe predominance", "upper zones", "apical"], "probe": "Which part of the lungs is this disease favouring, and why does that matter?" }
+      ],
+      "diagnosis": "Post-primary pulmonary tuberculosis with cavitation",
+      "diagnosisKeywords": ["tuberculosis", "pulmonary tb", "post primary tb", "cavitary tb", "reactivation tb", "koch", "tb"],
+      "diagnosisExclude": ["miliary", "abscess", "carcinoma", "cancer"],
+      "distractors": ["Lung abscess", "Cavitating squamous cell carcinoma", "Klebsiella pneumonia"],
+      "teaching": [
+        "Upper zone infiltrates with a cavity in a patient with weight loss and haemoptysis is TB until proven otherwise.",
+        "Send two sputum samples for CBNAAT or Truenat (rifampicin resistance in one go) under NTEP and notify on Ni-kshay.",
+        "Cavitary disease is highly infectious: mask the patient, ventilate the room, and screen household contacts.",
+        "Abscesses usually have an air-fluid level and a lower-lobe, aspiration pattern; cancer cavities are thick and irregular."
+      ]
+    },
+    {
+      "id": "rad-axr-sbo",
+      "modality": "axr",
+      "study": "Abdominal X-ray, erect",
+      "image": "/assets/radiology/axr-sbo.jpg",
+      "credit": { "author": "James Heilman, MD", "license": "CC BY-SA 3.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/", "source": "https://commons.wikimedia.org/wiki/File:Upright_X-ray_demonstrating_small_bowel_obstruction.jpg", "changes": "resized" },
+      "patient": { "name": "Kamala Bai", "age": 50, "sex": "F", "place": "Nagpur" },
+      "vignette": "Hysterectomy 8 years ago. Two days of colicky central abdominal pain, repeated bilious vomiting, distension, and no flatus since yesterday. Tinkling bowel sounds. Hernial orifices empty.",
+      "findings": [
+        { "id": "dilated-sb", "label": "Dilated small bowel loops (over 3 cm) in the central abdomen", "keywords": ["dilated small bowel", "small bowel dilatation", "dilated loops", "dilated bowel loops", "small bowel loops", "central loops", "dilated jejunal"], "critical": true, "probe": "Which bowel is dilated, small or large? How do you tell?" },
+        { "id": "fluid-levels", "label": "Multiple air-fluid levels at different heights (step-ladder) on the erect film", "keywords": ["air fluid levels", "air fluid level", "fluid levels", "multiple fluid levels", "step ladder", "stepladder"], "critical": true, "probe": "This is an erect film. What do you see inside those loops?" },
+        { "id": "valvulae", "label": "Valvulae conniventes crossing the full width of the bowel", "keywords": ["valvulae conniventes", "valvulae", "plicae circulares", "stack of coins", "folds cross the whole"], "probe": "What do the mucosal folds look like?" },
+        { "id": "no-colon-gas", "label": "Little or no gas in the colon and rectum", "keywords": ["no colonic gas", "no gas in the colon", "paucity of colonic gas", "no rectal gas", "collapsed colon", "absent colonic gas", "no gas in the rectum"], "probe": "Is there any gas in the large bowel or rectum?" },
+        { "id": "no-free-gas", "label": "No free gas", "keywords": ["no free gas", "no free air", "no pneumoperitoneum"], "probe": "What must you always exclude on an acute abdomen film?" }
+      ],
+      "diagnosis": "Small bowel obstruction (likely adhesive)",
+      "diagnosisKeywords": ["small bowel obstruction", "sbo", "adhesive obstruction", "intestinal obstruction", "small intestinal obstruction", "adhesions"],
+      "diagnosisExclude": ["large bowel", "ileus", "volvulus", "colonic"],
+      "distractors": ["Paralytic ileus", "Sigmoid volvulus", "Acute gastroenteritis"],
+      "teaching": [
+        "3-6-9 rule: small bowel over 3 cm, colon over 6 cm, caecum over 9 cm is dilated.",
+        "Previous surgery means adhesions; in India also think of obstructed hernia and abdominal TB.",
+        "Drip and suck: NG tube, IV fluids, correct potassium, catheter and charting; CT abdomen shows the transition point.",
+        "Peritonism, fever, raised lactate or constant pain suggests strangulation and needs urgent surgery."
+      ]
+    },
+    {
+      "id": "rad-cxr-pneumoperitoneum",
+      "modality": "axr",
+      "study": "Chest X-ray, supine (resus bay) for an acute abdomen",
+      "image": "/assets/radiology/cxr-pneumoperitoneum.jpg",
+      "credit": { "author": "Cerevisae", "license": "CC BY-SA 4.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/", "source": "https://commons.wikimedia.org/wiki/File:Chest_X-ray_showing_presence_of_free_air_under_left_diaphragm.png", "changes": "cropped to the chest film, caption removed, resized" },
+      "patient": { "name": "Ravi Kumar", "age": 45, "sex": "M", "place": "Chennai" },
+      "vignette": "Takes diclofenac most days for back pain, smokes. Sudden severe upper abdominal pain 6 hours ago, now everywhere. Lying still, board-like rigid abdomen, absent bowel sounds. HR 118, BP 100/64.",
+      "findings": [
+        { "id": "free-gas", "label": "Free gas under the left hemidiaphragm", "keywords": ["free gas", "free air", "air under the diaphragm", "gas under the diaphragm", "air under diaphragm", "gas under diaphragm", "pneumoperitoneum", "subdiaphragmatic air", "subdiaphragmatic gas"], "critical": true, "probe": "Look just under the diaphragm on each side. Is there anything there that should not be?" },
+        { "id": "thin-diaphragm", "label": "Diaphragm seen as a thin line with gas above and below it", "keywords": ["thin line", "diaphragm outlined", "both sides of the diaphragm", "thin diaphragm", "diaphragm seen as a line"], "probe": "How can you be sure that gas is outside the stomach?" },
+        { "id": "not-fundus", "label": "Distinguished from the gastric fundus bubble (no rugae, no fluid level, crescent shape)", "keywords": ["gastric bubble", "fundal gas", "not the stomach", "gastric fundus", "stomach bubble", "fundus"], "probe": "On the left, what normal structure contains gas under the diaphragm? How is this different?" },
+        { "id": "supine", "label": "Supine film: free gas is harder to see; an erect film or CT is more sensitive", "keywords": ["supine", "erect film", "erect chest", "sit up", "ct is more sensitive", "lateral decubitus"], "probe": "What projection is this, and how does that affect seeing free gas?" },
+        { "id": "lungs", "label": "Lungs clear, lines and ECG leads in place", "keywords": ["lungs clear", "lung fields clear", "ecg leads", "lines", "no consolidation"], "probe": "Anything else on the chest itself?" }
+      ],
+      "diagnosis": "Pneumoperitoneum from a perforated peptic ulcer",
+      "diagnosisKeywords": ["perforated peptic ulcer", "perforated duodenal ulcer", "perforation", "pneumoperitoneum", "hollow viscus perforation", "perforated ulcer", "perforated viscus"],
+      "diagnosisExclude": ["chilaiditi", "subphrenic abscess", "normal"],
+      "distractors": ["Normal gastric fundal gas", "Subphrenic abscess", "Chilaiditi sign"],
+      "teaching": [
+        "An erect chest film after sitting up for 10 minutes shows as little as 1 to 2 mL of free gas; CT is more sensitive still.",
+        "NSAIDs plus smoking plus sudden pain and a rigid abdomen is a perforated ulcer until proven otherwise.",
+        "Resuscitate, nil by mouth, NG tube, IV PPI and antibiotics, and call the surgeons now: this needs a laparotomy or laparoscopic repair.",
+        "Chilaiditi sign is bowel between liver and diaphragm: you see haustra or folds, and the patient is not sick."
+      ]
+    },
+    {
+      "id": "rad-ecg-stemi",
+      "modality": "ecg",
+      "study": "12-lead ECG",
+      "image": "/assets/radiology/ecg-stemi.jpg",
+      "credit": { "author": "Displaced (Wikimedia Commons user)", "license": "Public domain", "licenseUrl": "https://commons.wikimedia.org/wiki/File:12_Lead_EKG_ST_Elevation_tracing_only.jpg", "source": "https://commons.wikimedia.org/wiki/File:12_Lead_EKG_ST_Elevation_tracing_only.jpg", "changes": "resized" },
+      "patient": { "name": "Gurpreet Singh", "age": 52, "sex": "M", "place": "Ludhiana" },
+      "vignette": "Diabetic smoker. One hour of crushing central chest pain radiating to the left arm, sweating and vomiting. HR 110, BP 140/90, SpO2 95%. ECG done in triage.",
+      "findings": [
+        { "id": "rate", "label": "Sinus tachycardia, about 110 per minute", "keywords": ["tachycardia", "sinus tachycardia", "rate 110", "rate is 110", "heart rate 110", "rate about 110", "rate of 110", "100 to 120"], "probe": "Start with the rate and rhythm." },
+        { "id": "ste-anterior", "label": "ST elevation in V2 to V5 (anterior)", "keywords": ["st elevation in v2", "st elevation in v3", "st elevation in v4", "anterior st elevation", "st elevation v2", "st elevation anterior", "st elevation in the anterior leads", "st elevation in the chest leads", "anterior leads", "v2 to v5", "v2 to v4", "v1 to v4"], "critical": true, "probe": "Look at the chest leads. What is happening to the ST segments, and in which leads?" },
+        { "id": "ste-lateral", "label": "ST elevation also in I and aVL (high lateral extension)", "keywords": ["lead i and avl", "i and avl", "avl", "high lateral", "anterolateral", "lateral leads"], "probe": "Does it extend beyond the chest leads? Check the limb leads." },
+        { "id": "reciprocal", "label": "Reciprocal ST depression in the inferior leads (III, aVF)", "keywords": ["reciprocal", "st depression in iii", "st depression in the inferior", "inferior st depression", "reciprocal change", "reciprocal changes"], "probe": "When you see ST elevation, what do you look for in the opposite leads?" },
+        { "id": "territory", "label": "Territory: anterior wall, LAD artery", "keywords": ["lad", "left anterior descending", "anterior wall", "anterior territory", "anterior mi", "anterior infarct"], "critical": true, "probe": "Which artery is blocked?" }
+      ],
+      "diagnosis": "Acute anterolateral ST-elevation myocardial infarction",
+      "diagnosisKeywords": ["stemi", "st elevation myocardial infarction", "anterior mi", "anterior stemi", "anterolateral stemi", "anterior wall mi", "myocardial infarction", "acute mi", "heart attack"],
+      "diagnosisExclude": ["pericarditis", "nstemi", "non st", "early repolarisation", "early repolarization"],
+      "distractors": ["Acute pericarditis", "Benign early repolarisation", "Non-ST-elevation myocardial infarction"],
+      "teaching": [
+        "STEMI: new ST elevation in two contiguous leads (at least 2 mm in V2 to V3 in men, 1 mm elsewhere) with symptoms.",
+        "Reciprocal depression makes infarction far more likely than pericarditis, which gives widespread concave ST elevation and PR depression.",
+        "Time is muscle: primary PCI within 90 minutes if available, otherwise thrombolysis (tenecteplase or streptokinase) within 30 minutes of arrival.",
+        "Give aspirin 300 mg, a second antiplatelet and heparin per protocol; check for contraindications to lysis."
+      ]
+    },
+    {
+      "id": "rad-ecg-af",
+      "modality": "ecg",
+      "study": "12-lead ECG",
+      "image": "/assets/radiology/ecg-af.jpg",
+      "credit": { "author": "Ewingdo", "license": "CC BY-SA 4.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/", "source": "https://commons.wikimedia.org/wiki/File:ECG_Atrial_Fibrillation_98_bpm.jpg", "changes": "resized" },
+      "patient": { "name": "Saroja Iyer", "age": 78, "sex": "F", "place": "Madurai" },
+      "vignette": "Hypertensive and diabetic. Three days of fluttering in the chest and tiredness. Pulse irregularly irregular, apex rate about 100. BP 150/86. No chest pain.",
+      "findings": [
+        { "id": "irregular", "label": "Irregularly irregular rhythm (R-R intervals vary with no pattern)", "keywords": ["irregularly irregular", "irregular rhythm", "rr intervals vary", "irregular rr", "variable rr", "rr interval irregular", "irregular r r"], "critical": true, "probe": "Take a piece of paper along the rhythm strip. Are the R waves evenly spaced?" },
+        { "id": "no-p", "label": "No P waves; fibrillatory (f) baseline", "keywords": ["no p waves", "absent p waves", "p waves absent", "fibrillatory waves", "f waves", "fibrillatory baseline", "no clear p waves", "chaotic baseline"], "critical": true, "probe": "Before each QRS, is there a P wave?" },
+        { "id": "narrow", "label": "Narrow QRS complexes", "keywords": ["narrow qrs", "narrow complex", "qrs narrow", "normal qrs"], "probe": "How wide are the QRS complexes?" },
+        { "id": "rate", "label": "Ventricular rate about 100 (controlled to borderline)", "keywords": ["rate 100", "rate about 100", "rate of 100", "rate is about 100", "rate 98", "rate around 100", "controlled ventricular rate", "controlled rate", "controlled ventricular response"], "probe": "What is the ventricular rate? How do you count it when the rhythm is irregular?" }
+      ],
+      "diagnosis": "Atrial fibrillation with controlled ventricular response",
+      "diagnosisKeywords": ["atrial fibrillation", "af", "afib", "a fib"],
+      "diagnosisExclude": ["flutter", "multifocal"],
+      "distractors": ["Atrial flutter with variable block", "Multifocal atrial tachycardia", "Sinus arrhythmia"],
+      "teaching": [
+        "Irregularly irregular plus no P waves equals AF. With an irregular rhythm count the QRS complexes in 10 seconds and multiply by 6.",
+        "Score CHA2DS2-VASc (she scores at least 5) and HAS-BLED; she needs anticoagulation unless contraindicated.",
+        "Rate control first in the elderly (beta-blocker or diltiazem; digoxin if sedentary or in heart failure).",
+        "In a young Indian patient with AF, listen for a mid-diastolic murmur: rheumatic mitral stenosis is still common."
+      ]
+    },
+    {
+      "id": "rad-ecg-chb",
+      "modality": "ecg",
+      "study": "Rhythm strips, two leads recorded together",
+      "image": "/assets/radiology/ecg-chb.jpg",
+      "credit": { "author": "Gregory Marcus, MD, MAS, FACC", "license": "CC BY 3.0", "licenseUrl": "https://creativecommons.org/licenses/by/3.0/", "source": "https://commons.wikimedia.org/wiki/File:3rd_degree_heart_block.PNG", "changes": "re-encoded" },
+      "patient": { "name": "Bhagwan Das", "age": 74, "sex": "M", "place": "Jaipur" },
+      "vignette": "Two blackouts this week without warning, one while sitting at breakfast. Dizzy now. HR 38 and regular, BP 100/60. Intermittent cannon a waves in the JVP. Not on any rate-slowing drugs.",
+      "findings": [
+        { "id": "brady", "label": "Slow regular ventricular rate (bradycardia, about 40)", "keywords": ["bradycardia", "slow rate", "rate about 40", "rate 40", "rate is 40", "rate of 40", "slow ventricular rate", "rate 38", "heart rate 40"], "critical": true, "probe": "What is the ventricular rate?" },
+        { "id": "p-regular", "label": "P waves regular and faster than the QRS rate (more P waves than QRS)", "keywords": ["p waves regular", "more p waves", "regular p waves", "p waves march", "p waves marching", "atrial rate", "p wave rate", "p waves are regular"], "critical": true, "probe": "Now forget the QRS. Find every P wave. Are they regular? How many are there?" },
+        { "id": "dissociation", "label": "No relationship between P waves and QRS complexes (AV dissociation, PR varies)", "keywords": ["av dissociation", "atrioventricular dissociation", "no relationship", "pr interval varies", "pr varies", "variable pr", "dissociated", "no association", "independent"], "critical": true, "probe": "Does the PR interval stay the same from beat to beat?" },
+        { "id": "escape", "label": "QRS is an escape rhythm (note its width: wide means a ventricular escape)", "keywords": ["escape rhythm", "escape", "junctional escape", "ventricular escape", "wide qrs", "broad qrs"], "probe": "Where are those QRS complexes coming from?" }
+      ],
+      "diagnosis": "Complete (third-degree) heart block",
+      "diagnosisKeywords": ["complete heart block", "third degree heart block", "third degree av block", "3rd degree", "complete av block", "chb"],
+      "diagnosisExclude": ["mobitz", "second degree", "2nd degree", "first degree", "1st degree", "sinus bradycardia"],
+      "distractors": ["Mobitz type II second-degree AV block", "Sinus bradycardia", "First-degree AV block"],
+      "teaching": [
+        "In complete heart block P waves march through at their own rate and the QRS follows its own slower escape rate.",
+        "Mobitz II: constant PR with sudden dropped beats. CHB: the PR keeps changing because there is no conduction at all.",
+        "Syncope with CHB (Stokes-Adams) needs a permanent pacemaker; meanwhile atropine, then transcutaneous pacing or isoprenaline if unstable.",
+        "Look for reversible causes: inferior MI, hyperkalaemia, digoxin, beta-blockers, Lyme disease."
+      ]
+    },
+    {
+      "id": "rad-ecg-hyperk",
+      "modality": "ecg",
+      "study": "12-lead ECG",
+      "image": "/assets/radiology/ecg-hyperk.jpg",
+      "credit": { "author": "Dr. Michael-Joseph F. Agbayani and Dr. Eddieson Gonzales", "license": "CC BY 4.0", "licenseUrl": "https://creativecommons.org/licenses/by/4.0/", "source": "https://commons.wikimedia.org/wiki/File:Hyperkalemia_ECG.jpg", "changes": "re-encoded" },
+      "patient": { "name": "Kalavati Devi", "age": 60, "sex": "F", "place": "Varanasi" },
+      "vignette": "Chronic kidney disease stage 5, missed her last two dialysis sessions because of travel. Generalised weakness and tingling. HR 80, BP 150/90. Labs pending.",
+      "findings": [
+        { "id": "peaked-t", "label": "Tall, narrow, peaked (tented) T waves, most obvious in the chest leads", "keywords": ["peaked t", "peaked t waves", "tall t waves", "tented t", "tented t waves", "tall peaked t", "tall tented", "hyperacute t"], "critical": true, "probe": "Look at the T waves. Are they the shape and height you expect?" },
+        { "id": "p-flat", "label": "Small or flattened P waves", "keywords": ["flat p waves", "flattened p waves", "small p waves", "p waves flattened", "low p waves", "absent p waves", "loss of p waves"], "probe": "Now the P waves. What has happened to them?" },
+        { "id": "qrs", "label": "Comment on QRS width (widening is a late, dangerous sign)", "keywords": ["qrs width", "wide qrs", "broad qrs", "qrs widening", "widened qrs", "narrow qrs", "qrs is narrow", "qrs normal"], "probe": "How wide is the QRS, and why does that matter here?" },
+        { "id": "context", "label": "Link to the patient: CKD with missed dialysis means hyperkalaemia until proven otherwise", "keywords": ["potassium", "hyperkalaemia", "hyperkalemia", "high potassium", "missed dialysis", "renal failure"], "critical": true, "probe": "Put this ECG together with her history. What do you suspect?" }
+      ],
+      "diagnosis": "Hyperkalaemia",
+      "diagnosisKeywords": ["hyperkalaemia", "hyperkalemia", "high potassium", "raised potassium"],
+      "diagnosisExclude": ["hypokalaemia", "hypokalemia", "hypercalcaemia"],
+      "distractors": ["Hyperacute T waves of an early STEMI", "Hypokalaemia", "Hypercalcaemia"],
+      "teaching": [
+        "Hyperkalaemia sequence: peaked T, then flat P and long PR, then wide QRS, then sine wave and arrest.",
+        "ECG changes mean treat now: 10 mL of 10% calcium gluconate IV to stabilise the heart, then insulin with dextrose and salbutamol to shift potassium.",
+        "Remove potassium definitively: dialysis for her; stop ACE inhibitors, ARBs and potassium-sparing drugs.",
+        "Hyperacute T waves of STEMI are broad-based and come with ST change in a territory; hyperkalaemic T waves are narrow and tented."
+      ]
+    },
+    {
+      "id": "rad-ct-edh",
+      "modality": "ct-head",
+      "study": "Non-contrast CT head, axial",
+      "image": "/assets/radiology/ct-edh.jpg",
+      "credit": { "author": "James Heilman, MD", "license": "CC BY-SA 4.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/", "source": "https://commons.wikimedia.org/wiki/File:EpiduralHematoma.jpg", "changes": "re-encoded" },
+      "patient": { "name": "Imran Sheikh", "age": 19, "sex": "M", "place": "Lucknow" },
+      "vignette": "Fell from a motorbike without a helmet, hit the left side of his head. Knocked out briefly, then talking normally for an hour, now drowsy and vomiting. GCS 11, left pupil sluggish.",
+      "findings": [
+        { "id": "biconvex", "label": "Biconvex (lentiform) hyperdense extra-axial collection", "keywords": ["biconvex", "lentiform", "lens shaped", "lens shaped collection", "convex collection", "lemon shaped"], "critical": true, "probe": "Describe the shape of that bright collection. Which way do its borders bulge?" },
+        { "id": "side", "label": "On the patient's left (right side of the image)", "keywords": ["left sided", "on the left", "left side", "left temporal", "left parietal", "patient's left", "patients left", "left frontal"], "probe": "Which side of the patient is it on? Remember how CT images are displayed." },
+        { "id": "fracture", "label": "Associated skull fracture", "keywords": ["skull fracture", "fracture", "fractured skull", "bone window"], "probe": "Have you looked at the bone next to the collection?" },
+        { "id": "mass-effect", "label": "Mass effect: effaced sulci and compression of the adjacent brain", "keywords": ["mass effect", "midline shift", "effaced sulci", "effacement", "compression", "ventricle compressed", "shift"], "critical": true, "probe": "What is the collection doing to the brain beside it?" },
+        { "id": "other-bleed", "label": "Some bleeding on the opposite side too (contrecoup)", "keywords": ["contrecoup", "contre coup", "opposite side", "other side", "right side as well", "bilateral", "contusion"], "probe": "Is that the only abnormality? Look at the other side." }
+      ],
+      "diagnosis": "Acute extradural haematoma",
+      "diagnosisKeywords": ["extradural haematoma", "extradural hematoma", "epidural haematoma", "epidural hematoma", "extradural", "epidural", "edh"],
+      "diagnosisExclude": ["subdural", "subarachnoid", "intracerebral"],
+      "distractors": ["Acute subdural haematoma", "Intracerebral haemorrhage", "Traumatic subarachnoid haemorrhage"],
+      "teaching": [
+        "Extradural blood is biconvex and stops at the sutures because the dura is stuck there; subdural blood is crescentic and crosses sutures.",
+        "Classically from a temporal bone fracture tearing the middle meningeal artery; the lucid interval is a trap.",
+        "Falling GCS with a dilating pupil is a neurosurgical emergency: protect the airway, call neurosurgery, mannitol or hypertonic saline as a bridge.",
+        "Read every CT head with Blood Can Be Very Bad: blood, cisterns, brain, ventricles, bone."
+      ]
+    },
+    {
+      "id": "rad-ct-sdh",
+      "modality": "ct-head",
+      "study": "Non-contrast CT head, axial",
+      "image": "/assets/radiology/ct-sdh.jpg",
+      "credit": { "author": "Glitzy queen00 (English Wikipedia)", "license": "Public domain", "licenseUrl": "https://commons.wikimedia.org/wiki/File:Trauma_subdural.jpg", "source": "https://commons.wikimedia.org/wiki/File:Trauma_subdural.jpg", "changes": "resized" },
+      "patient": { "name": "Joseph D'Souza", "age": 72, "sex": "M", "place": "Mangaluru" },
+      "vignette": "Takes warfarin for a mechanical valve and drinks heavily. Slipped in the bathroom last night and hit his head. Since morning, confused and weak on one side. GCS 13. INR 3.8.",
+      "findings": [
+        { "id": "crescent", "label": "Crescent-shaped hyperdense collection along the cerebral convexity", "keywords": ["crescent", "crescentic", "concave", "banana shaped", "follows the convexity", "along the convexity"], "critical": true, "probe": "Describe the shape of that collection against the skull." },
+        { "id": "crosses-sutures", "label": "Crosses suture lines and spreads widely over the hemisphere", "keywords": ["crosses suture", "crosses the sutures", "crosses sutures", "spreads over the hemisphere", "not limited by sutures", "extends along"], "probe": "Does it stop anywhere, or does it spread over the whole hemisphere?" },
+        { "id": "midline-shift", "label": "Midline shift away from the collection", "keywords": ["midline shift", "shift of the midline", "falx shifted", "mass effect"], "critical": true, "probe": "Where is the midline?" },
+        { "id": "effacement", "label": "Effaced sulci and a compressed lateral ventricle on the same side", "keywords": ["effaced sulci", "sulcal effacement", "compressed ventricle", "ventricle compressed", "effacement", "lateral ventricle compressed"], "probe": "Look at the ventricles and the sulci on that side." },
+        { "id": "density", "label": "Hyperdense (bright) blood, so acute", "keywords": ["hyperdense", "acute blood", "bright", "high density", "fresh blood"], "probe": "How old is this blood, judging by its density?" }
+      ],
+      "diagnosis": "Acute subdural haematoma",
+      "diagnosisKeywords": ["subdural haematoma", "subdural hematoma", "subdural", "sdh", "acute subdural"],
+      "diagnosisExclude": ["extradural", "epidural", "subarachnoid", "chronic subdural"],
+      "distractors": ["Acute extradural haematoma", "Chronic subdural haematoma", "Subarachnoid haemorrhage"],
+      "teaching": [
+        "Subdural bleeds come from torn bridging veins; the elderly, alcohol users and anticoagulated patients are at risk after minor falls.",
+        "Acute blood is bright; it becomes grey (isodense) at 1 to 3 weeks and dark when chronic.",
+        "Reverse his warfarin now (vitamin K plus prothrombin complex concentrate or FFP) and discuss with neurosurgery.",
+        "Thickness over 10 mm or midline shift over 5 mm usually means evacuation."
+      ]
+    },
+    {
+      "id": "rad-ct-stroke",
+      "modality": "ct-head",
+      "study": "Non-contrast CT head, axial",
+      "image": "/assets/radiology/ct-stroke.jpg",
+      "credit": { "author": "James Heilman, MD", "license": "CC BY-SA 4.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/", "source": "https://commons.wikimedia.org/wiki/File:Leftsidedstroke.png", "changes": "re-encoded" },
+      "patient": { "name": "Shankar Reddy", "age": 66, "sex": "M", "place": "Vijayawada" },
+      "vignette": "Hypertensive diabetic. Woke up yesterday unable to move his right arm and leg and unable to speak. Brought in now, about 30 hours later. Drowsy, right hemiplegia, global aphasia.",
+      "findings": [
+        { "id": "hypodensity", "label": "Large hypodense (dark) area in the left MCA territory involving grey and white matter", "keywords": ["hypodense", "hypodensity", "low density", "hypoattenuation", "dark area", "mca territory", "left mca", "middle cerebral artery territory", "wedge shaped"], "critical": true, "probe": "Compare the two hemispheres. Is one darker?" },
+        { "id": "side", "label": "Left hemisphere (right side of the image), fitting his right-sided weakness and aphasia", "keywords": ["left hemisphere", "left sided", "left side", "on the left", "left cerebral", "left parietal", "left temporal", "left frontal"], "probe": "Which hemisphere, and does it fit his signs?" },
+        { "id": "grey-white", "label": "Loss of grey-white matter differentiation", "keywords": ["grey white", "gray white", "loss of grey white differentiation", "loss of gray white", "insular ribbon", "loss of differentiation"], "probe": "In that area, can you still tell grey matter from white matter?" },
+        { "id": "mass-effect", "label": "Mass effect from oedema: midline shift to the right, compressed left lateral ventricle", "keywords": ["midline shift", "mass effect", "oedema", "edema", "swelling", "compressed ventricle", "ventricle compressed", "shift"], "critical": true, "probe": "What is the swelling doing to the midline and the ventricles?" },
+        { "id": "no-blood", "label": "No haemorrhage (no hyperdense blood)", "keywords": ["no haemorrhage", "no hemorrhage", "no bleed", "no blood", "not haemorrhagic", "not hemorrhagic", "no hyperdensity"], "critical": true, "probe": "Before calling it ischaemic, what must you exclude?" }
+      ],
+      "diagnosis": "Established left MCA territory ischaemic infarct with cerebral oedema",
+      "diagnosisKeywords": ["ischaemic stroke", "ischemic stroke", "infarct", "infarction", "mca infarct", "mca stroke", "cerebral infarction", "malignant mca"],
+      "diagnosisExclude": ["haemorrhagic", "hemorrhagic", "haemorrhage", "hemorrhage", "abscess", "tumour", "tumor", "glioma", "glioblastoma"],
+      "distractors": ["Intracerebral haemorrhage", "Glioblastoma with surrounding oedema", "Cerebral abscess"],
+      "teaching": [
+        "Early ischaemia is subtle; a clearly dark, swollen territory like this means the infarct is hours to days old.",
+        "He is far outside the thrombolysis window (4.5 hours) and wake-up timing is unknown; thrombectomy decisions need perfusion imaging.",
+        "Large MCA infarcts swell at 2 to 5 days: watch GCS, and in younger patients consider decompressive hemicraniectomy.",
+        "Aspirin after haemorrhage is excluded, swallow screen before oral intake, and treat BP, sugar and lipids for secondary prevention."
+      ]
+    },
+    {
+      "id": "rad-us-gallstones",
+      "modality": "us",
+      "study": "Ultrasound, gallbladder",
+      "image": "/assets/radiology/us-gallstones.jpg",
+      "credit": { "author": "James Heilman, MD", "license": "CC BY-SA 3.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/", "source": "https://commons.wikimedia.org/wiki/File:Gallstones.PNG", "changes": "re-encoded" },
+      "patient": { "name": "Sunita Sharma", "age": 42, "sex": "F", "place": "Patna" },
+      "vignette": "Mother of four, overweight. Constant right upper abdominal pain for 2 days after a heavy oily meal, radiating to the right shoulder, with fever and vomiting. Temp 38.4, Murphy sign positive. No jaundice.",
+      "findings": [
+        { "id": "echogenic", "label": "Echogenic (bright) focus in the gallbladder neck", "keywords": ["echogenic focus", "echogenic", "bright focus", "hyperechoic", "stone in the neck", "gallstone", "stone"], "critical": true, "probe": "Inside the gallbladder, what do you see?" },
+        { "id": "shadow", "label": "Posterior acoustic shadowing behind it", "keywords": ["acoustic shadow", "acoustic shadowing", "posterior shadowing", "shadowing", "shadow"], "critical": true, "probe": "What happens to the image behind that bright spot?" },
+        { "id": "impacted", "label": "Stone impacted in the neck (does not move with position)", "keywords": ["impacted", "neck of the gallbladder", "gallbladder neck", "does not move", "not mobile", "lodged"], "probe": "Where exactly is the stone, and does that matter?" },
+        { "id": "wall", "label": "Thickened gallbladder wall (over 3 mm)", "keywords": ["wall thickening", "thickened wall", "thick wall", "wall thickness", "gallbladder wall"], "critical": true, "probe": "Measure the wall. Is it normal?" },
+        { "id": "murphy", "label": "Correlate with a sonographic Murphy sign and look for pericholecystic fluid and CBD size", "keywords": ["murphy", "pericholecystic", "cbd", "common bile duct", "sonographic murphy"], "probe": "What would you check while scanning her, beyond the picture itself?" }
+      ],
+      "diagnosis": "Acute calculous cholecystitis",
+      "diagnosisKeywords": ["acute cholecystitis", "calculous cholecystitis", "cholecystitis"],
+      "diagnosisExclude": ["polyp", "sludge", "carcinoma", "cancer", "biliary colic only"],
+      "distractors": ["Gallbladder polyp", "Biliary sludge", "Carcinoma of the gallbladder"],
+      "teaching": [
+        "A stone is bright, casts a clean acoustic shadow and moves with position; a polyp does not shadow or move.",
+        "Stone plus wall over 3 mm plus sonographic Murphy plus fever is acute cholecystitis (Tokyo guidelines).",
+        "Treat with fluids, analgesia and antibiotics; early laparoscopic cholecystectomy within a week is best.",
+        "In the Gangetic belt gallbladder cancer is common: an irregular wall or mass with stones needs further imaging."
+      ]
+    },
+    {
+      "id": "rad-xr-colles",
+      "modality": "xr-limb",
+      "study": "Wrist X-ray, PA and lateral",
+      "image": "/assets/radiology/xr-colles.jpg",
+      "credit": { "author": "Lucien Monfils", "license": "CC BY-SA 3.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/", "source": "https://commons.wikimedia.org/wiki/File:Collesfracture.jpg", "changes": "resized" },
+      "patient": { "name": "Meenakshi Pillai", "age": 64, "sex": "F", "place": "Coimbatore" },
+      "vignette": "Post-menopausal, slipped at the vegetable market and fell on her outstretched left hand. Painful, swollen wrist with a dinner-fork deformity. Fingers pink, sensation intact.",
+      "findings": [
+        { "id": "distal-radius", "label": "Transverse fracture of the distal radius metaphysis, about 2 cm above the wrist joint", "keywords": ["distal radius fracture", "fracture of the distal radius", "distal radial fracture", "fracture distal radius", "distal radius", "radius fracture"], "critical": true, "probe": "Trace the cortex of each bone. Where is the break?" },
+        { "id": "dorsal", "label": "Dorsal displacement and dorsal angulation of the distal fragment on the lateral view", "keywords": ["dorsal displacement", "dorsally displaced", "dorsal angulation", "dorsally angulated", "posterior displacement", "posteriorly displaced", "dinner fork", "dorsal tilt"], "critical": true, "probe": "On the side view, which way has the distal fragment moved?" },
+        { "id": "ulnar-styloid", "label": "Associated ulnar styloid fracture", "keywords": ["ulnar styloid", "ulna styloid", "styloid fracture", "fracture of the ulnar styloid"], "probe": "Is the radius the only bone broken?" },
+        { "id": "shortening", "label": "Radial shortening / impaction", "keywords": ["shortening", "shortened", "impaction", "impacted", "radial height"], "probe": "Compare the lengths of the radius and the ulna at the wrist." },
+        { "id": "two-views", "label": "Two views at right angles reviewed", "keywords": ["two views", "lateral view", "pa and lateral", "both views", "ap and lateral"], "probe": "How many views do you need for a fracture, and have you used both?" }
+      ],
+      "diagnosis": "Colles fracture of the left distal radius with ulnar styloid fracture",
+      "diagnosisKeywords": ["colles", "colles fracture", "colles' fracture"],
+      "diagnosisExclude": ["smith", "barton", "scaphoid"],
+      "distractors": ["Smith fracture", "Barton fracture", "Scaphoid waist fracture"],
+      "teaching": [
+        "Colles: distal radius, dorsal displacement and angulation, from a fall on the outstretched hand. Smith is the reverse (volar).",
+        "Check the median nerve and circulation before and after reduction.",
+        "Closed reduction under haematoma block and a below-elbow cast, then a check film; unstable or intra-articular fractures need fixation.",
+        "A fragility fracture at 64 means osteoporosis: arrange a DEXA scan and start bone protection."
+      ]
+    },
+    {
+      "id": "rad-xr-nof",
+      "modality": "xr-limb",
+      "study": "Hip X-ray, AP",
+      "image": "/assets/radiology/xr-nof.jpg",
+      "credit": { "author": "Booyabazooka", "license": "CC BY-SA 3.0", "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/", "source": "https://commons.wikimedia.org/wiki/File:Cdm_hip_fracture_343.jpg", "changes": "resized" },
+      "patient": { "name": "Ganpat Rao Jadhav", "age": 76, "sex": "M", "place": "Kolhapur" },
+      "vignette": "Slipped on a wet bathroom floor. Cannot stand. The leg is shortened and externally rotated; pain on any hip movement. On treatment for BP; walks with a stick.",
+      "findings": [
+        { "id": "neck-fracture", "label": "Fracture line through the femoral neck", "keywords": ["femoral neck fracture", "fracture of the femoral neck", "neck of femur fracture", "fracture neck of femur", "fractured neck of femur", "neck of femur", "femoral neck", "subcapital", "intracapsular"], "critical": true, "probe": "Follow the cortex from the femoral head down the neck. Where does it break?" },
+        { "id": "displacement", "label": "Displacement with shortening of the femoral neck", "keywords": ["displaced", "displacement", "shortening", "shortened", "angulated", "angulation", "varus"], "critical": true, "probe": "Is the fracture displaced?" },
+        { "id": "shenton", "label": "Shenton's line disrupted", "keywords": ["shenton", "shentons line", "shenton's line"], "probe": "Trace the curve from the inferior border of the femoral neck to the pubic ramus. Is it smooth?" },
+        { "id": "intracapsular", "label": "Intracapsular (proximal to the trochanters), which risks the femoral head blood supply", "keywords": ["intracapsular", "blood supply", "avascular necrosis", "avn", "garden"], "probe": "Is this inside or outside the joint capsule, and why does that change the operation?" },
+        { "id": "other", "label": "Check the pubic rami and the other hip", "keywords": ["pubic rami", "pubic ramus", "other hip", "opposite hip", "pelvis intact"], "probe": "What else on a pelvis film can mimic a hip fracture?" }
+      ],
+      "diagnosis": "Displaced intracapsular fracture of the neck of femur",
+      "diagnosisKeywords": ["neck of femur fracture", "fracture neck of femur", "fractured neck of femur", "femoral neck fracture", "intracapsular fracture", "subcapital fracture", "nof fracture", "hip fracture"],
+      "diagnosisExclude": ["intertrochanteric", "dislocation", "pubic ramus", "pubic rami"],
+      "distractors": ["Intertrochanteric fracture", "Posterior hip dislocation", "Pubic ramus fracture"],
+      "teaching": [
+        "Shortened, externally rotated leg after a fall in an elderly person is a hip fracture until proven otherwise.",
+        "Displaced intracapsular fractures cut off the femoral head blood supply: hemi- or total hip arthroplasty, not fixation, in the elderly.",
+        "Extracapsular (intertrochanteric) fractures heal well with a dynamic hip screw or nail.",
+        "Operate within 36 hours, give a fascia iliaca block for pain, and screen for delirium, falls risk and osteoporosis."
+      ]
+    }
+  ]
+}

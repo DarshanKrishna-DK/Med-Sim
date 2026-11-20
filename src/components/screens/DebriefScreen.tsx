@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ThinkingOrb } from 'thinking-orbs';
-import { Basket } from '@lucasmarkes/hairline/react';
+import { ClipboardArt } from '../ui/pixel/MedArt';
 import { store, useStore } from '../../game/store';
 import { useDebrief } from '../../agents/useDebrief';
 import type { CaseEvaluationInput, CriterionResult, DomainScore, VerdictBand } from '../../agents/customTools';
 import { getRecommendation } from '../../data/guidelines';
 import { getEvalHistory, saveEvalHistory } from '../../data/evalHistory';
+import { practiceHistoryExtras } from '../../data/practiceHistory';
 import { POLYCLINIC_DIAGNOSIS_LABELS } from '../../data/polyclinicPatients';
 import { testById } from '../../data/tests';
 import { medicationById } from '../../data/medications';
@@ -57,7 +58,7 @@ export function DebriefScreen() {
         {!encounter ? (
           <div className="empty empty--page">
             <div className="empty-figure">
-              <Basket intensity={0.5} label="An empty wire basket" />
+              <ClipboardArt />
             </div>
             <p className="empty-title">Nothing to debrief yet</p>
             <p className="empty-body">Finish a consultation and the attending's marking appears here.</p>
@@ -109,6 +110,7 @@ function LiveDebrief({
       verdict: d.evaluation.global_rating,
       evaluation: d.evaluation,
       patientSnapshot: encounter,
+      ...practiceHistoryExtras(encounter, d.evaluation, d.simple),
     });
   }, [d.evaluation, encounter]);
 

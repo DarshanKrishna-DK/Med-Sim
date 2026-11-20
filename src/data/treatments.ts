@@ -20,6 +20,24 @@ export const TREATMENTS: Treatment[] = [
   { id: 'admit-floor', name: 'Admit to floor', category: 'disposition' },
   { id: 'observe', name: 'Observation unit', category: 'disposition' },
   { id: 'discharge', name: 'Discharge home', category: 'disposition' },
+  // Added for the geriatrics ... anaesthesiology clinics (newDomainCases.ts).
+  { id: 'antivenom', name: 'Anti-snake venom (polyvalent ASV) IV', category: 'medication' },
+  { id: 'rabies-pep', name: 'Rabies PEP (wound wash, vaccine, RIG)', category: 'medication' },
+  { id: 'tetanus-prophylaxis', name: 'Tetanus prophylaxis (Td)', category: 'medication' },
+  { id: 'atropine', name: 'Atropine IV, titrated to atropinisation', category: 'medication' },
+  { id: 'iv-dextrose', name: 'IV dextrose', category: 'medication' },
+  { id: 'ors-zinc', name: 'Oral rehydration (ORS) + zinc', category: 'medication' },
+  { id: 'active-cooling', name: 'Active cooling (cold-water immersion / evaporative)', category: 'procedure' },
+  { id: 'decontamination', name: 'Decontamination (remove clothes, wash skin)', category: 'procedure' },
+  { id: 'wound-care', name: 'Wound care (wash, debride, drain, dress)', category: 'procedure' },
+  { id: 'immobilise', name: 'Immobilise (splint, brace, harness or crutches)', category: 'procedure' },
+  { id: 'rehab-plan', name: 'Structured rehab / graded return-to-play plan', category: 'procedure' },
+  { id: 'dental-procedure', name: 'Definitive dental treatment (RCT, extraction, scaling, drainage)', category: 'procedure' },
+  { id: 'kmc', name: 'Kangaroo mother care (skin-to-skin)', category: 'procedure' },
+  { id: 'deprescribe', name: 'Medication review and deprescribing', category: 'procedure' },
+  { id: 'counselling', name: 'Counselling and shared decision-making', category: 'procedure' },
+  { id: 'clear-for-surgery', name: 'Clear for surgery (with anaesthetic plan)', category: 'disposition' },
+  { id: 'defer-surgery', name: 'Defer elective surgery and optimise', category: 'disposition' },
 ];
 
 export const treatmentById = (id: string) => TREATMENTS.find((t) => t.id === id);

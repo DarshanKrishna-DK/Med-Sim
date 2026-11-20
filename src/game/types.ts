@@ -18,12 +18,20 @@ export type Screen =
   | 'history'
   | 'agenticRounds'
   | 'agentTopology'
+  /** Emergency triage drill (2D + HUD). */
+  | 'triage'
   /** 3D hospital corridor hub: walk to a specialty door to enter its clinic. */
   | 'corridor'
   /** Teacher Portal lecture hall: whiteboard lessons with a voice teacher. */
   | 'classroom'
-  /** Emergency triage drill (2D + HUD). */
-  | 'triage';
+  /** Radiology reading room: describe films to a consultant radiologist. */
+  | 'radiology'
+  /** OSCE exam mode: station setup + candidate instructions. */
+  | 'osce'
+  /** OSCE examiner marking sheet (live or a saved one). */
+  | 'osceResult'
+  /** "My progress" dashboard built from saved debriefs. */
+  | 'progress';
 
 export type AvatarStyle = 'cute' | 'portrait' | 'animal' | 'initials';
 export type RoomLayout = 'side' | 'front';
@@ -207,6 +215,35 @@ export interface ActivePatient {
   }>;
   /** Follow-up booked for this patient (by the trainee or the nurse agent). */
   followUp?: { inDays: number; reason: string };
+  /** Body systems the trainee examined, in order (by voice or click). */
+  examsPerformed?: ExamSystem[];
+  /** Findings per examined system, once /agent/exam/perform answered. */
+  examResults?: Partial<Record<ExamSystem, ExamResult>>;
+}
+
+// ── Physical examination ──
+
+export type ExamSystem =
+  | 'general' | 'vitals' | 'cardio' | 'resp' | 'abdomen' | 'neuro'
+  | 'msk' | 'skin' | 'ent' | 'eye' | 'obgyn' | 'paeds';
+
+export type ExamSound =
+  | 'normal-heart' | 'murmur-systolic' | 'murmur-diastolic' | 's3' | 'pericardial-rub'
+  | 'normal-breath' | 'wheeze' | 'crackles' | 'bronchial' | 'absent';
+
+export interface ExamFinding {
+  label: string;
+  value: string;
+  abnormal: boolean;
+}
+
+export interface ExamResult {
+  system: ExamSystem;
+  findings: ExamFinding[];
+  /** 1-2 sentences, as the examining doctor would note it. */
+  summary: string;
+  sound: ExamSound | null;
+  performedAt: number;
 }
 
 // ── Nurse agent (agentic orders), run feed shown live in the UI ──
@@ -303,4 +340,31 @@ export interface GameState {
   /** True when the doctor walks back out of the Teacher Portal classroom:
    *  the corridor respawns them in front of the portal. */
   corridorReturnPortal: boolean;
+  /** Non-clinic room (e.g. 'radiology') whose corridor door the doctor last
+   *  walked out of; checked after the portal and clinic. */
+  corridorReturnRoom?: 'radiology' | null;
+  /** OSCE exam station (setup, running or just finished); null outside
+   *  OSCE mode. See `isOsceLive` in store.ts. */
+  osce: OsceSession | null;
+}
+
+// ── OSCE exam mode ──
+
+export interface OsceSession {
+  /** Pool the station was drawn from ('all-specialties' = mixed). */
+  specialty: ClinicId;
+  caseId: string;
+  durationMs: number;
+  /** Optional, printed on the report only (never sent to the backend). */
+  candidateName: string;
+  /** Set when the candidate presses "Start station" (timer origin). */
+  startedAt: number | null;
+  /** Set at the bell (time up or the candidate ends early). */
+  endedAt: number | null;
+  /** Encounter snapshot taken at the bell, kept even with no chart activity. */
+  encounter: ActivePatient | null;
+  /** Coach alerts collected silently during the station. */
+  alerts: CoachAlert[];
+  /** evalHistory id once the station is marked and saved. */
+  savedId: string | null;
 }

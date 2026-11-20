@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { ThinkingOrb } from 'thinking-orbs';
-import { Hub } from '@lucasmarkes/hairline/react';
+import { MedicineTrayArt } from '../ui/pixel/MedArt';
 import type { NurseRun, NurseStep } from '../../agents/nurseAgent';
 import { prefersReducedMotion } from '../ui/chrome';
 
@@ -145,7 +145,7 @@ export function NurseFeed({ runs: allRuns }: { runs: NurseRun[] }) {
     return (
       <div className="feed-empty">
         <div className="feed-empty-figure">
-          <Hub intensity={0.5} label="A hub with eight tiles on dashed links: the nurse and the tools she can call" />
+          <MedicineTrayArt />
         </div>
         <p className="empty-title">No orders yet</p>
         <p className="empty-body">

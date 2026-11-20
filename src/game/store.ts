@@ -4,6 +4,9 @@ import type {
   AvatarStyle,
   CoachAlert,
   EndConfirmChecks,
+  ExamResult,
+  ExamSystem,
+  OsceSession,
   GameState,
   NurseRun,
   PatientCase,
@@ -89,6 +92,7 @@ function hasEncounterActivity(p: ActivePatient): boolean {
     p.orderedTestIds.length > 0 ||
     p.givenTreatmentIds.length > 0 ||
     (p.prescriptions?.length ?? 0) > 0 ||
+    (p.examsPerformed?.length ?? 0) > 0 ||
     p.submittedDiagnosisId !== null
   );
 }
@@ -126,6 +130,7 @@ class Store {
     coachAlerts: [],
     corridorReturnClinic: null,
     corridorReturnPortal: false,
+    osce: null,
   };
 
   private listeners = new Set<() => void>();
@@ -252,7 +257,23 @@ class Store {
       screen: 'corridor',
       corridorReturnClinic: fromLobby ? null : this.state.corridorReturnClinic,
       corridorReturnPortal: fromLobby ? false : this.state.corridorReturnPortal,
+      corridorReturnRoom: fromLobby ? null : this.state.corridorReturnRoom,
     });
+
+  /** Corridor Radiology door → reading room. Call inside the click/keydown
+   *  so the AudioContext is unlocked for the consultant's voice. */
+  enterRadiology = () => {
+    try {
+      ensureAudioContext();
+    } catch {
+      /* no Web Audio; the reading-room voice panel surfaces it */
+    }
+    this.set({ screen: 'radiology', corridorReturnRoom: 'radiology' });
+  };
+
+  /** Leave the reading room: the doctor reappears outside the Radiology door. */
+  exitRadiologyToCorridor = () =>
+    this.set({ screen: 'corridor', corridorReturnClinic: null, corridorReturnPortal: false, corridorReturnRoom: 'radiology' });
 
   /** Corridor Teacher Portal → lecture hall. Call inside the click/keydown
    *  so the AudioContext is unlocked for the teacher's voice. */
@@ -389,6 +410,18 @@ class Store {
   setPolyclinicFollowUp = (followUp: { inDays: number; reason: string } | undefined) =>
     this.updatePolyclinicPatient((p) => ({ ...p, followUp }));
 
+  /** Physical exam: mark a body system as examined (start of the exam) and,
+   *  once the backend answers, store its findings. */
+  recordPolyclinicExam = (system: ExamSystem, result?: ExamResult) =>
+    this.updatePolyclinicPatient((p) => {
+      const done = p.examsPerformed ?? [];
+      return {
+        ...p,
+        examsPerformed: done.includes(system) ? done : [...done, system],
+        ...(result ? { examResults: { ...p.examResults, [system]: result } } : {}),
+      };
+    });
+
   // ── nurse agent run feed ───────────────────────
   pushAgentRun = (run: NurseRun) =>
     this.set({ agentRuns: [...this.state.agentRuns, run] });
@@ -415,6 +448,81 @@ class Store {
     this.set({
       coachAlerts: this.state.coachAlerts.map((a) => (a.id === id ? { ...a, dismissed: true } : a)),
     });
+
+  // ── OSCE exam mode ─────────────────────────────
+  /** Open the OSCE setup / candidate-instructions screen. */
+  openOsce = () => this.set({ screen: 'osce', viewedEvalHistoryId: null });
+
+  /** Draw a random station from a specialty ('all-specialties' = mixed),
+   *  preferring cases not yet attempted this session. Stays on the
+   *  instructions card until `startOsceStation`. */
+  drawOsceStation = (specialty: ClinicId, candidateName = '', durationMs = OSCE_DURATION_MS) => {
+    const pool = specialty === 'all-specialties' ? CASES : CASES.filter((c) => c.clinic === specialty);
+    if (pool.length === 0) return;
+    const fresh = pool.filter((c) => !this.attemptedCaseIds.has(c.id) && c.id !== this.state.osce?.caseId);
+    const from = fresh.length ? fresh : pool;
+    const pick = from[Math.floor(Math.random() * from.length)];
+    const osce: OsceSession = {
+      specialty,
+      caseId: pick.id,
+      durationMs,
+      candidateName: candidateName.trim(),
+      startedAt: null,
+      endedAt: null,
+      encounter: null,
+      alerts: [],
+      savedId: null,
+    };
+    this.set({ osce, screen: 'osce', viewedEvalHistoryId: null });
+  };
+
+  /** "Start station": the timer starts and the patient is seated. Call
+   *  inside the click handler (warms the AudioContext for voice). */
+  startOsceStation = () => {
+    const o = this.state.osce;
+    if (!o) return;
+    this.set({ osce: { ...o, startedAt: Date.now(), endedAt: null, encounter: null, alerts: [], savedId: null } });
+    this.acceptNextPatient(o.caseId);
+  };
+
+  /** The bell: snapshot the encounter and the silently collected alerts
+   *  before the patient walks out. No-op unless a station is live. */
+  captureOsceEncounter = () => {
+    const s = this.state;
+    if (!isOsceLive(s) || !s.osce) return;
+    const p = s.polyclinic.patient;
+    this.set({
+      osce: {
+        ...s.osce,
+        endedAt: Date.now(),
+        encounter: p,
+        alerts: s.coachAlerts.filter((a) => a.caseId === s.osce?.caseId),
+      },
+    });
+  };
+
+  /** Remember which evalHistory row holds this station's marking. */
+  setOsceSavedId = (id: string) => {
+    const o = this.state.osce;
+    if (o) this.set({ osce: { ...o, savedId: id } });
+  };
+
+  /** Open a saved OSCE marking sheet from history / progress. */
+  viewOsceResult = (historyId: string) => this.set({ viewedEvalHistoryId: historyId, screen: 'osceResult' });
+
+  /** Leave OSCE mode entirely. */
+  exitOsce = (screen: Screen = 'library') => this.set({ osce: null, screen });
+}
+
+/** Default OSCE station length (8 minutes). */
+export const OSCE_DURATION_MS = 8 * 60 * 1000;
+
+/** True while an OSCE station is running for the seated patient: the timer
+ *  has started, the bell hasn't gone, and the patient is the station case.
+ *  The coach hides its alerts and "?" explanations while this holds. */
+export function isOsceLive(s: GameState): boolean {
+  const o = s.osce;
+  return !!o && o.startedAt !== null && o.endedAt === null && s.polyclinic.patient?.case.id === o.caseId;
 }
 
 export const store = new Store();
@@ -455,4 +563,9 @@ export function useCoachAlerts(): CoachAlert[] {
 /** Nurse-agent run feed for the current patient (oldest first). */
 export function useAgentRuns(): NurseRun[] {
   return useStore((s) => s.agentRuns);
+}
+
+/** True while an OSCE station is running (see `isOsceLive`). */
+export function useOsceLive(): boolean {
+  return useStore(isOsceLive);
 }

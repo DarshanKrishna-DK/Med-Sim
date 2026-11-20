@@ -19,6 +19,7 @@ const GLYPHS = {
   scope: ['a.....a...', 'a.....a...', 'a.....a...', '.a...a....', '..aaa.....', '...a......', '...a...aa.', '...a..a..a', '....aaa.aa'],
   scalpel: ['........aa', '.......aba', '......aba.', '.....aba..', '....aaa...', '...aa.....', '..aa......', '.aa.......'],
   cross: ['...aaa....', '...aba....', 'aaaabaaaa.', 'abbbbbbba.', 'aaaabaaaa.', '...aba....', '...aaa....'],
+  tooth: ['.aaa..aaa.', 'aabaaaabaa', 'abaaaaaaaa', 'aaaaaaaaaa', '.aaaaaaaa.', '.aaa..aaa.', '.aa....aa.', '.a......a.'],
 } as const;
 
 export type GlyphName = keyof typeof GLYPHS;
@@ -49,6 +50,14 @@ export const CLINIC_GLYPH: Record<ClinicId, GlyphName> = {
   pediatrics: 'bottle',
   'general-surgery': 'scalpel',
   'cardiothoracic-vascular-surgery': 'heart',
+  geriatrics: 'scope',
+  'palliative-care': 'hand',
+  neonatology: 'bottle',
+  'sports-medicine': 'bone',
+  'plastic-surgery': 'scalpel',
+  dentistry: 'tooth',
+  'emergency-medicine': 'cross',
+  anesthesiology: 'lungs',
 };
 
 export function PixelGlyph({

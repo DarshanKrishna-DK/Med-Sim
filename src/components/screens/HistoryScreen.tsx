@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Drawer } from '@lucasmarkes/hairline/react';
+import { StethoscopeArt } from '../ui/pixel/MedArt';
 import { store } from '../../game/store';
 import { listEvalHistory, clearEvalHistory } from '../../data/evalHistory';
 import { AppHeader } from '../ui/chrome';
@@ -34,7 +34,7 @@ export function HistoryScreen() {
         {entries.length === 0 ? (
           <div className="empty">
             <div className="empty-figure">
-              <Drawer intensity={0.5} label="A cabinet of three empty drawers" />
+              <StethoscopeArt />
             </div>
             <p className="empty-title">No debriefs saved yet</p>
             <p className="empty-body">Finish a consultation and its marking lands here.</p>
@@ -47,11 +47,13 @@ export function HistoryScreen() {
             <ul className="history-list">
               {entries.map((e) => (
                 <li key={e.id}>
-                  <button type="button" className="history-row" onClick={() => store.viewEvalHistory(e.id)}>
+                  <button type="button" className="history-row" onClick={() => (e.osce ? store.viewOsceResult(e.id) : store.viewEvalHistory(e.id))}>
                     <span className="history-name">
                       {e.caseName}, {e.caseAge}{e.caseGender}
                     </span>
-                    <span className="history-dx">{e.diagnosisLabel}</span>
+                    <span className="history-dx">
+                      {e.mode === 'osce' && <span className="chip">OSCE</span>} {e.diagnosisLabel}
+                    </span>
                     <span className={`tag tag--${VERDICT_TONE[e.verdict] ?? 'urgent'}`}>{VERDICT_WORD[e.verdict] ?? e.verdict}</span>
                     <time className="history-time" dateTime={new Date(e.savedAt).toISOString()}>
                       {new Date(e.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}

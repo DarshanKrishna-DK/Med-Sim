@@ -115,6 +115,26 @@ export const TESTS: Test[] = [
   { id: 'ascitic-fluid',   name: 'Ascitic Fluid Analysis',           category: 'lab', turnaroundSec: 70 },
   { id: 'sputum-afb',      name: 'Sputum AFB / GeneXpert',           category: 'lab', turnaroundSec: 70 },
   { id: 'peripheral-smear',name: 'Peripheral Smear / Bone Marrow',   category: 'lab', turnaroundSec: 70 },
+
+  // ───────── Added for the geriatrics ... anaesthesiology clinics ─────────
+  { id: 'orthostatic-bp',  name: 'Lying-Standing BP (orthostatic)',  category: 'bedside', turnaroundSec: 20 },
+  { id: 'cognitive-screen',name: 'Cognitive Screen (4AT / MMSE)',    category: 'bedside', turnaroundSec: 25 },
+  { id: 'airway-exam',     name: 'Airway Assessment (Mallampati, TMD, mouth opening)', category: 'bedside', turnaroundSec: 15 },
+  { id: 'scat6',           name: 'SCAT6 Concussion Assessment',      category: 'bedside', turnaroundSec: 30 },
+  { id: 'pulp-test',       name: 'Dental Pulp Vitality Test (cold / EPT)', category: 'bedside', turnaroundSec: 15 },
+  { id: 'wbct20',          name: '20-min Whole Blood Clotting Test (20WBCT)', category: 'bedside', turnaroundSec: 25 },
+  { id: 'tsb',             name: 'Serum Bilirubin (total / direct)', category: 'lab', turnaroundSec: 35 },
+  { id: 'ck',              name: 'Creatine Kinase (CK)',             category: 'lab', turnaroundSec: 30 },
+  { id: 'cholinesterase',  name: 'Serum Cholinesterase',             category: 'lab', turnaroundSec: 40 },
+  { id: 'tryptase',        name: 'Serum Mast-cell Tryptase',         category: 'lab', turnaroundSec: 60 },
+  { id: 'wound-cx',        name: 'Wound Swab Gram Stain & Culture',  category: 'lab', turnaroundSec: 60 },
+  { id: 'conj-swab',       name: 'Conjunctival Swab (Gram stain, culture, chlamydia PCR)', category: 'lab', turnaroundSec: 50 },
+  { id: 'oral-biopsy',     name: 'Oral Mucosal Biopsy',              category: 'lab', turnaroundSec: 90 },
+  { id: 'iopa',            name: 'Intraoral Periapical X-ray (IOPA)', category: 'imaging', turnaroundSec: 25 },
+  { id: 'opg',             name: 'OPG (panoramic dental X-ray)',     category: 'imaging', turnaroundSec: 35 },
+  { id: 'us-hip',          name: 'Ultrasound Hips (infant, Graf)',   category: 'imaging', turnaroundSec: 50 },
+  { id: 'us-msk',          name: 'MSK / Soft-tissue Ultrasound',     category: 'imaging', turnaroundSec: 40 },
+  { id: 'mri-msk',         name: 'MRI Joint / Limb (MSK)',           category: 'imaging', turnaroundSec: 90 },
 ];
 
 export const testById = (id: string) => TESTS.find((t) => t.id === id);

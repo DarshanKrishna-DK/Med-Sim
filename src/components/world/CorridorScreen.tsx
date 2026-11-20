@@ -4,7 +4,7 @@ import { PerformanceMonitor, useProgress } from '@react-three/drei';
 import { store } from '../../game/store';
 import { ensureAudioContext } from '../../voice/conversationStore';
 import { CorridorWorld, CORRIDOR_COLLIDERS, type DoorFx } from './Corridor';
-import { DOORS, SPAWN, WINGS, doorForClinic, wingStartZ, type DoorSpec } from './corridorLayout';
+import { DOORS, SPAWN, WINGS, doorForClinic, isDoorOpen, wingStartZ, type DoorSpec } from './corridorLayout';
 import { ThirdPersonPlayer, isTypingTarget, makeRuntime, type PlayerRuntime } from './ThirdPersonPlayer';
 import { PostFX, WorldEnvironment, type FxQuality } from './WorldFX';
 import { ControlsCard, Fade, MenuButton, PauseMenu, PromptPill, Toast, UI, labelStyle, panel } from './worldUi';
@@ -112,7 +112,9 @@ export function CorridorScreen() {
   const [dpr, setDpr] = useState(1);
   const runtime = useMemo(() => {
     if (store.getState().corridorReturnPortal) return makeRuntime(PORTAL.standX, PORTAL.standZ, PORTAL.exitYaw);
-    const door = doorForClinic(store.getState().corridorReturnClinic);
+    const door =
+      doorForClinic(store.getState().corridorReturnClinic) ??
+      DOORS.find((d) => !!d.dept.special && d.dept.special === store.getState().corridorReturnRoom);
     if (door) return makeRuntime(door.standX, door.standZ, 0);
     return makeRuntime(SPAWN.x, SPAWN.z, SPAWN.yaw);
   }, []);
@@ -148,7 +150,8 @@ export function CorridorScreen() {
       if (busy.current) return;
       const fx = doorFx[door.index];
       const clinic = door.dept.clinic;
-      if (!clinic) {
+      const special = door.dept.special;
+      if (!clinic && !special) {
         fx.shake = 0.55;
         setToast({
           title: door.dept.label,
@@ -167,7 +170,7 @@ export function CorridorScreen() {
       runtime.inputEnabled = false;
       fx.openTarget = 1;
       setFade(1);
-      window.setTimeout(() => store.enterClinic(clinic), 650);
+      window.setTimeout(() => (clinic ? store.enterClinic(clinic) : store.enterRadiology()), 650);
     },
     [doorFx, runtime],
   );
@@ -273,9 +276,9 @@ export function CorridorScreen() {
 
       {active && !menu && fade < 0.5 && (
         <PromptPill
-          title={active.dept.clinic ? `Enter ${active.dept.label}` : active.dept.label}
-          sub={active.dept.clinic ? `Room ${active.room}` : `Room ${active.room} · coming soon`}
-          tone={active.dept.clinic ? 'go' : 'soon'}
+          title={isDoorOpen(active.dept) ? `Enter ${active.dept.label}` : active.dept.label}
+          sub={isDoorOpen(active.dept) ? `Room ${active.room}${active.dept.special ? ' · reading room' : ''}` : `Room ${active.room} · coming soon`}
+          tone={isDoorOpen(active.dept) ? 'go' : 'soon'}
         />
       )}
       {!active && atPortal && !menu && fade < 0.5 && <PromptPill title="Enter the Teacher Portal" sub="Lecture hall · शिक्षक पोर्टल" />}

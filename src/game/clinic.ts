@@ -30,7 +30,15 @@ export type ClinicId =
   | 'pmr'
   | 'pediatrics'
   | 'general-surgery'
-  | 'cardiothoracic-vascular-surgery';
+  | 'cardiothoracic-vascular-surgery'
+  | 'geriatrics'
+  | 'palliative-care'
+  | 'neonatology'
+  | 'sports-medicine'
+  | 'plastic-surgery'
+  | 'dentistry'
+  | 'emergency-medicine'
+  | 'anesthesiology';
 
 /** Display order, also used by the specialty selector UI. The first entry
  *  is the "mixed" option that pulls cases from every specialty, so the
@@ -62,6 +70,14 @@ export const CLINIC_IDS: ClinicId[] = [
   'pediatrics',
   'general-surgery',
   'cardiothoracic-vascular-surgery',
+  'geriatrics',
+  'palliative-care',
+  'neonatology',
+  'sports-medicine',
+  'plastic-surgery',
+  'dentistry',
+  'emergency-medicine',
+  'anesthesiology',
 ];
 
 /** English display labels for each specialty. */
@@ -91,6 +107,14 @@ export const CLINIC_LABELS: Record<ClinicId, string> = {
   pediatrics: 'Pediatrics',
   'general-surgery': 'General Surgery',
   'cardiothoracic-vascular-surgery': 'Cardiothoracic & Vascular Surgery',
+  geriatrics: 'Geriatrics',
+  'palliative-care': 'Palliative Care',
+  neonatology: 'Neonatology',
+  'sports-medicine': 'Sports Medicine',
+  'plastic-surgery': 'Plastic Surgery',
+  dentistry: 'Dentistry',
+  'emergency-medicine': 'Emergency Medicine',
+  anesthesiology: 'Anesthesiology',
 };
 
 export const DEFAULT_CLINIC: ClinicId = 'internal-medicine';

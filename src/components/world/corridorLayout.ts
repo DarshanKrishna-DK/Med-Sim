@@ -39,7 +39,14 @@ export interface Department {
   wing: WingId;
   /** Built specialties map to a clinic room with cases. */
   clinic: ClinicId | null;
+  /** Open non-clinic room behind this door (its own screen, no patients). */
+  special?: SpecialRoom;
 }
+
+export type SpecialRoom = 'radiology';
+
+/** True when the door leads somewhere (a clinic or a special room). */
+export const isDoorOpen = (d: Department): boolean => !!d.clinic || !!d.special;
 
 const built = (id: ClinicId, wing: WingId): Department => ({
   id,
@@ -64,28 +71,28 @@ export const DEPARTMENTS: Department[] = [
   built('dermatology', 'medicine'),
   built('neurology', 'medicine'),
   built('psychiatry', 'medicine'),
-  soon('geriatrics', 'Geriatrics', 'medicine'),
-  soon('palliative-care', 'Palliative Care', 'medicine'),
+  built('geriatrics', 'medicine'),
+  built('palliative-care', 'medicine'),
 
   built('pediatrics', 'surgical'),
-  soon('neonatology', 'Neonatology', 'surgical'),
+  built('neonatology', 'surgical'),
   built('obgyn', 'surgical'),
   built('general-surgery', 'surgical'),
   built('cardiothoracic-vascular-surgery', 'surgical'),
   built('neurosurgery', 'surgical'),
   built('orthopedics', 'surgical'),
-  soon('sports-medicine', 'Sports Medicine', 'surgical'),
+  built('sports-medicine', 'surgical'),
   built('pmr', 'surgical'),
   built('urology', 'surgical'),
   built('ent', 'surgical'),
   built('ophthalmology', 'surgical'),
-  soon('plastic-surgery', 'Plastic Surgery', 'surgical'),
-  soon('dentistry', 'Dentistry', 'surgical'),
+  built('plastic-surgery', 'surgical'),
+  built('dentistry', 'surgical'),
 
-  soon('emergency-medicine', 'Emergency Medicine', 'diagnostics'),
+  built('emergency-medicine', 'diagnostics'),
   soon('intensive-care', 'Intensive Care', 'diagnostics'),
-  soon('anesthesiology', 'Anesthesiology', 'diagnostics'),
-  soon('radiology', 'Radiology', 'diagnostics'),
+  built('anesthesiology', 'diagnostics'),
+  { id: 'radiology', label: 'Radiology', wing: 'diagnostics', clinic: null, special: 'radiology' },
   soon('nuclear-medicine', 'Nuclear Medicine', 'diagnostics'),
   soon('pathology-lab', 'Pathology & Lab', 'diagnostics'),
 ];

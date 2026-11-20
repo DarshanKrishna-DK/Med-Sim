@@ -19,7 +19,7 @@ const HI: Record<string, string> = {
   neurology: 'तंत्रिका रोग',
   psychiatry: 'मनोरोग',
   geriatrics: 'वृद्धावस्था चिकित्सा',
-  'palliative-care': 'प्रशामक देखभाल',
+  'palliative-care': 'उपशामक देखभाल',
   pediatrics: 'बाल रोग',
   neonatology: 'नवजात शिशु रोग',
   obgyn: 'स्त्री एवं प्रसूति रोग',

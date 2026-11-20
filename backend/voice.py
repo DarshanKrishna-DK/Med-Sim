@@ -46,6 +46,7 @@ AGORA_API = "https://api.agora.io/api/conversational-ai-agent/v2/projects"
 MURF_STREAM_URL = "https://global.api.murf.ai/v1/speech/stream"
 AGENT_UID = 900001
 TOKEN_TTL_S = 7200 * 2  # >=2h: short tokens dropped long sessions
+AGENT_IDLE_TIMEOUT_S = 45  # was 120; see build_join_body
 
 # Verified via GET https://api.murf.ai/v1/speech/voices?model=falcon-2.1
 # (header `api-key`; NOT available on global.api.murf.ai). Override via env.
@@ -234,7 +235,9 @@ def build_join_body(
             "token": agent_token,
             "agent_rtc_uid": str(AGENT_UID),
             "remote_rtc_uids": [str(user_uid)],
-            "idle_timeout": 120,
+            # Seconds the agent lingers after the doctor leaves the channel. Kept
+            # short so a crashed tab or lost /voice/stop burns few ConvoAI minutes.
+            "idle_timeout": AGENT_IDLE_TIMEOUT_S,
             "advanced_features": {"enable_rtm": True},
             "parameters": {"data_channel": "rtm", "enable_error_message": True},
             "asr": asr,
@@ -355,19 +358,35 @@ class VoiceTtsRequest(BaseModel):
     text: str
     voice: Literal["nurse", "M", "F"] = "nurse"
     locale: Optional[str] = None
+    # Backup voice engine: pass the case id + speaker gender to get the same
+    # pooled Murf voice the Agora path (/voice/start) would use for this case.
+    caseId: Optional[str] = None
+    gender: Optional[Literal["M", "F"]] = None
+
+
+def tts_voice_and_locale(req: VoiceTtsRequest) -> tuple[str, str]:
+    """(Murf voiceId, locale) for a /voice/tts request. With caseId the voice
+    matches build_join_body's pick for the same case, gender and language."""
+    lang = langmod.norm_lang(req.locale)
+    if req.caseId and req.voice != "nurse" or req.gender:
+        kind = req.gender or (req.voice if req.voice in ("M", "F") else "M")
+        return _voice_for(kind, req.caseId or None, lang), langmod.locale_for(lang)
+    voice_id = _voice_for(req.voice, None, lang)
+    locale = ("en-US" if req.voice == "nurse" else "en-IN") if lang == "en" else langmod.locale_for(lang)
+    return voice_id, locale
 
 
 @router.post("/voice/tts")
 async def voice_tts(req: VoiceTtsRequest):
     key = _require_env("MURF_API_KEY")["MURF_API_KEY"]
-    lang = langmod.norm_lang(req.locale)
+    voice_id, locale = tts_voice_and_locale(req)
     body = {
         "text": req.text[:600],
-        "voiceId": _voice_for(req.voice, None, lang),
+        "voiceId": voice_id,
         "model": "falcon-2.1",
         "format": "MP3",
         "sampleRate": 24000,
-        "locale": ("en-US" if req.voice == "nurse" else "en-IN") if lang == "en" else langmod.locale_for(lang),
+        "locale": locale,
     }
     try:
         async with _client_factory() as c:

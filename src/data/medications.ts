@@ -14,6 +14,7 @@
 
 import type { ClinicId } from '../game/clinic';
 import { REAL_CASE_MED_LINKS } from './realCases.ts';
+import { NEW_DOMAIN_MEDICATIONS, NEW_DOMAIN_MED_LINKS } from './newDomainCases.ts';
 
 /**
  * High-level therapeutic category used to group the prescription pad.
@@ -38,7 +39,9 @@ export type MedicationCategory =
   | 'ophthalmic'
   | 'urology'
   | 'obgyn'
-  | 'hematology-nutrition';
+  | 'hematology-nutrition'
+  | 'emergency'
+  | 'dental-oral';
 
 export interface Medication {
   id: string;
@@ -1502,6 +1505,18 @@ export const MEDICATIONS: Medication[] = [
   },
 ];
 
+// Drugs for the eight newer clinics (see newDomainCases.ts), plus their
+// indications / contraindications on existing drugs (de-duplicated).
+MEDICATIONS.push(...NEW_DOMAIN_MEDICATIONS);
+for (const m of MEDICATIONS) {
+  const link = NEW_DOMAIN_MED_LINKS[m.id];
+  if (!link) continue;
+  for (const dx of link.indications ?? []) if (!m.indications.includes(dx)) m.indications.push(dx);
+  for (const dx of link.contraindications ?? []) {
+    if (!(m.contraindications ?? []).includes(dx)) m.contraindications = [...(m.contraindications ?? []), dx];
+  }
+}
+
 // Link published-case diagnoses to existing drugs (see realCases.ts).
 for (const m of MEDICATIONS) {
   const link = REAL_CASE_MED_LINKS[m.id];
@@ -1557,6 +1572,8 @@ export const CATEGORY_LABELS: Record<MedicationCategory, string> = {
   urology: 'Urology',
   obgyn: 'OB-GYN',
   'hematology-nutrition': 'Hematology & Vitamins',
+  emergency: 'Emergency, Antidotes & Immunisation',
+  'dental-oral': 'Dental & Oral',
 };
 
 /* ------------------------------------------------------------------ */
@@ -1586,6 +1603,8 @@ const ALL_CATEGORIES: MedicationCategory[] = [
   'urology',
   'obgyn',
   'hematology-nutrition',
+  'emergency',
+  'dental-oral',
 ];
 
 export const SPECIALTY_MEDICATION_CATEGORIES: Record<ClinicId, MedicationCategory[]> = {
@@ -1623,6 +1642,22 @@ export const SPECIALTY_MEDICATION_CATEGORIES: Record<ClinicId, MedicationCategor
   'cardiothoracic-vascular-surgery': [
     'cardiovascular', 'antiplatelet-anticoagulant', 'antibiotic', 'analgesic', 'lipid-lowering',
   ],
+  geriatrics: [
+    'cardiovascular', 'endocrine', 'analgesic', 'gastrointestinal', 'neurology', 'psychiatry',
+    'rheumatology', 'urology', 'antibiotic', 'hematology-nutrition',
+  ],
+  'palliative-care': ['analgesic', 'gastrointestinal', 'neurology', 'endocrine', 'psychiatry'],
+  neonatology: ['antibiotic', 'antifungal', 'dermatology', 'hematology-nutrition'],
+  'sports-medicine': ['analgesic', 'rheumatology', 'hematology-nutrition'],
+  'plastic-surgery': ['dermatology', 'antibiotic', 'analgesic', 'emergency'],
+  dentistry: ['dental-oral', 'antibiotic', 'analgesic'],
+  'emergency-medicine': [
+    'emergency', 'antibiotic', 'analgesic', 'allergy', 'gastrointestinal', 'respiratory',
+    'cardiovascular', 'hematology-nutrition', 'urology',
+  ],
+  anesthesiology: [
+    'cardiovascular', 'antiplatelet-anticoagulant', 'endocrine', 'respiratory', 'emergency',
+  ],
 };
 
 export function isCategoryAllowedForSpecialty(
@@ -1653,6 +1688,8 @@ const CATEGORY_ORDER: MedicationCategory[] = [
   'urology',
   'obgyn',
   'hematology-nutrition',
+  'emergency',
+  'dental-oral',
 ];
 
 /** Categories that actually appear in MEDICATIONS, in canonical display order. */

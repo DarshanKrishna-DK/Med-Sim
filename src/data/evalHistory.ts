@@ -6,7 +6,9 @@
 //   Bounded to 100 entries; oldest are dropped beyond that.
 
 import type { CaseEvaluationInput } from '../agents/customTools';
-import type { ActivePatient } from '../game/types';
+import type { ActivePatient, CoachAlert } from '../game/types';
+import type { ClinicId } from '../game/clinic';
+import type { OsceResult, SkillScores } from '../agents/osceCore';
 
 const STORAGE_KEY = 'gr_eval_history';
 const MAX_ENTRIES = 100;
@@ -31,6 +33,19 @@ export interface EvalHistoryEntry {
   /** ActivePatient snapshot at debrief time, feeds EvaluationBody so the
    *  prescriptions / orders panels still render after a reload. */
   patientSnapshot: ActivePatient;
+  // ── Progress-dashboard fields (optional: older rows predate them) ──
+  /** 'practice' = regular consultation, 'osce' = timed exam station. */
+  mode?: 'practice' | 'osce';
+  /** Specialty (clinic) of the case. */
+  specialty?: ClinicId;
+  /** Overall 0-100. */
+  score?: number;
+  /** Per-skill 0-100 scores (history, reasoning, tests, treatment, ...). */
+  skillScores?: SkillScores;
+  /** Coach alerts raised during the encounter (recurring-mistake stats). */
+  alerts?: Array<{ severity: CoachAlert['severity']; title: string }>;
+  /** Full examiner marking for OSCE rows. */
+  osce?: OsceResult & { candidateName?: string; durationSec: number; elapsedSec: number };
 }
 
 function read(): EvalHistoryEntry[] {

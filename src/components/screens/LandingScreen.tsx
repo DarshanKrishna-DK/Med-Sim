@@ -9,6 +9,7 @@ import { Pipeline } from '../ui/Pipeline';
 import MedSimFigure from '../ui/MedSimFigure';
 import { HeroPreview } from '../ui/HeroPreview';
 import { HospitalScene } from '../ui/pixel/HospitalScene';
+import { SiteFooter } from '../ui/SiteFooter';
 import { AttendingPortrait, CLINIC_GLYPH, PixelGlyph } from '../ui/pixel/PixelIcon';
 import { ArrowIcon, CountUp, Dither, OrnamentRule } from '../ui/pixel/Bits';
 
@@ -225,31 +226,41 @@ export function LandingScreen() {
           </ul>
         </section>
 
+        {/* ── OSCE exam mode + progress ────────────────────────── */}
+        <section id="osce" className="band paper" aria-labelledby="osce-title">
+          <div className="wrap landing-osce">
+            <div>
+              <h2 id="osce-title" className="h2">
+                Exam day, <span className="accent">rehearsed.</span>
+              </h2>
+              <p className="lede">
+                OSCE mode runs one timed station like the real NExT and university OSCE: a candidate brief, eight
+                minutes on the clock, no hints, then an examiner checklist with quotes from what you actually said.
+              </p>
+            </div>
+            <div className="landing-osce-side">
+              <ul className="osce-rules">
+                <li>Stations drawn at random from one specialty or mixed.</li>
+                <li>Met, partly met or not met for every item, plus a global rating.</li>
+                <li>Missed safety errors revealed at the bell. Print the report as a PDF.</li>
+                <li>My progress tracks scores, weak areas, recurring mistakes and your streak.</li>
+              </ul>
+              <div className="row-actions">
+                <button type="button" className="btn btn-primary btn-lg" onClick={() => store.openOsce()}>
+                  Start an OSCE station
+                </button>
+                <button type="button" className="btn btn-secondary btn-lg" onClick={() => store.setScreen('progress')}>
+                  My progress <ArrowIcon />
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <Dither from="paper" to="night" />
       </main>
 
-      <footer className="site-footer night">
-        <div className="wrap footer-inner">
-          <div className="footer-brand">
-            <span className="footer-word">MedSim</span>
-            <p>Practise outpatient consultations out loud, on a night shift that never ends.</p>
-          </div>
-          <div className="footer-cols">
-            <div>
-              <p className="kicker">Voice</p>
-              <p>Agora Conversational AI, Sarvam speech and reasoning, Murf Falcon voices.</p>
-            </div>
-            <div>
-              <p className="kicker">Grading</p>
-              <p>Attending agent on Sarvam, marking against OSCE-style rubrics.</p>
-            </div>
-            <div>
-              <p className="kicker">Small print</p>
-              <p>Cases are synthetic and for training only, not clinical advice.</p>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

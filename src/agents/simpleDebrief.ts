@@ -3,7 +3,7 @@
 // also map it onto the `CaseEvaluationInput` shape so the existing
 // evaluation UI can render either source unchanged.
 
-import type { ActivePatient } from '../game/types';
+import type { ActivePatient, ExamSystem } from '../game/types';
 import type { ChatMessage } from '../voice/claude';
 import type { CaseEvaluationInput, VerdictBand } from './customTools';
 import { TESTS } from '../data/tests';
@@ -30,9 +30,15 @@ export interface SimpleDebrief {
 export interface SimpleDebriefAction {
   /** Seconds from patient arrival, or null if unknown. */
   t: number | null;
-  kind: 'question' | 'test' | 'treatment' | 'prescription' | 'diagnosis' | 'followUp';
+  kind: 'question' | 'exam' | 'test' | 'treatment' | 'prescription' | 'diagnosis' | 'followUp';
   detail: string;
 }
+
+const EXAM_NAMES: Partial<Record<ExamSystem, string>> = {
+  general: 'general examination', vitals: 'vital signs', cardio: 'cardiovascular system',
+  resp: 'respiratory system', abdomen: 'abdomen', neuro: 'nervous system', msk: 'musculoskeletal system',
+  skin: 'skin', ent: 'ear, nose and throat', eye: 'eyes', obgyn: 'obstetric/gynaecological', paeds: 'growth and development',
+};
 
 function diagnosisLabel(id: string | null): string | null {
   if (!id) return null;
@@ -55,6 +61,14 @@ export function buildSimpleDebriefPayload(encounter: ActivePatient, transcript: 
       kind: 'question' as const,
       detail: qById.get(id)?.question ?? id,
     })),
+    ...(encounter.examsPerformed ?? []).map((sys) => {
+      const r = encounter.examResults?.[sys];
+      return {
+        t: since(r?.performedAt),
+        kind: 'exam' as const,
+        detail: `Examined ${EXAM_NAMES[sys] ?? sys}${r?.summary ? `: ${r.summary}` : ''}`,
+      };
+    }),
     ...encounter.orderedTestIds.map((id) => ({
       t: since(encounter.testOrderedAt[id]),
       kind: 'test' as const,
@@ -101,6 +115,12 @@ export function buildSimpleDebriefPayload(encounter: ActivePatient, transcript: 
       ? { id: encounter.submittedDiagnosisId, name: diagnosisLabel(encounter.submittedDiagnosisId) }
       : null,
     actions,
+    examsPerformed: (encounter.examsPerformed ?? []).map((sys) => ({
+      system: sys,
+      abnormalFindings: (encounter.examResults?.[sys]?.findings ?? [])
+        .filter((f) => f.abnormal)
+        .map((f) => `${f.label}: ${f.value}`),
+    })),
     transcript: transcript.map((m) => ({ role: m.role, content: m.content })),
     elapsedSeconds: Math.round((Date.now() - encounter.arrivedAt) / 1000),
     ...(c.rubric ? { rubric: c.rubric } : {}),

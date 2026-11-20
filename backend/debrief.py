@@ -32,7 +32,30 @@ class DebriefRequest(BaseModel):
     actions: Optional[list[Any]] = None  # [{t, kind, detail}] or strings
     transcript: Optional[list[dict[str, Any]]] = None  # [{role, content}] (text also accepted)
     elapsedSeconds: Optional[float] = None
-    rubric: Optional[list[str]] = None
+    # Either a list of domain names, or a case's authored CaseRubric object
+    # ({data_gathering, clinical_management, interpersonal, safety_netting, ...}).
+    rubric: Any = None
+
+
+def split_rubric(rubric: Any) -> tuple[list[str], list[str]]:
+    """Return (domain names to score, case-specific criteria to grade against).
+
+    A list of strings is taken as the domains. An authored rubric object keeps
+    the standard domains and contributes its criteria labels and evidence as
+    grading context, so cases with a rubric no longer fail validation."""
+    if isinstance(rubric, list) and rubric and all(isinstance(x, str) for x in rubric):
+        return [x for x in rubric if x.strip()], []
+    criteria: list[str] = []
+    if isinstance(rubric, dict):
+        for section in ("data_gathering", "clinical_management", "interpersonal"):
+            for c in rubric.get(section) or []:
+                if isinstance(c, dict) and c.get("label"):
+                    ev = str(c.get("evidence", "")).strip()
+                    criteria.append(f"[{section}] {c['label']}" + (f": {ev}" if ev else ""))
+        sn = rubric.get("safety_netting")
+        if isinstance(sn, dict) and sn.get("required_elements"):
+            criteria.append("[safety_netting] " + "; ".join(str(x) for x in sn["required_elements"]))
+    return list(DEFAULT_RUBRIC), criteria[:40]
 
 
 class Domain(BaseModel):
@@ -54,7 +77,8 @@ SYSTEM = (
     "Grade ONLY from the evidence provided: the action log, the transcript and the known correct diagnosis. "
     "Do not invent events. Reply with JSON only, exactly: "
     '{"score":0-100,"domains":[{"name":str,"score":0-100,"notes":str}],"strengths":[str],'
-    '"improvements":[str],"summary":str}. One domain per rubric item, in order. Notes and bullets are '
+    '"improvements":[str],"summary":str}. One domain per rubric item, in order. If caseCriteria is '
+    "present, use those case-specific criteria as the marking scheme inside each domain. Notes and bullets are "
     "specific and short (max 25 words each); summary is 2-3 sentences. Not a claim of clinical accuracy."
 )
 
@@ -110,7 +134,7 @@ def parse_json_object(text: str) -> dict[str, Any]:
 
 @router.post("/agent/debrief/simple", response_model=DebriefResponse)
 async def debrief_simple(req: DebriefRequest):
-    rubric = req.rubric or DEFAULT_RUBRIC
+    rubric, case_criteria = split_rubric(req.rubric)
     transcript = [
         {"role": t.get("role", ""), "text": t.get("content", t.get("text", ""))}
         for t in (req.transcript or [])
@@ -125,6 +149,7 @@ async def debrief_simple(req: DebriefRequest):
             "actions": (req.actions or [])[-80:],
             "transcript": transcript,
             "rubric": rubric,
+            "caseCriteria": case_criteria,
         },
         default=str,
     )[:24000]

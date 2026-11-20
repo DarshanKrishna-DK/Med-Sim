@@ -61,6 +61,11 @@ function encounterSoFar(p: ActivePatient) {
     prescriptions: (p.prescriptions ?? []).map((rx) => `${medName(rx.medicationId)} ${rx.dose}`.trim()),
     // Voice history isn't tagged per question, so two doctor turns count.
     askedHistory: p.askedQuestionIds.length > 0 || doctorTurns >= 2,
+    // Body systems examined, with any abnormal signs found.
+    examsPerformed: (p.examsPerformed ?? []).map((sys) => {
+      const abn = (p.examResults?.[sys]?.findings ?? []).filter((f) => f.abnormal).map((f) => `${f.label}: ${f.value}`);
+      return abn.length ? `${sys} (${abn.join('; ')})` : sys;
+    }),
     transcriptTail: msgs.slice(-10).map((m) => `${m.role === 'user' ? 'Doctor' : 'Patient'}: ${m.content}`),
   };
 }

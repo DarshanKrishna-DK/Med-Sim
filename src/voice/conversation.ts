@@ -504,8 +504,10 @@ export class Conversation {
       this.nurseCandidate = '';
       if (this.disposed || !utterance) return;
       // Dynamic import breaks the conversation ↔ nurseAgent ↔ store cycle.
-      void import('../agents/nurseAgent')
-        .then((m) => {
+      void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent')])
+        .then(([ex, m]) => {
+          // An exam request ("let me check your abdomen") is not a nurse order.
+          if (ex.maybeRunExamFromSpeech(utterance)) return;
           if (m.looksLikeOrder(utterance)) void m.runNurseAction(utterance, 'voice');
         })
         .catch((err) => console.warn(LOG, 'nurse agent load failed:', err));
@@ -732,8 +734,11 @@ export class Conversation {
     this.emitMessages();
     this.setStatus('thinking', 'Thinking…');
 
-    void import('../agents/nurseAgent')
-      .then((m) => { if (m.looksLikeOrder(clean)) void m.runNurseAction(clean, 'typed'); })
+    void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent')])
+      .then(([ex, m]) => {
+        if (ex.maybeRunExamFromSpeech(clean)) return;
+        if (m.looksLikeOrder(clean)) void m.runNurseAction(clean, 'typed');
+      })
       .catch(() => undefined);
 
     const session = this.session;

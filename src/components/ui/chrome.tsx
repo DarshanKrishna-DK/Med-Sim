@@ -23,7 +23,7 @@ export function goToLandingSection(id: string) {
 
 // ── Brand ────────────────────────────────────────────────────────────
 
-/** The MedSim mark: a bevelled lime cross sliced by a cyan ECG-to-voice line
+/** The MedSim mark: a coral cross shaped like a speech bubble, with a pearl rim and a voice/ECG line
  *  (rendered in Blender, see public/brand/). Decorative next to the wordmark. */
 export function BrandMark({ size = 30 }: { size?: number }) {
   return (
@@ -84,6 +84,8 @@ export function AppHeader({ overlay = false }: { overlay?: boolean }) {
     { label: 'Specialties', active: false, go: () => goToLandingSection('specialties') },
     { label: 'How it works', active: false, go: () => goToLandingSection('how') },
     { label: 'Debriefs', active: screen === 'history' || screen === 'debrief', go: () => store.setScreen('history') },
+    { label: 'OSCE', active: screen === 'osce' || screen === 'osceResult', go: () => store.openOsce() },
+    { label: 'Progress', active: screen === 'progress', go: () => store.setScreen('progress') },
   ];
 
   return (

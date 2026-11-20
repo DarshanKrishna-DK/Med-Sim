@@ -488,6 +488,88 @@ Interpretation: Negative. Routine screening interval.`,
 Histology: Normal epidermis and dermis. No inflammatory infiltrate.
 No atypical melanocytes. No malignancy.
 Interpretation: No malignant features on preliminary review.`,
+
+  // ───────── Added for the geriatrics ... anaesthesiology clinics ─────────
+  'orthostatic-bp': `LYING-STANDING BP
+Lying (5 min): 124/78, HR 72
+Standing 1 min: 122/80, HR 78 · 3 min: 120/78, HR 80
+Interpretation: No orthostatic hypotension (fall under 20 systolic / 10 diastolic).`,
+
+  'cognitive-screen': `COGNITIVE SCREEN
+4AT: 0 (alert, AMT4 correct, months backwards correct, no acute change)
+MMSE: 29/30
+Interpretation: No delirium; no significant cognitive impairment.`,
+
+  'airway-exam': `AIRWAY ASSESSMENT
+Mallampati class I · Inter-incisor gap 5 cm · Thyromental distance 7 cm
+Full neck flexion and extension · Normal jaw protrusion · No loose teeth
+Interpretation: No predictors of difficult laryngoscopy.`,
+
+  scat6: `SCAT6 CONCUSSION ASSESSMENT
+Symptoms: 0 of 22 · Orientation 5/5 · Immediate memory 28/30
+Delayed recall 9/10 · Tandem gait normal · mBESS 2 errors
+Interpretation: No current concussion signs on screening.`,
+
+  'pulp-test': `PULP VITALITY TEST
+Cold test: brief sharp response that stops within 2 seconds of removal.
+Percussion: not tender.
+Interpretation: Vital, healthy pulp.`,
+
+  wbct20: `20-MIN WHOLE BLOOD CLOTTING TEST
+Blood clotted at 20 minutes.
+Interpretation: No venom-induced coagulopathy at this time (repeat 6-hourly after a snakebite).`,
+
+  tsb: `SERUM BILIRUBIN
+Total: 0.8 mg/dL · Direct: 0.2 mg/dL
+Interpretation: Normal (adult range). Neonatal values must be read against age-in-hours thresholds.`,
+
+  ck: `CREATINE KINASE
+CK: 110 U/L (reference 40-200)
+Interpretation: Normal.`,
+
+  cholinesterase: `SERUM (BUTYRYL) CHOLINESTERASE
+Activity: 7,800 U/L (reference 4,000-12,000)
+Interpretation: Normal; no evidence of organophosphate or carbamate exposure.`,
+
+  tryptase: `SERUM MAST-CELL TRYPTASE
+Tryptase: 4.2 ng/mL (reference under 11.4)
+Interpretation: Not raised.`,
+
+  'wound-cx': `WOUND SWAB
+Gram stain: no organisms, occasional pus cells.
+Culture: no significant growth.
+Interpretation: No evidence of wound infection.`,
+
+  'conj-swab': `CONJUNCTIVAL SWAB
+Gram stain: no organisms. Culture: no growth. Chlamydia PCR: negative.
+Interpretation: No bacterial or chlamydial conjunctivitis.`,
+
+  'oral-biopsy': `ORAL MUCOSAL BIOPSY
+Stratified squamous epithelium with mild hyperkeratosis. No dysplasia. No malignancy.
+Interpretation: Benign keratosis.`,
+
+  iopa: `INTRAORAL PERIAPICAL X-RAY
+No caries. Normal pulp chamber. Periodontal ligament space and lamina dura intact.
+Interpretation: Normal.`,
+
+  opg: `ORTHOPANTOMOGRAM (OPG)
+Full permanent dentition. No caries, no periapical lesions, alveolar bone levels normal.
+Third molars erupted. Both TMJ condyles normal.
+Interpretation: Normal OPG.`,
+
+  'us-hip': `ULTRASOUND HIPS (Graf)
+Right: alpha angle 64 degrees, type I · Left: alpha angle 63 degrees, type I
+Stable on stress.
+Interpretation: Normal, mature hips.`,
+
+  'us-msk': `MSK / SOFT-TISSUE ULTRASOUND
+Tendons, muscles and subcutaneous tissue of the region examined show normal echotexture.
+No collection, tear or mass.
+Interpretation: Normal study.`,
+
+  'mri-msk': `MRI (MSK)
+Ligaments, tendons, cartilage and menisci intact. No marrow oedema, fracture or effusion.
+Interpretation: Normal study.`,
 };
 
 export function getTestReport(

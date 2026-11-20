@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
-import { store, useAgentRuns, useCoachAlerts } from '../../game/store';
+import { store, useAgentRuns, useCoachAlerts, useOsceLive } from '../../game/store';
 import type { CoachAlert } from '../../game/types';
 import { isNurseSpeaking, speakAsNurse, subscribeNurseSpeaking } from '../../agents/nurseAgent';
 import { explainAlert } from '../../agents/coach';
@@ -221,6 +221,8 @@ function useWakeAt(at: number | null) {
   }, [at]);
 }
 
+const NO_ALERTS: CoachAlert[] = [];
+
 const SEV_LABEL: Record<CoachAlert['severity'], string> = { danger: 'Danger', warning: 'Warning', info: 'Note' };
 
 export function NurseAshaHeader({
@@ -231,7 +233,11 @@ export function NurseAshaHeader({
   onExplain: (a: CoachAlert) => void;
 }) {
   const runs = visibleRuns(useAgentRuns());
-  const alerts = useCoachAlerts();
+  const allAlerts = useCoachAlerts();
+  // OSCE station: no hints. Alerts are still collected in the store and
+  // revealed as critical errors on the marking sheet.
+  const osceLive = useOsceLive();
+  const alerts = osceLive ? NO_ALERTS : allAlerts;
   const speaking = useNurseSpeaking();
   const [historyOpen, setHistoryOpen] = useState(false);
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { store, useStore, POLYCLINIC_BED_INDEX } from '../../game/store';
+import { store, useStore, POLYCLINIC_BED_INDEX, isOsceLive } from '../../game/store';
 import type { ActivePatient } from '../../game/types';
 import { getExistingConversation, disposePatientConversation } from '../../voice/conversationStore';
 import { interactionBus } from '../three/interactions';
@@ -91,9 +91,12 @@ export function useEncounterController(): EncounterController {
         /* voice failure, finish anyway */
       }
     }
+    // OSCE station: snapshot the encounter + silent coach alerts at the bell.
+    const osce = isOsceLive(store.getState());
+    if (osce) store.captureOsceEncounter();
     store.finishPolyclinicCase();
     disposePatientConversation(POLYCLINIC_BED_INDEX);
-    store.setScreen('debrief');
+    store.setScreen(osce ? 'osceResult' : 'debrief');
   };
 
 

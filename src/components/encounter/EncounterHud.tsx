@@ -5,6 +5,8 @@ import { VoicePanel } from './VoicePanel';
 import { AgentPanel } from './AgentPanel';
 import { useCoachWatch } from './useCoachWatch';
 import type { EncounterController } from './useEncounterController';
+import { OsceTimer } from './OsceTimer';
+import { useOsceLive, useStore } from '../../game/store';
 
 /** The encounter HUD as a pure overlay layer. Position it over any
  *  full-bleed canvas inside a `position: relative|fixed` parent; empty
@@ -16,6 +18,8 @@ export function EncounterHud({ ctl, compact = false }: { ctl: EncounterControlle
   const { patient, voice, elapsed, pointerLocked, ending, confirmEnd, setConfirmEnd, endConsultation } = ctl;
   const c = patient?.case;
   useCoachWatch(voice.messages, c?.id ?? null);
+  const osceLive = useOsceLive();
+  const osce = useStore((s) => s.osce);
   return (
     <>
       {pointerLocked && <div className="crosshair" aria-hidden="true" />}
@@ -33,10 +37,14 @@ export function EncounterHud({ ctl, compact = false }: { ctl: EncounterControlle
               <span className="hud-case-name">The patient is on their way in…</span>
             )}
           </div>
-          <span className="hud-timer" aria-label={`Elapsed ${elapsed}`}>
-            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7.5" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M7 4.8v2.9l1.8 1.1M5.5 1.2h3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
-            {elapsed}
-          </span>
+          {osceLive && osce?.startedAt ? (
+            <OsceTimer startedAt={osce.startedAt} durationMs={osce.durationMs} onTimeUp={() => void ctl.endConsultation()} />
+          ) : (
+            <span className="hud-timer" aria-label={`Elapsed ${elapsed}`}>
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7.5" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M7 4.8v2.9l1.8 1.1M5.5 1.2h3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+              {elapsed}
+            </span>
+          )}
           <ThemeToggle />
           <button
             type="button"
@@ -44,7 +52,7 @@ export function EncounterHud({ ctl, compact = false }: { ctl: EncounterControlle
             disabled={!patient || ending}
             onClick={() => setConfirmEnd(true)}
           >
-            End consultation
+            {osceLive ? 'End station' : 'End consultation'}
           </button>
         </header>
 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type FormEvent } from 'react';
 import { store, useAgentRuns } from '../../game/store';
 import type { ActivePatient } from '../../game/types';
 import { runNurseAction } from '../../agents/nurseAgent';
@@ -10,8 +10,10 @@ import { NurseFeed, visibleRuns } from './NurseFeed';
 import { AshaExplain, NurseAshaHeader } from './NurseAsha';
 import type { CoachAlert } from '../../game/types';
 import { coachAfterDiagnosis, coachAfterManualPrescription, coachAfterManualTest } from '../../agents/coach';
+import { useExamUi } from '../../agents/examAgent';
+import { ExamTab } from './ExamTab';
 
-type Tab = 'nurse' | 'results' | 'diagnosis' | 'rx';
+type Tab = 'nurse' | 'exam' | 'results' | 'diagnosis' | 'rx';
 
 const dxLabel = (id: string) =>
   POLYCLINIC_DIAGNOSIS_LABELS[id] ?? id.replace(/-/g, ' ').replace(/^\w/, (m) => m.toUpperCase());
@@ -31,11 +33,21 @@ export function AgentPanel({ patient, voiceStatus }: { patient: ActivePatient; v
 
   const tabs: Array<{ id: Tab; label: string; count?: number }> = [
     { id: 'nurse', label: 'Nurse', count: shown.length },
+    { id: 'exam', label: 'Exam', count: patient.examsPerformed?.length ?? 0 },
     { id: 'results', label: 'Results', count: patient.orderedTestIds.length },
     { id: 'diagnosis', label: 'Diagnosis' },
     { id: 'rx', label: 'Plan', count: (patient.prescriptions?.length ?? 0) + (patient.followUp ? 1 : 0) },
   ];
-  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ nurse: null, results: null, diagnosis: null, rx: null });
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ nurse: null, exam: null, results: null, diagnosis: null, rx: null });
+
+  // A new exam (voice or click) opens the Exam tab.
+  const examFocus = useExamUi(patient.case.id).focus;
+  const seenFocus = useRef(examFocus?.at ?? 0);
+  useEffect(() => {
+    if (!examFocus || examFocus.at <= seenFocus.current) return;
+    seenFocus.current = examFocus.at;
+    setTab('exam');
+  }, [examFocus]);
 
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -74,6 +86,7 @@ export function AgentPanel({ patient, voiceStatus }: { patient: ActivePatient; v
         <div className="tab-panels">
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="tab-panel">
             {tab === 'nurse' && <NurseFeed runs={runs} />}
+            {tab === 'exam' && <ExamTab patient={patient} />}
             {tab === 'results' && <ResultsTab patient={patient} />}
             {tab === 'diagnosis' && <DiagnosisTab patient={patient} />}
             {tab === 'rx' && <PlanTab patient={patient} />}

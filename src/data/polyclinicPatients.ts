@@ -1,6 +1,7 @@
 import type { PatientCase } from '../game/types';
 import type { ClinicId } from '../game/clinic';
 import { REAL_CASES_BY_SPECIALTY, REAL_CASE_DIAGNOSIS_LABELS } from './realCases.ts';
+import { NEW_DOMAIN_CASES_BY_SPECIALTY, NEW_DOMAIN_DIAGNOSIS_LABELS } from './newDomainCases.ts';
 
 const internalMedicine: PatientCase[] = [
   {
@@ -6752,6 +6753,8 @@ const _bySpecialty = {
   pediatrics: [...pediatrics, ...(REAL_CASES_BY_SPECIALTY['pediatrics'] ?? [])],
   'general-surgery': [...generalSurgery, ...(REAL_CASES_BY_SPECIALTY['general-surgery'] ?? [])],
   'cardiothoracic-vascular-surgery': [...cardiothoracicVascularSurgery, ...(REAL_CASES_BY_SPECIALTY['cardiothoracic-vascular-surgery'] ?? [])],
+  // Eight newer clinics (geriatrics ... anesthesiology), see newDomainCases.ts.
+  ...NEW_DOMAIN_CASES_BY_SPECIALTY,
 };
 
 export const POLYCLINIC_CASES: Record<ClinicId, PatientCase[]> = {
@@ -6775,6 +6778,7 @@ export function getCaseSpecialty(caseId: string): ClinicId | undefined {
 }
 
 export const POLYCLINIC_DIAGNOSIS_LABELS: Record<string, string> = {
+  ...NEW_DOMAIN_DIAGNOSIS_LABELS,
   ...REAL_CASE_DIAGNOSIS_LABELS,
   // Internal medicine
   'iron-deficiency-anemia': 'Iron-deficiency Anemia',

@@ -219,6 +219,26 @@ class DevOriginTests(unittest.TestCase):
 
 
 class DebriefTests(unittest.TestCase):
+    def test_rubric_accepts_list_or_authored_object(self) -> None:
+        domains, criteria = debrief.split_rubric(["History", "Plan"])
+        self.assertEqual(domains, ["History", "Plan"])
+        self.assertEqual(criteria, [])
+        authored = {
+            "data_gathering": [{"criterion_id": "dg-01", "label": "Onset and character", "weight": 2, "evidence": "Asks when it started"}],
+            "clinical_management": [{"criterion_id": "cm-01", "label": "Avoids amoxicillin", "weight": 3, "evidence": "Penicillin allergy"}],
+            "interpersonal": [],
+            "safety_netting": {"required_elements": ["return if breathless"], "weight": 1},
+            "global_rating": "borderline-regression",
+        }
+        domains, criteria = debrief.split_rubric(authored)
+        self.assertEqual(domains, list(debrief.DEFAULT_RUBRIC))
+        self.assertEqual(len(criteria), 3)
+        self.assertTrue(criteria[1].startswith("[clinical_management] Avoids amoxicillin"))
+        # The request model no longer rejects the object form (previously a 422).
+        req = debrief.DebriefRequest(caseId="im-005", rubric=authored)
+        self.assertIsInstance(req.rubric, dict)
+        self.assertEqual(debrief.split_rubric(None)[0], list(debrief.DEFAULT_RUBRIC))
+
     def test_coerce_and_clamp(self) -> None:
         raw = debrief.parse_json_object(
             '<think>x</think>```json\n{"score":130,"domains":[{"name":"A","score":"80","notes":"n"}],"summary":"s"}\n```')

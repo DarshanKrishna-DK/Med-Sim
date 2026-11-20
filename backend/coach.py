@@ -65,6 +65,7 @@ class EncounterSoFar(BaseModel):
     prescriptions: list[str] = Field(default_factory=list)
     askedHistory: bool = False
     transcriptTail: list[str] = Field(default_factory=list)
+    examsPerformed: list[str] = Field(default_factory=list)
 
 
 class CoachCheckRequest(BaseModel):
@@ -311,6 +312,7 @@ def _check_user(req: CoachCheckRequest) -> str:
                 "orderedTests": req.encounterSoFar.orderedTests[-20:],
                 "prescriptions": req.encounterSoFar.prescriptions[-12:],
                 "askedHistory": req.encounterSoFar.askedHistory,
+                "examsPerformed": [_words(e, 40) for e in req.encounterSoFar.examsPerformed[-12:]],
                 "transcriptTail": [_words(t, 60) for t in req.encounterSoFar.transcriptTail[-10:]],
             },
         },
