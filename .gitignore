@@ -36,3 +36,7 @@ verify.log
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local AI-assistant notes and any chat transcripts never leave this machine
+CLAUDE.md
+*.jsonl
