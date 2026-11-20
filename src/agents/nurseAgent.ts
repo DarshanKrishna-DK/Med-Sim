@@ -128,7 +128,21 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 let speechChain: Promise<void> = Promise.resolve();
 
-function speakAsNurse(text: string): Promise<void> {
+// Tiny "is the nurse talking right now" signal for Nurse Asha's mascot.
+let nurseSpeaking = false;
+const speakingListeners = new Set<() => void>();
+function setNurseSpeaking(v: boolean) {
+  if (nurseSpeaking === v) return;
+  nurseSpeaking = v;
+  for (const l of speakingListeners) l();
+}
+export const isNurseSpeaking = (): boolean => nurseSpeaking;
+export function subscribeNurseSpeaking(fn: () => void): () => void {
+  speakingListeners.add(fn);
+  return () => speakingListeners.delete(fn);
+}
+
+export function speakAsNurse(text: string): Promise<void> {
   const line = text.trim();
   if (!line) return Promise.resolve();
   speechChain = speechChain.then(async () => {
@@ -146,6 +160,7 @@ function speakAsNurse(text: string): Promise<void> {
       const audio = new Audio(url);
       // Keep the nurse's voice out of the doctor's mic → patient ASR.
       conv?.setMicMuted(true);
+      setNurseSpeaking(true);
       await new Promise<void>((resolve) => {
         const done = () => resolve();
         audio.addEventListener('ended', done, { once: true });
@@ -156,6 +171,7 @@ function speakAsNurse(text: string): Promise<void> {
     } catch (err) {
       console.warn(LOG, 'nurse TTS failed:', err);
     } finally {
+      setNurseSpeaking(false);
       if (!wasMuted) conv?.setMicMuted(false);
       if (url) URL.revokeObjectURL(url);
     }
@@ -269,6 +285,11 @@ export async function runNurseAction(
       finishedAt: Date.now(),
     };
     store.updateAgentRun(id, done);
+    // Nurse Asha's mistake coach: local alerts from refused/flagged steps,
+    // then a non-blocking LLM check. Never affects this run.
+    void import('./coach')
+      .then((m) => m.afterNurseRun({ ...placeholder, ...done }))
+      .catch((err) => console.warn(LOG, 'coach load failed:', err));
 
     if (done.intent === 'order') {
       if (res.spokenConfirmation) void speakAsNurse(res.spokenConfirmation);

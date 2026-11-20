@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type {
   ActivePatient,
   AvatarStyle,
+  CoachAlert,
   EndConfirmChecks,
   GameState,
   NurseRun,
@@ -120,6 +121,7 @@ class Store {
     lastEncounter: null,
     viewedEvalHistoryId: null,
     agentRuns: [],
+    coachAlerts: [],
     corridorReturnClinic: null,
   };
 
@@ -210,6 +212,7 @@ class Store {
       selectedCaseId: id,
       polyclinic: { ...this.state.polyclinic, patient: toActivePatient(c) },
       agentRuns: [],
+      coachAlerts: [],
     });
   };
 
@@ -305,6 +308,7 @@ class Store {
       },
       screen: 'encounter',
       agentRuns: [],
+      coachAlerts: [],
     });
   };
 
@@ -369,6 +373,22 @@ class Store {
     });
 
   clearAgentRuns = () => this.set({ agentRuns: [] });
+
+  // ── mistake coach alerts (Nurse Asha) ───────────
+  /** Add an alert unless one with the same title is already open for this
+   *  case (the nurse step and the LLM check can spot the same thing). */
+  pushCoachAlert = (alert: CoachAlert) => {
+    const dup = this.state.coachAlerts.some(
+      (a) => a.caseId === alert.caseId && !a.dismissed && a.title.toLowerCase() === alert.title.toLowerCase(),
+    );
+    if (dup || this.state.coachAlerts.some((a) => a.id === alert.id)) return;
+    this.set({ coachAlerts: [...this.state.coachAlerts, alert].slice(-20) });
+  };
+
+  dismissCoachAlert = (id: string) =>
+    this.set({
+      coachAlerts: this.state.coachAlerts.map((a) => (a.id === id ? { ...a, dismissed: true } : a)),
+    });
 }
 
 export const store = new Store();
@@ -399,6 +419,11 @@ export function useTweaks(): Tweaks {
  *  `state.polyclinic.{clinic, patient}`). */
 export function useGameState(): GameState {
   return useStore((s) => s);
+}
+
+/** Nurse Asha's mistake alerts for the current patient (oldest first). */
+export function useCoachAlerts(): CoachAlert[] {
+  return useStore((s) => s.coachAlerts);
 }
 
 /** Nurse-agent run feed for the current patient (oldest first). */

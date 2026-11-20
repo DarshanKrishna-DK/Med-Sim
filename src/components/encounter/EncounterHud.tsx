@@ -3,17 +3,19 @@ import { Brand, Kbd, ThemeToggle } from '../ui/chrome';
 import { PatientCard } from './PatientCard';
 import { VoicePanel } from './VoicePanel';
 import { AgentPanel } from './AgentPanel';
+import { useCoachWatch } from './useCoachWatch';
 import type { EncounterController } from './useEncounterController';
 
 /** The encounter HUD as a pure overlay layer. Position it over any
  *  full-bleed canvas inside a `position: relative|fixed` parent; empty
  *  regions pass pointer events through to the scene underneath. */
 export function EncounterHud({ ctl, compact = false }: { ctl: EncounterController; compact?: boolean }) {
-  // compact: side panels collapse to tabs so the 3D room stays in view.
+  // compact: the chart collapses to a tab so the 3D room stays in view;
+  // the nurse panel (Nurse Asha) is always shown as a slim right column.
   const [chartOpen, setChartOpen] = useState(!compact);
-  const [agentOpen, setAgentOpen] = useState(!compact);
   const { patient, voice, elapsed, pointerLocked, ending, confirmEnd, setConfirmEnd, endConsultation } = ctl;
   const c = patient?.case;
+  useCoachWatch(voice.messages, c?.id ?? null);
   return (
     <>
       {pointerLocked && <div className="crosshair" aria-hidden="true" />}
@@ -60,19 +62,14 @@ export function EncounterHud({ ctl, compact = false }: { ctl: EncounterControlle
               <VoicePanel voice={voice} patientName={patient.case.name} />
               <p className="hud-hint">
                 {pointerLocked ? (
-                  <>Looking around · <Kbd>Esc</Kbd> to release the mouse</>
+                  <>Mouse look · <Kbd>Esc</Kbd> free cursor · <Kbd>T</Kbd> voice on/off</>
                 ) : (
-                  <>Click the room to look around · <Kbd>T</Kbd> voice on/off</>
+                  <>Click the room for mouse look · <Kbd>T</Kbd> voice on/off</>
                 )}
               </p>
             </div>
             <div className="hud-right">
-              {compact && (
-                <button type="button" className="hud-tab hud-panel" aria-expanded={agentOpen} onClick={() => setAgentOpen((o) => !o)}>
-                  {agentOpen ? 'Hide nurse' : 'Nurse agent'}
-                </button>
-              )}
-              {agentOpen && <AgentPanel patient={patient} />}
+              <AgentPanel patient={patient} voiceStatus={voice.status} />
             </div>
           </>
         )}

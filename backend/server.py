@@ -61,6 +61,7 @@ import llm_proxy
 from voice import router as voice_router, voice_health
 from nurse import router as nurse_router
 from debrief import router as debrief_router
+from coach import router as coach_router
 
 # Shared secret protects /agent/* and /voice/* against direct curl abuse.
 # Vercel Edge Middleware injects this header for browser traffic; a
@@ -1428,6 +1429,7 @@ app.include_router(voice_router)
 app.include_router(llm_proxy.router)
 app.include_router(nurse_router)
 app.include_router(debrief_router)
+app.include_router(coach_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the

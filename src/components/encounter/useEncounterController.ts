@@ -65,12 +65,11 @@ export function useEncounterController(): EncounterController {
     };
   }, []);
 
-  // T toggles voice. While pointer-locked the Player handles T itself
-  // (and calls onTalk), so skip here to avoid a double toggle.
+  // T toggles voice (also while the mouse is captured for mouse look).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 't' && e.key !== 'T') return;
-      if (e.repeat || isTyping(e.target) || document.pointerLockElement || ending) return;
+      if (e.repeat || isTyping(e.target) || ending) return;
       e.preventDefault();
       voice.toggle();
     };

@@ -3159,9 +3159,10 @@ select.input {
   }
 }
 
-/* Compact encounter HUD over the 3D clinic room: side panels collapse to tabs. */
+/* Compact encounter HUD over the 3D clinic room: the chart collapses to a
+   tab; the nurse panel is a permanent slim right column. */
 .hud--compact {
-  grid-template-columns: minmax(0, 340px) minmax(0, 1fr) minmax(0, 400px);
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr) minmax(300px, 340px);
 }
 .hud--compact .hud-left,
 .hud--compact .hud-right {
@@ -3172,9 +3173,8 @@ select.input {
   min-height: 0;
 }
 .hud--compact .hud-right {
-  align-items: flex-end;
-  align-self: start;
-  max-height: calc(100vh - 260px);
+  align-items: stretch;
+  align-self: stretch;
 }
 .hud--compact .hud-right > :not(.hud-tab) {
   width: 100%;
@@ -3194,4 +3194,449 @@ select.input {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+/* ── Nurse Asha: mascot header, alerts, explain card ─────────────────── */
+
+.agent-panel {
+  position: relative;
+}
+.hud--compact .hud-right > .agent-panel {
+  flex: 1;
+  overflow: hidden;
+}
+.hud--compact .tab {
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  min-height: 40px;
+}
+.agent-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.asha-head-wrap {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-deep);
+  border-bottom: 2px solid var(--line);
+  max-height: 46%;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.asha-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.asha-frame {
+  position: relative;
+  flex: none;
+  padding: 2px;
+  background: #173571;
+  box-shadow: 0 0 0 2px var(--line);
+  line-height: 0;
+}
+.asha {
+  display: block;
+  overflow: visible;
+}
+.asha-badge {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 20px;
+  text-align: center;
+  color: #fff;
+  background: var(--destructive);
+  box-shadow: 0 0 0 2px var(--bg-deep);
+}
+.asha-badge--warning {
+  background: var(--amber);
+  color: var(--on-amber);
+}
+.asha-badge--info {
+  background: var(--accent2);
+  color: var(--on-amber);
+}
+.asha-say {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+.asha-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text);
+}
+.asha-mood {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.asha-bubble {
+  position: relative;
+  padding: 7px 9px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.asha-bubble--danger {
+  box-shadow: inset 0 0 0 1.5px var(--destructive);
+}
+.asha-bubble--warning {
+  box-shadow: inset 0 0 0 1.5px var(--amber);
+}
+
+.asha-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 12px;
+  background: var(--red-tint);
+  box-shadow: inset 4px 0 0 var(--destructive), inset 0 0 0 1.5px var(--destructive);
+  animation: asha-toast-in 0.24s steps(3, end);
+}
+.asha-toast--warning {
+  background: var(--amber-tint);
+  box-shadow: inset 4px 0 0 var(--amber), inset 0 0 0 1.5px var(--amber);
+}
+.asha-toast--info {
+  background: var(--surface);
+  box-shadow: inset 4px 0 0 var(--accent2), inset 0 0 0 1.5px var(--line-strong);
+}
+.asha-toast-sev {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--destructive);
+}
+.asha-toast--warning .asha-toast-sev {
+  color: var(--amber);
+}
+.asha-toast--info .asha-toast-sev {
+  color: var(--accent2);
+}
+.asha-toast-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.asha-q,
+.asha-x {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  cursor: pointer;
+}
+.asha-q {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1;
+  background: var(--amber);
+  color: var(--on-amber);
+  box-shadow: 0 0 0 2px var(--line), 2px 2px 0 0 var(--bg-deep);
+}
+.asha-q:hover {
+  background: var(--amber-strong);
+}
+.asha-q--sm {
+  width: 22px;
+  height: 22px;
+  font-size: 17px;
+}
+.asha-x {
+  background: transparent;
+  color: var(--muted);
+}
+.asha-x:hover {
+  color: var(--text);
+  background: var(--secondary);
+}
+
+.asha-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.asha-history-toggle:hover {
+  color: var(--text);
+}
+.asha-caret {
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+.asha-history-list {
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+.asha-hist {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 8px;
+  background: var(--surface);
+  font-size: 12px;
+}
+.asha-hist-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--destructive);
+}
+.asha-hist--warning .asha-hist-dot {
+  background: var(--amber);
+}
+.asha-hist--info .asha-hist-dot {
+  background: var(--accent2);
+}
+.asha-hist-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.asha-hist-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+.asha-explain {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  box-shadow: inset 0 3px 0 var(--destructive);
+}
+.asha-explain--warning {
+  box-shadow: inset 0 3px 0 var(--amber);
+}
+.asha-explain--info {
+  box-shadow: inset 0 3px 0 var(--accent2);
+}
+.asha-explain-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px 10px 12px;
+  border-bottom: 2px solid var(--line);
+}
+.asha-explain-head .asha {
+  flex: none;
+  background: #173571;
+}
+.asha-explain-titles {
+  flex: 1;
+  min-width: 0;
+}
+.asha-explain-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.asha-explain-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.05;
+  font-weight: 400;
+}
+.asha-explain-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  scrollbar-width: thin;
+}
+.asha-explain-next {
+  padding: 8px 10px;
+  background: var(--green-tint);
+  box-shadow: inset 3px 0 0 var(--green);
+  font-size: 13.5px;
+}
+.asha-explain-next span {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+.asha-turn {
+  display: grid;
+  gap: 6px;
+}
+.asha-turn-q {
+  justify-self: end;
+  max-width: 85%;
+  padding: 6px 9px;
+  background: var(--secondary);
+  font-size: 13px;
+}
+.asha-turn-a {
+  padding: 8px 10px;
+  background: var(--amber-tint);
+  box-shadow: inset 0 0 0 1.5px var(--amber);
+  font-size: 13.5px;
+}
+.asha-ask {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-deep);
+  border-top: 2px solid var(--line);
+}
+
+/* Mascot motion snaps in whole sprite pixels (steps()). Base styles are
+   the resting pose, which is what reduced motion shows. */
+.asha-head {
+  animation: asha-bob 3.2s steps(1, end) infinite;
+}
+.asha-eyes-closed {
+  opacity: 0;
+  animation: asha-blink-close 4.4s steps(1, end) infinite;
+}
+.asha-eyes-open {
+  animation: asha-blink-open 4.4s steps(1, end) infinite;
+}
+.asha-mouth-open {
+  animation: asha-flash 0.32s steps(1, end) infinite;
+}
+.asha--talking .asha-head {
+  animation-duration: 1.4s;
+}
+.asha--working .asha-head {
+  animation: none;
+  transform: translateY(1px);
+}
+.asha-dot,
+.asha-wave {
+  animation: asha-dot 1.2s steps(1, end) infinite;
+}
+.asha-dot--2,
+.asha-wave--2 {
+  animation-delay: 0.4s;
+}
+.asha-dot--3,
+.asha-wave--3 {
+  animation-delay: 0.8s;
+}
+.asha-bang {
+  animation: asha-flash 0.6s steps(1, end) infinite;
+}
+.asha--alert .asha-figure {
+  animation: asha-shake 0.5s steps(1, end) 2;
+}
+.asha--happy .asha-figure {
+  animation: asha-hop 0.7s steps(1, end) 2;
+}
+.asha-spark {
+  animation: asha-flash 0.5s steps(1, end) infinite;
+}
+.asha-spark--2 {
+  animation-delay: 0.25s;
+}
+
+@keyframes asha-bob {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(1px); }
+}
+@keyframes asha-blink-close {
+  0% { opacity: 0; }
+  93% { opacity: 1; }
+  97% { opacity: 0; }
+}
+@keyframes asha-blink-open {
+  0% { opacity: 1; }
+  93% { opacity: 0; }
+  97% { opacity: 1; }
+}
+@keyframes asha-flash {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}
+@keyframes asha-dot {
+  0% { opacity: 0.25; }
+  33% { opacity: 1; }
+  66% { opacity: 0.25; }
+}
+@keyframes asha-shake {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-1px); }
+  50% { transform: translateX(1px); }
+  75% { transform: translateX(0); }
+}
+@keyframes asha-hop {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-2px); }
+  60% { transform: translateY(0); }
+}
+@keyframes asha-toast-in {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .asha *,
+  .asha-toast {
+    animation: none !important;
+  }
 }

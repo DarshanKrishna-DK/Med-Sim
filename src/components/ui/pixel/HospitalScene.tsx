@@ -289,12 +289,16 @@ interface Cloud {
   drift: number;
 }
 
+// All clouds live in the sky band, clear of every rooftop (tower top y 66,
+// wings y 112+, far city y 140+), so none ever sits on the campus, road or
+// grass. The hero crops the top ~40 rows on wide screens, so most sit low
+// enough in the sky to stay visible there.
 const CLOUDS: Cloud[] = [
-  { x: 6, y: 22, w: 72, h: 20, seed: 3, drift: 14 },
-  { x: 196, y: 10, w: 64, h: 18, seed: 5, drift: 18 },
-  { x: 334, y: 40, w: 56, h: 18, seed: 6, drift: 10 },
-  { x: 296, y: 168, w: 92, h: 24, seed: 8, drift: 10 },
-  { x: 176, y: 172, w: 70, h: 20, seed: 12, drift: 8 },
+  { x: 4, y: 50, w: 64, h: 18, seed: 3, drift: 14 },
+  { x: 196, y: 14, w: 64, h: 18, seed: 5, drift: 18 },
+  { x: 344, y: 92, w: 44, h: 14, seed: 6, drift: 10 },
+  { x: 236, y: 42, w: 64, h: 20, seed: 8, drift: 10 },
+  { x: 166, y: 55, w: 58, h: 18, seed: 12, drift: 8 },
 ];
 
 const STARS = (() => {

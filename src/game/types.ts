@@ -238,6 +238,26 @@ export interface NurseRun {
   error?: string;
 }
 
+// ── Mistake coach (Nurse Asha) ──
+
+export interface CoachAlert {
+  id: string;
+  caseId: string;
+  severity: 'info' | 'warning' | 'danger';
+  /** Max ~6 words. */
+  title: string;
+  /** Max ~18 words; shown in the toast and Asha's speech bubble. */
+  short: string;
+  /** 2-4 sentence teaching explanation, shown when "?" is clicked. */
+  explanation: string;
+  suggestion: string;
+  /** 'nurse' = raised locally from a nurse tool step; 'coach' = LLM check. */
+  source: 'nurse' | 'coach';
+  createdAt: number;
+  /** Toast closed by the doctor (stays in the alert history). */
+  dismissed?: boolean;
+}
+
 export interface PolyclinicSlice {
   clinic: ClinicId;
   patient: ActivePatient | null;
@@ -266,6 +286,9 @@ export interface GameState {
   /** Nurse-agent runs for the current polyclinic patient, oldest first.
    *  Cleared when a new patient is accepted. */
   agentRuns: NurseRun[];
+  /** Mistake alerts raised by Nurse Asha for the current polyclinic patient,
+   *  oldest first. Cleared when a new patient is accepted. */
+  coachAlerts: CoachAlert[];
   /** Clinic whose corridor door the doctor last walked through. The
    *  corridor respawns the player in front of that door on return;
    *  null = spawn in the lobby. */

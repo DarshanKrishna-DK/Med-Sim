@@ -7,6 +7,9 @@ import { getTestReport } from '../../data/defaultTestResults';
 import { MEDICATIONS, medicationById } from '../../data/medications';
 import { POLYCLINIC_DIAGNOSIS_LABELS } from '../../data/polyclinicPatients';
 import { NurseFeed, visibleRuns } from './NurseFeed';
+import { AshaExplain, NurseAshaHeader } from './NurseAsha';
+import type { CoachAlert } from '../../game/types';
+import { coachAfterDiagnosis, coachAfterManualPrescription, coachAfterManualTest } from '../../agents/coach';
 
 type Tab = 'nurse' | 'results' | 'diagnosis' | 'rx';
 
@@ -19,8 +22,9 @@ function sinceArrival(p: ActivePatient, ts: number | undefined): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function AgentPanel({ patient }: { patient: ActivePatient }) {
+export function AgentPanel({ patient, voiceStatus }: { patient: ActivePatient; voiceStatus?: string }) {
   const [tab, setTab] = useState<Tab>('nurse');
+  const [explaining, setExplaining] = useState<CoachAlert | null>(null);
   const runs = useAgentRuns();
   const shown = visibleRuns(runs);
   const running = shown.some((r) => r.status === 'running');
@@ -44,37 +48,41 @@ export function AgentPanel({ patient }: { patient: ActivePatient }) {
 
   return (
     <aside className="agent-panel hud-panel" aria-label="Chart and nurse agent">
-      <div className="tabs" role="tablist" aria-label="Chart sections" onKeyDown={onTabKey}>
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            ref={(el) => { tabRefs.current[t.id] = el; }}
-            type="button"
-            role="tab"
-            id={`tab-${t.id}`}
-            aria-selected={tab === t.id}
-            aria-controls={`panel-${t.id}`}
-            tabIndex={tab === t.id ? 0 : -1}
-            className="tab"
-            onClick={() => setTab(t.id)}
-          >
-            {t.id === 'nurse' && <span className={`nurse-dot ${running ? 'is-busy' : ''}`} aria-hidden="true" />}
-            {t.label}
-            {t.count ? <span className="tab-count">{t.count}</span> : null}
-          </button>
-        ))}
-      </div>
-
-      <div className="tab-panels">
-        <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="tab-panel">
-          {tab === 'nurse' && <NurseFeed runs={runs} />}
-          {tab === 'results' && <ResultsTab patient={patient} />}
-          {tab === 'diagnosis' && <DiagnosisTab patient={patient} />}
-          {tab === 'rx' && <PlanTab patient={patient} />}
+      <NurseAshaHeader voiceStatus={voiceStatus} onExplain={setExplaining} />
+      <div className="agent-body">
+        <div className="tabs" role="tablist" aria-label="Chart sections" onKeyDown={onTabKey}>
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              ref={(el) => { tabRefs.current[t.id] = el; }}
+              type="button"
+              role="tab"
+              id={`tab-${t.id}`}
+              aria-selected={tab === t.id}
+              aria-controls={`panel-${t.id}`}
+              tabIndex={tab === t.id ? 0 : -1}
+              className="tab"
+              onClick={() => setTab(t.id)}
+            >
+              {t.id === 'nurse' && <span className={`nurse-dot ${running ? 'is-busy' : ''}`} aria-hidden="true" />}
+              {t.label}
+              {t.count ? <span className="tab-count">{t.count}</span> : null}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {tab === 'nurse' && <NurseCommand />}
+        <div className="tab-panels">
+          <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="tab-panel">
+            {tab === 'nurse' && <NurseFeed runs={runs} />}
+            {tab === 'results' && <ResultsTab patient={patient} />}
+            {tab === 'diagnosis' && <DiagnosisTab patient={patient} />}
+            {tab === 'rx' && <PlanTab patient={patient} />}
+          </div>
+        </div>
+
+        {tab === 'nurse' && <NurseCommand />}
+        {explaining && explaining.caseId === patient.case.id && <AshaExplain alert={explaining} onClose={() => setExplaining(null)} />}
+      </div>
     </aside>
   );
 }
@@ -167,7 +175,7 @@ function ResultsTab({ patient }: { patient: ActivePatient }) {
             {matches.map((t) => (
               <li key={t.id}>
                 <span>{t.name}</span>
-                <button type="button" className="btn btn-quiet btn-sm" onClick={() => { store.orderPolyclinicTest(t.id); setQ(''); }}>
+                <button type="button" className="btn btn-quiet btn-sm" onClick={() => { store.orderPolyclinicTest(t.id); coachAfterManualTest(t.id); setQ(''); }}>
                   Order
                 </button>
               </li>
@@ -213,7 +221,11 @@ function DiagnosisTab({ patient }: { patient: ActivePatient }) {
         type="button"
         className="btn btn-primary btn-block"
         disabled={!picked}
-        onClick={() => picked && store.submitPolyclinicDiagnosis(picked)}
+        onClick={() => {
+          if (!picked) return;
+          store.submitPolyclinicDiagnosis(picked);
+          coachAfterDiagnosis(picked);
+        }}
       >
         Submit diagnosis
       </button>
@@ -284,6 +296,7 @@ function PlanTab({ patient }: { patient: ActivePatient }) {
                   className="btn btn-quiet btn-sm"
                   onClick={() => {
                     store.addPolyclinicPrescription({ medicationId: m.id, dose: m.defaultDose, duration: m.defaultDuration });
+                    coachAfterManualPrescription(m.id, m.defaultDose, m.defaultDuration);
                     setQ('');
                   }}
                 >
