@@ -17,6 +17,7 @@ import type { PaletteName } from '../styles/palettes';
 import type { Case as SimCase } from '../data/cases';
 import { CASES, getCase, getCaseClinic, getPatientCase } from '../data/cases';
 import { ensureAudioContext } from '../voice/conversationStore';
+import { readLang, writeLang, type Lang } from './lang';
 
 const ONBOARDED_KEY = 'medsim:onboarded';
 const LEGACY_ONBOARDED_KEY = 'medkit:onboarded';
@@ -112,6 +113,7 @@ function toActivePatient(c: SimCase): ActivePatient {
 class Store {
   private state: GameState = {
     screen: 'splash',
+    lang: readLang(),
     tweaks: { ...DEFAULT_TWEAKS },
     onboardingStep: 0,
     endConfirm: { sum: false, safe: false, ice: false },
@@ -142,6 +144,13 @@ class Store {
 
   // ── navigation ────────────────────────────────
   setScreen = (screen: Screen) => this.set({ screen });
+
+  /** Session language; persisted. Voice hooks watch it and reconnect. */
+  setLang = (lang: Lang) => {
+    if (lang === this.state.lang) return;
+    writeLang(lang);
+    this.set({ lang });
+  };
 
   /** Open the debrief screen in review mode for a saved evaluation. */
   viewEvalHistory = (historyId: string) =>

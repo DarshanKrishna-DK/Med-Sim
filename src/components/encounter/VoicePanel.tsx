@@ -4,6 +4,7 @@ import type { ConversationStatus } from '../../voice/conversation';
 import type { VoiceSession } from './useVoiceSession';
 import { isLive } from './useVoiceSession';
 import { Kbd } from '../ui/chrome';
+import { LangToggle } from '../ui/LangToggle';
 
 type OrbState = 'listening' | 'working' | 'composing' | 'connecting' | 'breathing';
 
@@ -99,6 +100,7 @@ export function VoicePanel({ voice, patientName }: { voice: VoiceSession; patien
         </div>
 
         <div className="voice-controls">
+          <LangToggle light />
           {voice.engaged && voice.status !== 'error' ? (
             <>
               <button

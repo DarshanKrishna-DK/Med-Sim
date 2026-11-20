@@ -15,6 +15,7 @@
 //      patient can react naturally ("a blood test? okay...").
 
 import { store, POLYCLINIC_BED_INDEX } from '../game/store';
+import { LANG_LOCALE, langOfText } from '../game/lang';
 import type { ActivePatient, NurseRun, NurseStep } from '../game/types';
 import { TESTS } from '../data/tests';
 import { MEDICATIONS } from '../data/medications';
@@ -82,6 +83,7 @@ function buildPayload(p: ActivePatient, utterance: string) {
   return {
     caseId: c.id,
     utterance,
+    lang: store.getState().lang,
     patient: {
       name: c.name,
       age: c.age,
@@ -153,7 +155,7 @@ export function speakAsNurse(text: string): Promise<void> {
       const r = await fetch('/voice/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: line, voice: 'nurse' }),
+        body: JSON.stringify({ text: line, voice: 'nurse', locale: LANG_LOCALE[langOfText(line)] }),
       });
       if (!r.ok) throw new Error(`/voice/tts ${r.status}`);
       url = URL.createObjectURL(await r.blob());

@@ -1,7 +1,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { PerformanceMonitor } from '@react-three/drei';
-import { store } from '../../game/store';
+import { store, useStore } from '../../game/store';
+import { LangToggle } from '../ui/LangToggle';
 import { CLASS_COLLIDERS, CLASS_EXIT, CLASS_SPAWN, ClassroomWorld } from '../world/Classroom';
 import { ThirdPersonPlayer, isTypingTarget, makeRuntime, type PlayerRuntime } from '../world/ThirdPersonPlayer';
 import { PostFX, WorldEnvironment, type FxQuality } from '../world/WorldFX';
@@ -80,6 +81,9 @@ export function ClassroomScreen() {
   const [nearExit, setNearExit] = useState(false);
   const leaving = useRef(false);
 
+  const lang = useStore((s) => s.lang);
+  const langRef = useRef(lang);
+  langRef.current = lang;
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [lessonKey, setLessonKey] = useState(0);
   const [boardStep, setBoardStep] = useState<BoardStep>(0);
@@ -109,7 +113,7 @@ export function ClassroomScreen() {
     setLessonError('');
     setLoadingTopic(topic);
     if (opts.typed) teacherRef.current?.speak(`Achha, ${topic}. Give me a moment, I will draw it on the board for you.`, { log: true });
-    fetchLesson(topic, levelRef.current, ac.signal)
+    fetchLesson(topic, levelRef.current, ac.signal, langRef.current)
       .catch((err: unknown) => {
         if (ac.signal.aborted) throw err;
         // Built-in lesson keeps the demo alive when the backend is down.
@@ -131,6 +135,15 @@ export function ClassroomScreen() {
         setLessonError(err instanceof Error ? err.message : String(err));
       });
   }, []);
+
+  // Language switched with a lesson on the board: redraw it in the new language.
+  const prevLang = useRef(lang);
+  useEffect(() => {
+    if (prevLang.current === lang) return;
+    prevLang.current = lang;
+    const l = lessonRef.current;
+    if (l) startLesson(l.title);
+  }, [lang, startLesson]);
 
   const onStudentFinal = useCallback(
     (text: string, typed: boolean) => {
@@ -363,6 +376,12 @@ export function ClassroomScreen() {
           </div>
         )}
 
+        {/* session language: teacher voice, narration and the lesson text follow it */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ ...labelStyle, fontSize: 10, color: UI.primary }}>Teacher language</span>
+          <LangToggle className="lang-toggle--end" />
+        </div>
+
         {/* current teacher line */}
         <div style={{ background: UI.bg, border: `2px solid ${UI.line}`, padding: '10px 12px', fontFamily: UI.label, fontSize: 15, lineHeight: 1.4, maxHeight: 132, overflow: 'auto' }} aria-live="polite">
           <span style={{ ...labelStyle, fontSize: 10, color: UI.primary, display: 'block', marginBottom: 4 }}>{TEACHER.short}</span>
@@ -487,6 +506,10 @@ export function ClassroomScreen() {
 
       {menu && (
         <PauseMenu title="Class paused">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ ...labelStyle, fontSize: 11, color: UI.primary }}>Voice language</span>
+            <LangToggle className="lang-toggle--end" />
+          </div>
           <MenuButton primary autoFocus onClick={() => setMenu(false)}>Resume</MenuButton>
           {lesson && <MenuButton onClick={() => { setMenu(false); setBoardOpen((o) => !o); }}>{boardOpen ? 'Room view' : 'Whiteboard view'}</MenuButton>}
           <MenuButton onClick={leave}>Leave lecture hall (back to corridor)</MenuButton>

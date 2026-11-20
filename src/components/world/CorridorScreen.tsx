@@ -9,6 +9,7 @@ import { ThirdPersonPlayer, isTypingTarget, makeRuntime, type PlayerRuntime } fr
 import { PostFX, WorldEnvironment, type FxQuality } from './WorldFX';
 import { ControlsCard, Fade, MenuButton, PauseMenu, PromptPill, Toast, UI, labelStyle, panel } from './worldUi';
 import { PORTAL, PORTAL_COLLIDERS, TeacherPortal, nearPortal } from './TeacherPortal';
+import { LangToggle } from '../ui/LangToggle';
 
 const WORLD_COLLIDERS = [...CORRIDOR_COLLIDERS, ...PORTAL_COLLIDERS];
 
@@ -283,6 +284,10 @@ export function CorridorScreen() {
       {menu && (
         <PauseMenu title="Paused">
           <MenuButton primary autoFocus onClick={() => setMenu(false)}>Resume</MenuButton>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ ...labelStyle, fontSize: 11, color: UI.primary }}>Voice language</span>
+            <LangToggle className="lang-toggle--end" />
+          </div>
           <MenuButton onClick={() => store.setScreen('library')}>Case library</MenuButton>
           <MenuButton onClick={() => store.setScreen('splash')}>Leave the hospital</MenuButton>
         </PauseMenu>

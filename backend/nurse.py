@@ -17,6 +17,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from llm_provider import chat, strip_think
+import lang as langmod
 
 log = logging.getLogger("medsim.nurse")
 router = APIRouter()
@@ -72,6 +73,7 @@ class NurseActRequest(BaseModel):
     catalog: Catalog
     alreadyOrdered: list[str] = Field(default_factory=list)
     alreadyPrescribed: list[str] = Field(default_factory=list)
+    lang: Optional[str] = None
 
 
 # ── tool executors (pure, no network) ──────────────────────────────────────
@@ -386,14 +388,14 @@ async def _run_json_plan(st: NurseState, req: NurseActRequest, steps: list[dict[
         res = st.execute(name, args if isinstance(args, dict) else {})
         steps.append({"tool": name, "args": args, "ok": bool(res.get("ok")), "summary": summarize(name, args, res), "result": res})
     msg2, _ = await chat(
-        [{"role": "system", "content": "Write a short spoken confirmation (max 30 words, no markdown, no 'Done -' prefix) as a warm Indian charge nurse talking to the doctor: contractions, numbers as words, commas and '...' for pauses, e.g. 'Okay doctor, I've sent the troponin and ECG... anything else?'. Mention anything refused or abnormal. Use only the facts given."},
+        [{"role": "system", "content": langmod.with_language("Write a short spoken confirmation (max 30 words, no markdown, no 'Done -' prefix) as a warm Indian charge nurse talking to the doctor: contractions, numbers as words, commas and '...' for pauses, e.g. 'Okay doctor, I've sent the troponin and ECG... anything else?'. Mention anything refused or abnormal. Use only the facts given.", req.lang, female=True, role="nurse")},
          {"role": "user", "content": json.dumps([{"tool": s["tool"], "summary": s["summary"]} for s in steps])}],
         max_tokens=120, stick_to=prov,
     )
     return str(plan_obj.get("plan", "")), strip_think(msg2.get("content") or "")
 
 
-def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]]) -> str:
+def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]], lang: Optional[str] = None) -> str:
     bits = []
     if st.new_tests:
         bits.append(", ".join(st.tests[t].name for t in st.new_tests) + " ordered")
@@ -404,6 +406,11 @@ def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]]) -> str:
         bits.append("held: " + "; ".join(refused))
     if st.follow_up:
         bits.append(f"follow-up in {st.follow_up['inDays']} days")
+    lg = langmod.norm_lang(lang)
+    if lg == "hi":
+        return "ठीक है डॉक्टर, आपका ऑर्डर हो गया। और कुछ?" if bits else "डॉक्टर, मैं वह ऑर्डर पूरा नहीं कर पाई।"
+    if lg == "kn":
+        return "ಸರಿ ಡಾಕ್ಟರ್, ನಿಮ್ಮ ಆರ್ಡರ್ ಆಯಿತು. ಇನ್ನೇನಾದರೂ?" if bits else "ಡಾಕ್ಟರ್, ಆ ಆರ್ಡರ್ ಮುಗಿಸಲು ಆಗಲಿಲ್ಲ."
     return ("Okay doctor, " + ", ".join(bits) + ". Anything else?") if bits else "I couldn't complete that order."
 
 
@@ -413,7 +420,8 @@ async def nurse_act(req: NurseActRequest):
     st = NurseState(req)
     steps: list[dict[str, Any]] = []
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT + "\nContext: " + _patient_brief(req, st)},
+        {"role": "system", "content": langmod.with_language(
+            SYSTEM_PROMPT + "\nContext: " + _patient_brief(req, st), req.lang, female=True, role="nurse")},
         {"role": "user", "content": req.utterance},
     ]
     from fastapi import HTTPException
@@ -431,7 +439,7 @@ async def nurse_act(req: NurseActRequest):
     if not steps:
         return {"runId": run_id, "intent": "none", "plan": "", "steps": [],
                 "applied": {"orderedTestIds": [], "prescriptions": []}, "spokenConfirmation": ""}
-    spoken = final if final and "NO_ORDER" not in final else _fallback_confirmation(st, steps)
+    spoken = final if final and "NO_ORDER" not in final else _fallback_confirmation(st, steps, req.lang)
     applied: dict[str, Any] = {"orderedTestIds": st.new_tests, "prescriptions": st.new_rx}
     if st.follow_up:
         applied["followUp"] = st.follow_up

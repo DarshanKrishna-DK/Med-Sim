@@ -37,6 +37,7 @@ from pydantic import BaseModel
 from agora_token import RtcTokenBuilder, Role_Publisher
 from llm_provider import require_provider
 import llm_proxy
+import lang as langmod
 
 log = logging.getLogger("medsim.voice")
 router = APIRouter()
@@ -52,10 +53,8 @@ DEFAULT_VOICES = {"M": "en-IN-aarav", "F": "en-IN-priya", "nurse": "en-IN-anisha
 
 # Indian English Falcon voices (listed live from the voices API, 2026-11-20).
 # Patients get a stable voice per case so two patients rarely sound alike.
-PATIENT_VOICE_POOLS = {
-    "M": ["en-IN-aarav", "en-IN-nikhil", "en-IN-samar", "en-IN-abhinav", "en-IN-eashwar"],
-    "F": ["en-IN-priya", "en-IN-pooja", "en-IN-anusha", "en-IN-isha", "en-IN-arohi", "en-IN-alia"],
-}
+# Per-language pools (hi-IN / kn-IN support) live in lang.py.
+PATIENT_VOICE_POOLS = langmod.PATIENT_VOICE_POOLS["en"]
 
 
 def _client_factory() -> httpx.AsyncClient:
@@ -82,17 +81,20 @@ def voice_health() -> dict[str, Any]:
     }
 
 
-def _voice_for(kind: str, case_id: str | None = None) -> str:
-    env = {"M": "MURF_VOICE_MALE", "F": "MURF_VOICE_FEMALE", "nurse": "MURF_NURSE_VOICE"}[kind]
-    override = os.environ.get(env, "").strip()
-    if override:
-        return override
-    pool = PATIENT_VOICE_POOLS.get(kind)
-    if pool and case_id:
-        # Stable across runs (unlike hash(), which is salted per process).
-        idx = int(hashlib.sha1(case_id.encode()).hexdigest(), 16) % len(pool)
-        return pool[idx]
-    return DEFAULT_VOICES[kind]
+def _voice_for(kind: str, case_id: str | None = None, lang: str | None = "en") -> str:
+    """Murf voice id. English honours the MURF_* env overrides; hi/kn always pick
+    from voices that list the locale (an override could lack hi-IN/kn-IN support)."""
+    lg = langmod.norm_lang(lang)
+    if lg == "en":
+        env = {"M": "MURF_VOICE_MALE", "F": "MURF_VOICE_FEMALE", "nurse": "MURF_NURSE_VOICE"}[kind]
+        override = os.environ.get(env, "").strip()
+        if override:
+            return override
+    if kind == "nurse":
+        return langmod.nurse_voice(lg)
+    if case_id:
+        return langmod.pick_patient_voice(lg, kind, case_id)
+    return DEFAULT_VOICES[kind] if lg == "en" else langmod.pick_patient_voice(lg, kind, None)
 
 
 def _basic_auth() -> str:
@@ -129,31 +131,23 @@ TURN_DETECTION = {
 
 # Agora "talking while waiting" fillers (properties.filler_words, join reference).
 # Static only: generated fillers need a BYOK OpenAI/Groq/xAI LLM, ours is custom/Sarvam.
-FILLER_PHRASES = [
-    "Hmm...",
-    "Haan, doctor...",
-    "Umm, let me think...",
-    "Achha...",
-    "One second, doctor...",
-    "Hmm, let me see...",
-    "Okay, doctor...",
-    "Umm... yes...",
-]
+# Phrases per language live in lang.py (FILLERS).
+FILLER_PHRASES = langmod.FILLERS["en"]
 FILLER_WAIT_MS = 1100
 
 
-def filler_block() -> dict[str, Any]:
+def filler_block(lang: str | None = "en") -> dict[str, Any]:
     return {
         "enable": True,
         "trigger": {"fixed_time_config": {"response_wait_ms": FILLER_WAIT_MS}},
         "content": {
             "mode": "static",
-            "static_config": {"phrases": list(FILLER_PHRASES), "selection_rule": "shuffle"},
+            "static_config": {"phrases": langmod.fillers(lang), "selection_rule": "shuffle"},
         },
     }
 
 
-def _llm_block(system_prompt: str, greeting: str, *, probe: bool = False) -> dict[str, Any]:
+def _llm_block(system_prompt: str, greeting: str, *, probe: bool = False, lang: str | None = "en") -> dict[str, Any]:
     """PATIENT_LLM_PROVIDER = sarvam (default) | groq | managed (Agora-managed
     OpenAI, no key needed). sarvam/groq fall back to the other if unconfigured.
 
@@ -167,7 +161,7 @@ def _llm_block(system_prompt: str, greeting: str, *, probe: bool = False) -> dic
             "url": "https://api.openai.com/v1/chat/completions",
             "system_messages": [{"role": "system", "content": system_prompt}],
             "greeting_message": greeting,
-            "failure_message": FAILURE_MESSAGE,
+            "failure_message": langmod.failure_message(lang),
             "max_history": 32,
             "params": {"model": "gpt-4.1-mini", "max_tokens": 300},
         }
@@ -176,7 +170,7 @@ def _llm_block(system_prompt: str, greeting: str, *, probe: bool = False) -> dic
         "style": "openai",
         "system_messages": [{"role": "system", "content": system_prompt}],
         "greeting_message": greeting,
-        "failure_message": FAILURE_MESSAGE,
+        "failure_message": langmod.failure_message(lang),
         "max_history": 32,
         "params": {"model": prov["model"], "max_tokens": 300, "temperature": 0.7},
     }
@@ -225,7 +219,8 @@ class VoiceStartResponse(BaseModel):
 def build_join_body(
     req: VoiceStartRequest, channel: str, user_uid: int, agent_token: str, murf_key: str
 ) -> dict[str, Any]:
-    locale = req.locale or "en-IN"
+    lang = langmod.norm_lang(req.locale)
+    locale = langmod.locale_for(lang)
     sarvam_key = os.environ.get("SARVAM_API_KEY", "").strip()
     asr: dict[str, Any] = (
         {"vendor": "sarvam", "params": {"api_key": sarvam_key, "language": "unknown"}}
@@ -243,15 +238,15 @@ def build_join_body(
             "advanced_features": {"enable_rtm": True},
             "parameters": {"data_channel": "rtm", "enable_error_message": True},
             "asr": asr,
-            "llm": _llm_block(req.systemPrompt, req.initialLine),
+            "llm": _llm_block(req.systemPrompt, req.initialLine, lang=lang),
             "turn_detection": copy.deepcopy(TURN_DETECTION),
-            "filler_words": filler_block(),
+            "filler_words": filler_block(lang),
             "tts": {
                 "vendor": "murf",
                 "params": {
                     "api_key": murf_key,
                     "base_url": "wss://global.api.murf.ai/v1/speech/stream-input",
-                    "voiceId": _voice_for(req.gender, req.caseId),
+                    "voiceId": _voice_for(req.gender, req.caseId, lang),
                     "model": os.environ.get("MURF_AGORA_MODEL", "").strip() or "FALCON",
                     "locale": locale,
                     "rate": 0,
@@ -276,6 +271,9 @@ async def voice_start(req: VoiceStartRequest):
     user_token = _rtc_rtm_token(app_id, cert, channel, user_uid)
     agent_token = _rtc_rtm_token(app_id, cert, channel, AGENT_UID)
 
+    # hi/kn: the opening line arrives in English (case chief complaint); speak it in the session language.
+    if langmod.norm_lang(req.locale) != "en":
+        req = req.model_copy(update={"initialLine": await langmod.translate_line(req.initialLine, req.locale)})
     body = build_join_body(req, channel, user_uid, agent_token, env["MURF_API_KEY"])
     r = await _agora_call("POST", "/join", body)
     if 400 <= r.status_code < 500 and "filler" in r.text.lower():
@@ -356,18 +354,20 @@ async def voice_context(req: VoiceContextRequest):
 class VoiceTtsRequest(BaseModel):
     text: str
     voice: Literal["nurse", "M", "F"] = "nurse"
+    locale: Optional[str] = None
 
 
 @router.post("/voice/tts")
 async def voice_tts(req: VoiceTtsRequest):
     key = _require_env("MURF_API_KEY")["MURF_API_KEY"]
+    lang = langmod.norm_lang(req.locale)
     body = {
         "text": req.text[:600],
-        "voiceId": _voice_for(req.voice),
+        "voiceId": _voice_for(req.voice, None, lang),
         "model": "falcon-2.1",
         "format": "MP3",
         "sampleRate": 24000,
-        "locale": "en-US" if req.voice == "nurse" else "en-IN",
+        "locale": ("en-US" if req.voice == "nurse" else "en-IN") if lang == "en" else langmod.locale_for(lang),
     }
     try:
         async with _client_factory() as c:

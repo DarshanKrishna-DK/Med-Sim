@@ -164,11 +164,11 @@ export function estimateSpeechMs(text: string): number {
   return 700 + words * 385;
 }
 
-export async function fetchLesson(topic: string, level: LessonLevel, signal?: AbortSignal): Promise<Lesson> {
+export async function fetchLesson(topic: string, level: LessonLevel, signal?: AbortSignal, lang: string = 'en'): Promise<Lesson> {
   const r = await fetch('/teach/lesson', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, level }),
+    body: JSON.stringify({ topic, level, lang }),
     signal,
   });
   if (!r.ok) {

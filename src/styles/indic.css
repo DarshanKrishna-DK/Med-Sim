@@ -1,0 +1,65 @@
+/* Indic scripts for Hindi / Kannada voice lines and subtitles. The UI is
+   English; only agent lines and the language toggle use these glyphs. */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600&family=Noto+Sans+Kannada:wght@400;500;600&display=swap');
+
+:root {
+  --font-sans: 'Amarna', system-ui, 'Noto Sans Devanagari', 'Noto Sans Kannada', sans-serif;
+  --font-indic: 'Noto Sans Devanagari', 'Noto Sans Kannada', 'Nirmala UI', system-ui, sans-serif;
+}
+
+/* Taller line box so matras and Kannada conjuncts are not clipped by line clamps. */
+.subtitle-line {
+  line-height: 1.6;
+}
+
+/* Language toggle (EN / हिं / ಕನ್ನಡ) */
+.lang-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border: 2px solid var(--line, #2b4c8a);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: var(--font-indic);
+  background: var(--bg, #0b1f4b);
+}
+
+.lang-toggle button {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 3px 9px;
+  min-width: 34px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text, #f3f1e2);
+}
+
+.lang-toggle button + button {
+  border-left: 2px solid var(--line, #2b4c8a);
+}
+
+.lang-toggle button[aria-checked='true'] {
+  background: var(--primary, #a8e27c);
+  color: #0b1f4b;
+}
+
+.lang-toggle button:focus-visible {
+  outline: 2px solid var(--primary, #a8e27c);
+  outline-offset: -2px;
+}
+
+.lang-toggle--light {
+  --bg: #fff;
+  --line: #141414;
+  --text: #141414;
+  --primary: #ffd84d;
+}
+
+.lang-toggle--end {
+  margin-left: auto;
+}

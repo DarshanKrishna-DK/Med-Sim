@@ -90,6 +90,7 @@ export async function checkCoach(kind: CoachEventKind, detail: string): Promise<
       signal: ctl.signal,
       body: JSON.stringify({
         caseId,
+        lang: store.getState().lang,
         event: { kind, detail: text.slice(0, 600) },
         patient: patientPayload(p),
         correctDiagnosis: p.case.correctDiagnosisId ? dxLabel(p.case.correctDiagnosisId) : undefined,
@@ -167,6 +168,7 @@ export async function explainAlert(alert: CoachAlert, question?: string): Promis
           suggestion: alert.suggestion,
         },
         question: question?.trim() || undefined,
+        lang: store.getState().lang,
         caseId: alert.caseId,
         patient: p ? patientPayload(p) : {},
       }),

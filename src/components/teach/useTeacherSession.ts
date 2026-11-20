@@ -3,6 +3,8 @@ import { Conversation, type ConversationStatus, type SubtitleEvent } from '../..
 import { ensureAudioContext } from '../../voice/conversationStore';
 import { TEACHER, TEACHER_GREETING, buildTeacherLessonPrompt, buildTeacherPersona } from '../../voice/teacherPersona';
 import { estimateSpeechMs, type Lesson } from './lesson';
+import { store, useStore } from '../../game/store';
+import { LANG_LOCALE } from '../../game/lang';
 
 // The classroom's teacher voice session. Reuses the patient voice stack as
 // is: a Conversation (POST /voice/start with caseId 'teacher'), then
@@ -39,7 +41,7 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
   const [thinking, setThinking] = useState(false);
 
   const convRef = useRef<Conversation | null>(null);
-  const promptRef = useRef(buildTeacherPersona());
+  const promptRef = useRef(buildTeacherPersona(store.getState().lang));
   const lessonRef = useRef<Lesson | null>(null);
   const localSpeechUntil = useRef(0);
   const lastSpoken = useRef({ text: '', at: 0 });
@@ -104,6 +106,7 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
       initialMessage: { role: 'assistant', content: greeting },
       voiceGender: TEACHER.gender,
       caseId: TEACHER.caseId,
+      locale: LANG_LOCALE[store.getState().lang],
     });
     convRef.current = conv;
     setStatus('loading');
@@ -117,6 +120,22 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
     setProgress('');
     setMicMuted(false);
   }, []);
+
+  // Language switched mid-call: rebuild the prompt and reconnect so ASR/TTS
+  // locale, voice and persona all follow.
+  const lang = useStore((s) => s.lang);
+  const langRef = useRef(lang);
+  useEffect(() => {
+    if (langRef.current === lang) return;
+    langRef.current = lang;
+    const lesson = lessonRef.current;
+    promptRef.current = lesson ? buildTeacherLessonPrompt(lesson, lang) : buildTeacherPersona(lang);
+    const c = convRef.current;
+    if (!c || c.getStatus() === 'uninitialized' || c.getStatus() === 'error') return;
+    c.dispose();
+    convRef.current = null;
+    connect();
+  }, [lang, connect]);
 
   const toggle = useCallback(() => {
     const c = convRef.current;
@@ -136,7 +155,8 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
   /** Ground the teacher in the lesson on the board (or back to the bare persona). */
   const setLesson = useCallback((lesson: Lesson | null) => {
     lessonRef.current = lesson;
-    promptRef.current = lesson ? buildTeacherLessonPrompt(lesson) : buildTeacherPersona();
+    const lang = store.getState().lang;
+    promptRef.current = lesson ? buildTeacherLessonPrompt(lesson, lang) : buildTeacherPersona(lang);
     const agentId = convRef.current?.getAgentId();
     if (agentId) {
       postJson('/voice/context', { agentId, systemPrompt: promptRef.current }).catch((e) =>

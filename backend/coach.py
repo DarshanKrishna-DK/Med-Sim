@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from llm_provider import chat, strip_think
 from nurse import ALLERGY_CLASSES, _norm
+import lang as langmod
 
 log = logging.getLogger("medsim.coach")
 router = APIRouter()
@@ -72,6 +73,7 @@ class CoachCheckRequest(BaseModel):
     patient: CoachPatient = Field(default_factory=CoachPatient)
     correctDiagnosis: Optional[str] = None
     encounterSoFar: EncounterSoFar = Field(default_factory=EncounterSoFar)
+    lang: Optional[str] = None
 
 
 class CoachAlert(BaseModel):
@@ -94,6 +96,7 @@ class CoachExplainRequest(BaseModel):
     question: Optional[str] = None
     caseId: str = ""
     patient: CoachPatient = Field(default_factory=CoachPatient)
+    lang: Optional[str] = None
 
 
 class CoachExplainResponse(BaseModel):
@@ -192,10 +195,52 @@ def allergy_conflict(p: CoachPatient, drug: str) -> Optional[str]:
     return None
 
 
+# Hindi / Kannada text for the deterministic rule alerts: (title, short, explanation, suggestion).
+RULE_TEXT: dict[str, dict[str, tuple[str, ...]]] = {
+    "hi": {
+        "allergy": (
+            "एलर्जी का टकराव",
+            "{drug} मरीज़ की दर्ज {cls} एलर्जी से टकराता है।",
+            "मरीज़ को {cls} से एलर्जी दर्ज है और {drug} उसी दवा वर्ग की है। दवा लिखने से पहले हमेशा एलर्जी जाँचिए, "
+            "क्योंकि एक ही वर्ग की दवाओं में क्रॉस रिएक्शन से एनाफिलेक्सिस हो सकता है। इसे रद्द कीजिए और दूसरे वर्ग की दवा चुनिए।",
+            "यह दवा रोकिए और दूसरे वर्ग की सुरक्षित दवा चुनिए।",
+        ),
+        "history": (
+            "हिस्ट्री से पहले दवा",
+            "आपने मरीज़ की कोई हिस्ट्री लिए बिना दवा लिख दी।",
+            "इलाज से पहले जाँच ज़रूरी है। हिस्ट्री के बिना आपको एलर्जी, चल रही दवाएँ, गर्भावस्था या रेड फ्लैग का पता नहीं होता, "
+            "जो तय करते हैं कि क्या सुरक्षित है। पहले सही सवाल पूछिए, फिर दवा लिखिए।",
+            "दवा लिखने से पहले एलर्जी, चल रही दवाएँ और मुख्य तकलीफ़ के बारे में पूछिए।",
+        ),
+    },
+    "kn": {
+        "allergy": (
+            "ಅಲರ್ಜಿ ಸಂಘರ್ಷ",
+            "{drug} ರೋಗಿಯ ದಾಖಲಾದ {cls} ಅಲರ್ಜಿಗೆ ವಿರುದ್ಧವಾಗಿದೆ.",
+            "ರೋಗಿಗೆ {cls} ಅಲರ್ಜಿ ದಾಖಲಾಗಿದೆ ಮತ್ತು {drug} ಅದೇ ಔಷಧ ವರ್ಗಕ್ಕೆ ಸೇರುತ್ತದೆ. ಔಷಧ ಬರೆಯುವ ಮುನ್ನ ಯಾವಾಗಲೂ ಅಲರ್ಜಿ "
+            "ಪರೀಕ್ಷಿಸಿ, ಏಕೆಂದರೆ ಒಂದೇ ವರ್ಗದ ಔಷಧಗಳಲ್ಲಿ ಕ್ರಾಸ್ ರಿಯಾಕ್ಷನ್‌ನಿಂದ ಅನಾಫಿಲ್ಯಾಕ್ಸಿಸ್ ಆಗಬಹುದು. ಇದನ್ನು ರದ್ದುಮಾಡಿ, ಬೇರೆ ವರ್ಗದ ಔಷಧ ಆರಿಸಿ.",
+            "ಈ ಔಷಧ ನಿಲ್ಲಿಸಿ, ಬೇರೆ ವರ್ಗದ ಸುರಕ್ಷಿತ ಔಷಧ ಆರಿಸಿ.",
+        ),
+        "history": (
+            "ಹಿಸ್ಟರಿ ಮೊದಲು ಔಷಧ",
+            "ನೀವು ರೋಗಿಯ ಹಿಸ್ಟರಿ ತೆಗೆದುಕೊಳ್ಳದೆ ಔಷಧ ಬರೆದಿದ್ದೀರಿ.",
+            "ಚಿಕಿತ್ಸೆಗೂ ಮೊದಲು ಪರೀಕ್ಷೆ ಅಗತ್ಯ. ಹಿಸ್ಟರಿ ಇಲ್ಲದೆ ಅಲರ್ಜಿ, ನಡೆಯುತ್ತಿರುವ ಔಷಧಗಳು, ಗರ್ಭಧಾರಣೆ ಅಥವಾ ರೆಡ್ ಫ್ಲ್ಯಾಗ್ ಗೊತ್ತಾಗುವುದಿಲ್ಲ, "
+            "ಇವು ಯಾವುದು ಸುರಕ್ಷಿತ ಎಂದು ನಿರ್ಧರಿಸುತ್ತವೆ. ಮೊದಲು ಸರಿಯಾದ ಪ್ರಶ್ನೆ ಕೇಳಿ, ನಂತರ ಔಷಧ ಬರೆಯಿರಿ.",
+            "ಔಷಧ ಬರೆಯುವ ಮುನ್ನ ಅಲರ್ಜಿ, ಈಗಿನ ಔಷಧಗಳು ಮತ್ತು ಮುಖ್ಯ ತೊಂದರೆ ಕುರಿತು ಕೇಳಿ.",
+        ),
+    },
+}
+
+
 def rule_alert(req: CoachCheckRequest) -> Optional[CoachAlert]:
     ev = req.event
     if ev.kind == "prescription":
         cls = allergy_conflict(req.patient, ev.detail)
+        lg = langmod.norm_lang(req.lang)
+        if cls and lg in RULE_TEXT:
+            t = RULE_TEXT[lg]["allergy"]
+            drug = _words(ev.detail, 6)
+            return make_alert("danger", t[0], t[1].format(drug=drug, cls=cls), t[2].format(drug=drug, cls=cls), t[3])
         if cls:
             return make_alert(
                 "danger",
@@ -206,6 +251,8 @@ def rule_alert(req: CoachCheckRequest) -> Optional[CoachAlert]:
                 "anaphylaxis. Cancel it and choose an agent from a different class.",
                 "Stop this drug and pick a safe alternative from another class.",
             )
+        if not req.encounterSoFar.askedHistory and lg in RULE_TEXT:
+            return make_alert("warning", *RULE_TEXT[lg]["history"])
         if not req.encounterSoFar.askedHistory:
             return make_alert(
                 "warning",
@@ -298,7 +345,7 @@ async def coach_check(req: CoachCheckRequest) -> CoachCheckResponse:
     if not needs_llm(req):
         return CoachCheckResponse(alert=None)
     content = await _llm(
-        [{"role": "system", "content": CHECK_SYSTEM}, {"role": "user", "content": _check_user(req)}],
+        [{"role": "system", "content": langmod.with_language(CHECK_SYSTEM, req.lang, female=True, role="coach")}, {"role": "user", "content": _check_user(req)}],
         json_mode=True,
         max_tokens=500,
     )
@@ -337,7 +384,7 @@ async def coach_explain(req: CoachExplainRequest) -> CoachExplainResponse:
         default=str,
     )[:6000]
     content = await _llm(
-        [{"role": "system", "content": EXPLAIN_SYSTEM}, {"role": "user", "content": user}],
+        [{"role": "system", "content": langmod.with_language(EXPLAIN_SYSTEM, req.lang, female=True, role="coach")}, {"role": "user", "content": user}],
         json_mode=False,
         max_tokens=300,
     )

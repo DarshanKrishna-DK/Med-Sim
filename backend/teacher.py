@@ -35,6 +35,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from llm_provider import chat, strip_think
+import lang as langmod
 
 log = logging.getLogger("medsim.teacher")
 
@@ -64,6 +65,7 @@ _cache: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
 class LessonRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=160)
     level: Literal["student", "intern"] = "student"
+    lang: Optional[str] = None
 
 
 SYSTEM = (
@@ -92,6 +94,25 @@ SYSTEM = (
     "Use at least three different visual kinds across the steps. Keep facts standard textbook level. "
     "This is for synthetic training, not clinical advice."
 )
+
+
+def lesson_system(level: str, lang: Optional[str] = None) -> str:
+    base = SYSTEM.format(
+        level="medical student" if level == "student" else "junior doctor (intern)",
+        presets=" | ".join(WAVEFORM_PRESETS),
+    )
+    lg = langmod.norm_lang(lang)
+    if lg == "en":
+        return base
+    name = langmod.LANG_NAMES[lg]
+    return (
+        base
+        + f"\nLANGUAGE: write every step's narration and the quiz why in natural spoken {name} in its native "
+        "script; medical terms and common loanwords may stay in English. Headings, points, the quiz question and "
+        "options stay short and may keep English medical terms. JSON keys, visual kinds and presets stay exactly "
+        "in English."
+        + ("\nUse feminine Hindi verb forms (a woman professor)." if lg == "hi" else "")
+    )
 
 
 # ───────────────────────── normalisation ─────────────────────────
@@ -374,18 +395,19 @@ def parse_json_object(text: str) -> Any:
         raise ValueError(f"invalid JSON ({e.msg})") from e
 
 
-def cache_key(topic: str, level: str) -> str:
+def cache_key(topic: str, level: str, lang: Optional[str] = None) -> str:
     t = re.sub(r"[^a-z0-9 +-]", "", topic.lower())
     t = re.sub(r"\s+", " ", t).strip()
-    return f"{level}:{t}"
+    lg = langmod.norm_lang(lang)
+    return f"{level}:{t}" if lg == "en" else f"{level}:{lg}:{t}"
 
 
 # ───────────────────────── route ─────────────────────────
 
 
-async def _generate(topic: str, level: str) -> dict[str, Any]:
+async def _generate(topic: str, level: str, lang: Optional[str] = None) -> dict[str, Any]:
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM.format(level="medical student" if level == "student" else "junior doctor (intern)", presets=" | ".join(WAVEFORM_PRESETS))},
+        {"role": "system", "content": lesson_system(level, lang)},
         {"role": "user", "content": f"Topic: {topic}\nWrite the lesson JSON now."},
     ]
     last_err = ""
@@ -414,13 +436,13 @@ async def teach_lesson(req: LessonRequest):
     topic = _s(req.topic, 120)
     if not topic:
         raise HTTPException(status_code=422, detail="topic is required")
-    key = cache_key(topic, req.level)
+    key = cache_key(topic, req.level, req.lang)
     hit = _cache.get(key)
     if hit is not None:
         _cache.move_to_end(key)
         return {**hit, "cached": True}
     try:
-        lesson = await asyncio.wait_for(_generate(topic, req.level), timeout=TOTAL_TIMEOUT_S)
+        lesson = await asyncio.wait_for(_generate(topic, req.level, req.lang), timeout=TOTAL_TIMEOUT_S)
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Lesson generation timed out")
     _cache[key] = lesson
@@ -436,6 +458,7 @@ class AskMessage(BaseModel):
 
 class AskRequest(BaseModel):
     system: str = Field(min_length=1, max_length=16000)
+    lang: Optional[str] = None
     messages: list[AskMessage] = Field(min_length=1, max_length=40)
 
 
@@ -443,7 +466,7 @@ class AskRequest(BaseModel):
 async def teach_ask(req: AskRequest):
     """Typed Q&A with the teacher when the live voice agent is not connected.
     Same persona prompt the voice agent gets (sent by the browser)."""
-    msgs = [{"role": "system", "content": req.system}] + [m.model_dump() for m in req.messages[-12:]]
+    msgs = [{"role": "system", "content": langmod.with_language(req.system, req.lang, female=True, role="teacher")}] + [m.model_dump() for m in req.messages[-12:]]
     msg, _ = await asyncio.wait_for(chat(msgs, max_tokens=320, temperature=0.6), timeout=ATTEMPT_TIMEOUT_S * 1.5)
     text = strip_think(msg.get("content") or "")
     text = re.sub(r"[*_`#]+", "", text).strip()

@@ -1,5 +1,6 @@
 import type { PaletteName } from '../styles/palettes';
 import type { ClinicId } from './clinic';
+import type { Lang } from './lang';
 
 // ── MedSim cozy-cartoon UI state ──────────────────────────
 
@@ -268,6 +269,8 @@ export interface PolyclinicSlice {
 // ── Combined game state ──
 export interface GameState {
   screen: Screen;
+  /** Session language for patient, nurse, coach and teacher voices. */
+  lang: Lang;
   tweaks: Tweaks;
   onboardingStep: number;
   endConfirm: EndConfirmChecks;

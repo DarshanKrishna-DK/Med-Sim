@@ -1,4 +1,6 @@
 import type { PatientCase } from '../game/types';
+import type { Lang } from '../game/lang';
+import { withLanguage } from './language';
 
 const PEDIATRIC_AGE_THRESHOLD = 14;
 
@@ -52,9 +54,10 @@ const REALISM_RULES = `SOUND LIKE A REAL PERSON, NOT A SCRIPT:
 - Use commas for natural pauses, because they become real pauses in your voice. Use "..." sparingly: at most once in a reply and only in about one reply in three, when you are genuinely hesitating. Short sentences, no long run-ons.
 - No lists, no markdown, no stage directions, no emojis.`;
 
-export function buildPersona(c: PatientCase, setting: 'er' | 'polyclinic' = 'er'): string {
-  if (isPediatric(c)) return buildPediatricParentPersona(c, setting);
-  return buildAdultPatientPersona(c, setting);
+export function buildPersona(c: PatientCase, setting: 'er' | 'polyclinic' = 'er', lang: Lang = 'en'): string {
+  const base = isPediatric(c) ? buildPediatricParentPersona(c, setting) : buildAdultPatientPersona(c, setting);
+  const female = (isPediatric(c) ? parentGenderFor(c) : c.gender) === 'F';
+  return withLanguage(base, lang, { female, role: 'patient' });
 }
 
 function buildAdultPatientPersona(

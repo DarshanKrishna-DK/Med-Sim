@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles/tokens.css';
 import './styles/app.css';
+import './styles/indic.css';
 import { clearAllConversationStorage } from './voice/conversationStore';
 
 // Each browser load = fresh session. Old per-case chat history could otherwise

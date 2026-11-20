@@ -4,6 +4,8 @@
 // once a lesson is on the board.
 
 import type { Lesson } from '../components/teach/lesson';
+import type { Lang } from '../game/lang';
+import { withLanguage } from './language';
 
 export const TEACHER = {
   name: 'Dr. Meera Iyer',
@@ -16,8 +18,8 @@ export const TEACHER = {
 export const TEACHER_GREETING =
   'Namaste, and welcome to class! I am Doctor Meera Iyer. Tell me what you would like to learn today, just say teach me and a topic, and I will draw it on the board for you.';
 
-export function buildTeacherPersona(): string {
-  return [
+export function buildTeacherPersona(lang: Lang = 'en'): string {
+  return withLanguage([
     `You are ${TEACHER.name}, a warm and experienced ${TEACHER.title} at an Indian medical college, teaching one student in a lecture hall.`,
     'You are speaking out loud through a voice call, so everything you say is heard, not read.',
     '',
@@ -38,11 +40,11 @@ export function buildTeacherPersona(): string {
     'BOUNDARIES:',
     'This is education in a training simulator. Do not give personal medical advice; if asked, suggest seeing a doctor.',
     'Keep facts at standard textbook level. If you are not sure, say so honestly.',
-  ].join('\n');
+  ].join('\n'), lang, { female: true, role: 'teacher' });
 }
 
 /** Persona plus the lesson on the board, so Q&A stays grounded in it. */
-export function buildTeacherLessonPrompt(lesson: Lesson): string {
+export function buildTeacherLessonPrompt(lesson: Lesson, lang: Lang = 'en'): string {
   const outline = {
     title: lesson.title,
     summary: lesson.summary,
@@ -51,7 +53,7 @@ export function buildTeacherLessonPrompt(lesson: Lesson): string {
     quiz: { question: lesson.quiz.question, options: lesson.quiz.options, answer: lesson.quiz.options[lesson.quiz.answerIndex], why: lesson.quiz.why },
   };
   return (
-    buildTeacherPersona() +
+    buildTeacherPersona(lang) +
     '\n\nTHE LESSON ON THE WHITEBOARD RIGHT NOW (you drew it; refer to "the board" and to step numbers when it helps):\n' +
     JSON.stringify(outline) +
     '\n\nThe board plays the steps one by one and you narrate each step. When the student interrupts with a question, answer it briefly using the lesson, then invite them to continue. ' +

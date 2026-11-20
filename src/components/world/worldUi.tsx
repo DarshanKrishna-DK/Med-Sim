@@ -13,7 +13,7 @@ export const UI = {
   amber: '#ffc46b',
   bevel: '0 0 0 2px var(--line, #2b4c8a), 4px 4px 0 0 #061431',
   heading: '"Jersey 10", "VT323", ui-monospace, monospace',
-  label: '"amarna", "Inter", system-ui, sans-serif',
+  label: '"amarna", "Inter", system-ui, "Noto Sans Devanagari", "Noto Sans Kannada", sans-serif',
 };
 
 export const labelStyle: CSSProperties = {

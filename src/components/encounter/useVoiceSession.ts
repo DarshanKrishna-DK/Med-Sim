@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ActivePatient } from '../../game/types';
-import { POLYCLINIC_BED_INDEX } from '../../game/store';
+import { POLYCLINIC_BED_INDEX, store, useStore } from '../../game/store';
 import type { ConversationStatus, SubtitleEvent } from '../../voice/conversation';
 import type { ChatMessage } from '../../voice/claude';
 import {
@@ -91,7 +91,7 @@ export function useVoiceSession(patient: ActivePatient | null): VoiceSession {
     }
     setError('');
     setEngaged(true);
-    const conv = getOrCreatePatientConversation(POLYCLINIC_BED_INDEX, p.case, listenersRef.current);
+    const conv = getOrCreatePatientConversation(POLYCLINIC_BED_INDEX, p.case, listenersRef.current, store.getState().lang);
     unsubRef.current?.();
     unsubRef.current = conv.subscribeMessages((m) => setMessages([...m]));
     const current = conv.getStatus();
@@ -121,6 +121,23 @@ export function useVoiceSession(patient: ActivePatient | null): VoiceSession {
       connect();
     }
   }, [connect, hangUp]);
+
+  // Language switched mid-call: drop the live conversation and reconnect with
+  // the new persona, ASR/TTS locale and voice.
+  const lang = useStore((s) => s.lang);
+  const langRef = useRef(lang);
+  useEffect(() => {
+    if (langRef.current === lang) return;
+    langRef.current = lang;
+    const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
+    if (!conv || conv.getStatus() === 'uninitialized' || conv.getStatus() === 'error') return;
+    disposePatientConversation(POLYCLINIC_BED_INDEX);
+    unsubRef.current?.();
+    unsubRef.current = null;
+    setPatientLine(null);
+    setDoctorLine(null);
+    connect();
+  }, [lang, connect]);
 
   const toggleMic = useCallback(() => {
     const conv = getExistingConversation(POLYCLINIC_BED_INDEX);

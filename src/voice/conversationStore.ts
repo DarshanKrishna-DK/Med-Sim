@@ -2,6 +2,7 @@ import { Conversation, type ConversationListeners } from './conversation';
 import { buildPersona, buildInitialLine, isPediatric, parentGenderFor } from './patientPersona';
 import type { PatientCase } from '../game/types';
 import type { ChatMessage } from './claude';
+import { LANG_LOCALE, type Lang } from '../game/lang';
 
 const HISTORY_PREFIX = 'medsim:conv:';
 /** Pre-rename (medkit) prefix, still swept by clearAllConversationStorage. */
@@ -62,7 +63,8 @@ export function getExistingConversation(bedIndex: number): Conversation | null {
 export function getOrCreatePatientConversation(
   bedIndex: number,
   patientCase: PatientCase,
-  listeners: ConversationListeners
+  listeners: ConversationListeners,
+  lang: Lang = 'en'
 ): Conversation {
   const existing = store.get(bedIndex);
   if (existing && existing.caseId === patientCase.id) {
@@ -84,7 +86,8 @@ export function getOrCreatePatientConversation(
     ? parentGenderFor(patientCase)
     : patientCase.gender;
   const conv = new Conversation(ctx, listeners, {
-    systemPrompt: buildPersona(patientCase, setting),
+    systemPrompt: buildPersona(patientCase, setting, lang),
+    locale: LANG_LOCALE[lang],
     initialMessage: buildInitialLine(patientCase),
     voiceGender: speakerGender,
     caseId: patientCase.id,
