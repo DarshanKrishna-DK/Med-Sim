@@ -1215,7 +1215,7 @@ const CSS = `
 .msf-pips i.on{background:var(--msf-lime)}
 .msf-hint{color:var(--msf-muted)}
 .msf-read{color:var(--msf-text);font-variant-numeric:tabular-nums}
-.msf-svg{display:block;width:100%;height:auto;padding:6px 6px 2px;box-sizing:border-box;overflow:visible;-webkit-user-select:none;user-select:none}
+.msf-svg{display:block;width:100%;height:auto;padding:6px 6px 2px;box-sizing:border-box;overflow:hidden;-webkit-user-select:none;user-select:none}
 .msf-svg path,.msf-svg circle,.msf-svg rect{vector-effect:non-scaling-stroke}
 .msf-svg .limb path{vector-effect:none}
 

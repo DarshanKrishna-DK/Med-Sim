@@ -241,7 +241,7 @@ export function LandingScreen() {
             </div>
             <div>
               <p className="kicker">Grading</p>
-              <p>Attending agent on Claude, marking against OSCE-style rubrics.</p>
+              <p>Attending agent on Sarvam, marking against OSCE-style rubrics.</p>
             </div>
             <div>
               <p className="kicker">Small print</p>

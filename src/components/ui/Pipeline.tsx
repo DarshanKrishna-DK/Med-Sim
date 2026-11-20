@@ -57,7 +57,7 @@ const LANES: Lane[] = [
     when: 'After you end the consultation',
     nodes: [
       { title: 'Encounter log', detail: 'Questions, orders, diagnosis, Rx' },
-      { title: 'Attending agent', detail: 'Claude marks it against an OSCE rubric' },
+      { title: 'Attending agent', detail: 'Sarvam marks it against an OSCE rubric' },
       { title: 'Debrief', detail: 'Scores, evidence, guideline citations' },
     ],
   },
