@@ -34,7 +34,54 @@ export interface GraphVisual {
   yLabel: string;
   series: Array<{ name: string; points: Array<[number, number]> }>;
 }
-export type LessonVisual = FlowVisual | CycleVisual | CompareVisual | LabelledVisual | TimelineVisual | GraphVisual;
+/** Physiology curves drawn in code (waveforms.ts); the model only picks a preset. */
+export const WAVEFORM_PRESETS = [
+  'ecg-normal',
+  'ecg-stemi',
+  'ecg-af',
+  'ecg-vt',
+  'ecg-heart-block-1',
+  'cardiac-cycle-wiggers',
+  'pv-loop',
+  'oxy-hb-dissociation',
+  'frank-starling',
+  'action-potential-ventricular',
+  'action-potential-nerve',
+  'spirometry-normal-vs-obstructive',
+  'glucose-insulin-ogtt',
+  'dose-response',
+] as const;
+export type WaveformPreset = (typeof WAVEFORM_PRESETS)[number];
+export const WAVEFORM_HIGHLIGHTS: Partial<Record<WaveformPreset, readonly string[]>> = {
+  'ecg-normal': ['p', 'pr', 'qrs', 'st', 't', 'qt'],
+  'oxy-hb-dissociation': ['right', 'left'],
+};
+export interface WaveformVisual {
+  kind: 'waveform';
+  preset: WaveformPreset;
+  highlight?: string;
+  caption?: string;
+}
+export type LessonVisual = FlowVisual | CycleVisual | CompareVisual | LabelledVisual | TimelineVisual | GraphVisual | WaveformVisual;
+
+/** Coerce a waveform visual: unknown preset becomes a flow of the step's points. */
+export function normalizeVisual(raw: unknown, fallbackLabels: string[]): LessonVisual {
+  const v = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  if (v.kind === 'waveform') {
+    const preset = String(v.preset ?? '').trim().toLowerCase().replace(/[\s_]+/g, '-') as WaveformPreset;
+    if ((WAVEFORM_PRESETS as readonly string[]).includes(preset)) {
+      const out: WaveformVisual = { kind: 'waveform', preset };
+      const hl = String(v.highlight ?? '').toLowerCase();
+      if (WAVEFORM_HIGHLIGHTS[preset]?.includes(hl)) out.highlight = hl;
+      if (typeof v.caption === 'string' && v.caption.trim()) out.caption = v.caption.trim().slice(0, 90);
+      return out;
+    }
+    const labels = fallbackLabels.filter(Boolean).slice(0, 4);
+    const nodes = (labels.length ? labels : ['Key idea']).map((label, i) => ({ id: `n${i}`, label: label.slice(0, 40) }));
+    return { kind: 'flow', nodes, edges: nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id })) };
+  }
+  return raw as LessonVisual;
+}
 
 export interface LessonStep {
   heading: string;
@@ -138,7 +185,7 @@ export async function fetchLesson(topic: string, level: LessonLevel, signal?: Ab
   }
   const data: unknown = await r.json();
   if (!isLesson(data)) throw new Error('The lesson came back in an unexpected shape.');
-  return data;
+  return { ...data, steps: data.steps.map((st) => ({ ...st, visual: normalizeVisual(st.visual, st.points ?? [st.heading]) })) };
 }
 
 /** Built-in lesson so the classroom still teaches when the backend is down. */
@@ -191,18 +238,16 @@ export const FALLBACK_LESSON: Lesson = {
       },
     },
     {
-      heading: 'Pressure in the left ventricle',
-      points: ['Rises fast in systole', 'Falls fast in relaxation'],
-      narration: 'If we plot left ventricular pressure against time, it shoots up during the squeeze and drops quickly when the muscle relaxes.',
-      visual: {
-        kind: 'graph',
-        xLabel: 'Time (s)',
-        yLabel: 'Pressure (mmHg)',
-        series: [
-          { name: 'LV', points: [[0, 6], [0.05, 10], [0.1, 60], [0.15, 110], [0.25, 120], [0.32, 90], [0.38, 10], [0.5, 5], [0.8, 8]] },
-          { name: 'Aorta', points: [[0, 80], [0.1, 80], [0.15, 110], [0.25, 118], [0.32, 98], [0.5, 90], [0.8, 80]] },
-        ],
-      },
+      heading: 'Pressures and volume',
+      points: ['LV pressure rises in systole', 'Valves open and close', 'Volume falls as blood leaves'],
+      narration: 'Here are the aortic, ventricular and atrial pressures with the ventricular volume. Watch the valves open and close as the ventricle squeezes and relaxes.',
+      visual: { kind: 'waveform', preset: 'cardiac-cycle-wiggers', caption: 'Wiggers diagram: one cardiac cycle' },
+    },
+    {
+      heading: 'The ECG behind the beat',
+      points: ['P wave: atria depolarise', 'QRS: ventricles depolarise', 'T wave: ventricles repolarise'],
+      narration: 'The electrical signal comes first. The P wave starts atrial contraction, the QRS starts the ventricular squeeze, and the T wave is the ventricles resetting.',
+      visual: { kind: 'waveform', preset: 'ecg-normal', caption: 'Normal sinus beat' },
     },
     {
       heading: 'Heart sounds mark the valves',

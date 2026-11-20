@@ -113,6 +113,32 @@ class ValidateTests(unittest.TestCase):
         g = teacher.normalize_visual({"kind": "graph", "series": [{"name": "s", "points": [{"x": 2, "y": 1}, {"x": 1, "y": "3"}]}]}, [])
         self.assertEqual(g["series"][0]["points"], [[1.0, 3.0], [2.0, 1.0]])
 
+    def test_prompt_lists_every_waveform_preset_and_bans_graph_for_physiology(self):
+        prompt = teacher.SYSTEM.format(level="student", presets=" | ".join(teacher.WAVEFORM_PRESETS))
+        for preset in teacher.WAVEFORM_PRESETS:
+            self.assertIn(preset, prompt)
+        self.assertEqual(len(teacher.WAVEFORM_PRESETS), 14)
+        self.assertIn("waveform", prompt)
+        self.assertIn("NEVER use graph", prompt)
+        self.assertIn("at most 6 points", prompt)
+
+    def test_known_waveform_preset_accepted(self):
+        v = teacher.normalize_visual({"kind": "waveform", "preset": "ECG_normal", "highlight": "QRS", "caption": "**Beat**"}, ["a"])
+        self.assertEqual(v, {"kind": "waveform", "preset": "ecg-normal", "highlight": "qrs", "caption": "Beat"})
+        v = teacher.normalize_visual({"kind": "waveform", "preset": "pv-loop", "highlight": "qrs"}, [])
+        self.assertEqual(v, {"kind": "waveform", "preset": "pv-loop"})
+
+    def test_unknown_waveform_preset_falls_back_to_flow_of_points(self):
+        v = teacher.normalize_visual({"kind": "waveform", "preset": "made-up-curve"}, ["a", "b", "c"])
+        self.assertEqual(v["kind"], "flow")
+        self.assertEqual(len(v["nodes"]), 3)
+        raw = good_lesson()
+        raw["steps"][3]["visual"] = {"kind": "waveform", "preset": "ecg-stemi"}
+        raw["steps"][0]["visual"] = {"kind": "waveform", "preset": "nope"}
+        out = teacher.validate_lesson(raw, "x", "student")
+        self.assertEqual(out["steps"][3]["visual"]["preset"], "ecg-stemi")
+        self.assertEqual(out["steps"][0]["visual"]["kind"], "flow")
+
     def test_markdown_is_stripped_from_text(self):
         raw = good_lesson(title="**Cardiac** cycle")
         self.assertEqual(teacher.validate_lesson(raw, "x", "student")["title"], "Cardiac cycle")

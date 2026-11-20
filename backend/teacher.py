@@ -15,6 +15,7 @@ Visual kinds and their data (all strings short, all lists bounded):
     labelled  {center, labels:[{label, note?}]}
     timeline  {events:[{t, label}]}
     graph     {xLabel, yLabel, series:[{name, points:[[x,y],...]}]}
+    waveform  {preset, highlight?, caption?}  (curve drawn in code from a preset)
 
 One repair retry if the first reply is malformed. Lessons are cached in
 memory by (level, topic). Educational content only, not clinical advice.
@@ -39,7 +40,19 @@ log = logging.getLogger("medsim.teacher")
 
 router = APIRouter()
 
-VISUAL_KINDS = ("flow", "cycle", "compare", "labelled", "timeline", "graph")
+VISUAL_KINDS = ("flow", "cycle", "compare", "labelled", "timeline", "graph", "waveform")
+# Physiology curves drawn in code by the frontend (src/components/teach/waveforms.ts).
+# The model only picks a preset; it never invents the points.
+WAVEFORM_PRESETS = (
+    "ecg-normal", "ecg-stemi", "ecg-af", "ecg-vt", "ecg-heart-block-1",
+    "cardiac-cycle-wiggers", "pv-loop", "oxy-hb-dissociation", "frank-starling",
+    "action-potential-ventricular", "action-potential-nerve",
+    "spirometry-normal-vs-obstructive", "glucose-insulin-ogtt", "dose-response",
+)
+WAVEFORM_HIGHLIGHTS: dict[str, tuple[str, ...]] = {
+    "ecg-normal": ("p", "pr", "qrs", "st", "t", "qt"),
+    "oxy-hb-dissociation": ("right", "left"),
+}
 MIN_STEPS, MAX_STEPS = 4, 6
 CACHE_MAX = 64
 ATTEMPT_TIMEOUT_S = 40.0
@@ -60,7 +73,7 @@ SYSTEM = (
     '"options": [4 short strings], "answerIndex": 0-3, "why": str (1 sentence)}}}}\n'
     'Each step: {{"heading": str (max 6 words), "points": [1 to 3 strings, each max 10 words], '
     '"narration": str (1 or 2 plain spoken sentences, simple words, an analogy where it helps, no lists, '
-    'no symbols), "visual": {{"kind": one of flow|cycle|compare|labelled|timeline|graph, ...data}}}}\n'
+    'no symbols), "visual": {{"kind": one of flow|cycle|compare|labelled|timeline|graph|waveform, ...data}}}}\n'
     "Visual data by kind (labels max 4 words):\n"
     '- flow: {{"kind":"flow","nodes":[{{"id":"a","label":str}}],"edges":[{{"from":"a","to":"b","label":str optional}}]}} 2-6 nodes\n'
     '- cycle: {{"kind":"cycle","nodes":[{{"id":"a","label":str}}],"center":str optional}} 3-6 nodes in order\n'
@@ -68,7 +81,14 @@ SYSTEM = (
     '- labelled: {{"kind":"labelled","center":str,"labels":[{{"label":str,"note":str optional}}]}} 3-6 labels\n'
     '- timeline: {{"kind":"timeline","events":[{{"t":str,"label":str}}]}} 3-6 events\n'
     '- graph: {{"kind":"graph","xLabel":str,"yLabel":str,"series":[{{"name":str,"points":[[x,y],...]}}]}} '
-    "numbers only, 4-12 points, 1-2 series\n"
+    "numbers only, at most 6 points, 1-2 series, ONLY for a simple illustrative trend\n"
+    '- waveform: {{"kind":"waveform","preset":one of {presets},"highlight":str optional,"caption":str optional max 12 words}} '
+    "the app draws the exact curve with labelled landmarks, you never supply points. "
+    "highlight: for ecg-normal one of p|pr|qrs|st|t|qt, for oxy-hb-dissociation one of right|left.\n"
+    "RULE: whenever a step is about an ECG or rhythm strip, the cardiac cycle or pressure and volume curves, a pressure-volume loop, "
+    "the oxygen-haemoglobin dissociation curve, Frank-Starling, an action potential, spirometry, glucose tolerance or insulin, "
+    "or a dose-response curve, you MUST use kind waveform with the matching preset. "
+    "NEVER use graph for ECG, pressure, dissociation, action potential or any such physiology curve.\n"
     "Use at least three different visual kinds across the steps. Keep facts standard textbook level. "
     "This is for synthetic training, not clinical advice."
 )
@@ -161,12 +181,12 @@ def _points(raw: Any) -> list[list[float]]:
 
 
 def normalize_visual(raw: Any, fallback_labels: list[str]) -> dict[str, Any]:
-    """Coerce a model visual into one of the six canonical shapes; falls back
+    """Coerce a model visual into one of the canonical shapes; falls back
     to a flow of the step's own points so a step always has a diagram."""
     v = raw if isinstance(raw, dict) else {}
     kind = _s(v.get("kind") or v.get("type"), 20).lower()
     kind = {"labeled": "labelled", "label": "labelled", "comparison": "compare", "line": "graph",
-            "chart": "graph", "process": "flow", "flowchart": "flow"}.get(kind, kind)
+            "chart": "graph", "wave": "waveform", "curve": "waveform", "process": "flow", "flowchart": "flow"}.get(kind, kind)
 
     try:
         if kind == "flow":
@@ -230,6 +250,18 @@ def normalize_visual(raw: Any, fallback_labels: list[str]) -> dict[str, Any]:
                     events.append({"t": t or str(len(events) + 1), "label": lab})
             if len(events) >= 2:
                 return {"kind": "timeline", "events": events}
+        elif kind == "waveform":
+            preset = re.sub(r"[\s_]+", "-", str(v.get("preset") or v.get("name") or "").strip().lower())[:48]
+            if preset in WAVEFORM_PRESETS:
+                out_w: dict[str, Any] = {"kind": "waveform", "preset": preset}
+                hl = _s(v.get("highlight"), 12).lower()
+                if hl in WAVEFORM_HIGHLIGHTS.get(preset, ()):
+                    out_w["highlight"] = hl
+                cap = _s(v.get("caption"), 90)
+                if cap:
+                    out_w["caption"] = cap
+                return out_w
+            # unknown preset: fall through to the flow of the step's points
         elif kind == "graph":
             series = []
             raw_series = v.get("series")
@@ -353,7 +385,7 @@ def cache_key(topic: str, level: str) -> str:
 
 async def _generate(topic: str, level: str) -> dict[str, Any]:
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM.format(level="medical student" if level == "student" else "junior doctor (intern)")},
+        {"role": "system", "content": SYSTEM.format(level="medical student" if level == "student" else "junior doctor (intern)", presets=" | ".join(WAVEFORM_PRESETS))},
         {"role": "user", "content": f"Topic: {topic}\nWrite the lesson JSON now."},
     ]
     last_err = ""
