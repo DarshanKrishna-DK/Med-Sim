@@ -53,6 +53,16 @@ export function LandingScreen() {
           <HospitalScene />
           <div className="hero-inner">
             <div className="hero-copy">
+              <div className="hero-logo enter" style={{ ['--enter-delay' as string]: '0.02s' }} aria-hidden="true">
+                <img
+                  src="/brand/medsim-logo-256.png"
+                  width={136}
+                  height={136}
+                  alt=""
+                  draggable={false}
+                  className="hero-logo-img"
+                />
+              </div>
               <p className="kicker enter" style={{ ['--enter-delay' as string]: '0.1s' }}>
                 A voice-first clinical simulator
               </p>

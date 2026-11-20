@@ -23,15 +23,20 @@ export function goToLandingSection(id: string) {
 
 // ── Brand ────────────────────────────────────────────────────────────
 
-/** Pixel cross in a square: the MedSim mark. */
-export function BrandMark({ size = 24 }: { size?: number }) {
+/** The MedSim mark: a bevelled lime cross sliced by a cyan ECG-to-voice line
+ *  (rendered in Blender, see public/brand/). Decorative next to the wordmark. */
+export function BrandMark({ size = 30 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 8 8" shapeRendering="crispEdges" aria-hidden="true" className="brand-mark">
-      <rect x="0" y="0" width="8" height="8" fill="var(--primary)" />
-      <rect x="1" y="1" width="6" height="6" fill="var(--on-primary)" />
-      <rect x="3" y="2" width="2" height="4" fill="var(--primary)" />
-      <rect x="2" y="3" width="4" height="2" fill="var(--primary)" />
-    </svg>
+    <img
+      src="/brand/medsim-logo-96.png"
+      width={size}
+      height={size}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      decoding="async"
+      className="brand-mark"
+    />
   );
 }
 

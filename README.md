@@ -1,214 +1,100 @@
-# MedSim
+<p align="center">
+  <img src="public/brand/medsim-logo-256.png" alt="MedSim" width="110" />
+</p>
 
-Talk to a synthetic patient, speak your orders, and watch an AI charge nurse carry them out. A browser-based clinical training simulator built on Agora Conversational AI and Murf Falcon.
+<h1 align="center">MedSim</h1>
 
-**Hackathon:** Build with Agora - Bengaluru 2026 (solo)
-**Track:** 3, "AI Agents That Get Things Done"
-**Required pieces:** Agora Conversational AI, Murf AI Falcon TTS, agentic tool calls, working demo.
+<p align="center"><strong>A voice-first clinical training simulator. Walk into a 3D Indian hospital, talk to an AI patient in English, Hindi or Kannada, speak your orders, and an AI charge nurse carries them out, then grades how you did.</strong></p>
 
-## Demo flow
+<p align="center">Agora Conversational AI · Murf Falcon · Sarvam · React Three Fiber · FastAPI</p>
 
-One polyclinic encounter, mapped to the track's agent loop:
+<p align="center"><a href="https://medsim-0cla.onrender.com">Live demo</a> · <a href="#run-it">Run it</a> · <a href="#how-agora-murf-and-sarvam-are-used">How it works</a></p>
 
-| Stage | What happens in the encounter |
-|---|---|
-| **Initiate** | You walk your doctor avatar down the hospital corridor, pick a specialty door (24 of them), and sit down with a patient. `POST /voice/start` joins you to an Agora channel with a live patient agent. You interview the patient by voice. |
-| **Plan** | You say: "Get a CBC and a chest X-ray, and start amoxicillin." The spoken order (final transcript) triggers `POST /agent/nurse/act`. The charge nurse agent plans the tool calls it needs. |
-| **Execute** | The nurse runs at least two coordinated tool calls: `find_in_catalog`, `order_test`, `check_allergies_and_interactions`, `prescribe`. Results land in the chart. |
-| **Adapt** | The allergy check finds a penicillin allergy. The nurse holds amoxicillin, tells you why, and proposes an alternative instead of blindly executing. |
-| **Confirm & Follow-up** | The nurse speaks the summary in her own Murf Falcon voice, calls `schedule_follow_up`, and `/voice/context` updates the patient agent so the patient knows what was done. A debrief grades your work. |
+<p align="center">
+  <img alt="Voice: Agora ConvoAI" src="https://img.shields.io/badge/voice-Agora_ConvoAI-0b1f4b" />
+  <img alt="TTS: Murf Falcon" src="https://img.shields.io/badge/TTS-Murf_Falcon-a8e27c" />
+  <img alt="LLM: Sarvam" src="https://img.shields.io/badge/LLM-Sarvam-0b1f4b" />
+  <img alt="Cases: 255" src="https://img.shields.io/badge/cases-255-a8e27c" />
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0b1f4b" />
+</p>
+
+---
+
+## The problem
+
+- Doctors learn history taking, ordering and prescribing on real patients, with little safe practice before that.
+- OSCE-style practice needs trained actors and examiners, so most students in India get a few sessions a year.
+- Text quizzes don't train what matters at the bedside: listening, asking the right follow-up, and catching a dangerous order before it happens.
+
+## The solution
+
+MedSim gives every student an unlimited, always-available ward: patients who talk back in Indian English, and a nurse agent who executes orders, catches mistakes and explains why.
+You practise the full loop by voice (interview, order, adapt, prescribe, follow up) and get graded at the end.
+
+<p align="center"><img src="media/landing.png" alt="MedSim landing page" width="900" /></p>
+
+## What it does
+
+- **3D hospital, third person.** Walk your doctor down a corridor of 36 specialty doors. 24 clinics are open with 255 Indian patients; the rest show "Coming soon".
+- **Talk to the patient.** A real-time voice conversation through Agora. Patients answer only what you ask, hesitate, worry and ask questions back.
+- **English, Hindi or Kannada.** One toggle switches the patient, nurse, coach and teacher. Murf speaks the language and Sarvam understands whichever you use.
+- **Speak orders, the nurse does them.** "Get an ECG and a troponin, start aspirin 75." Nurse Asha plans and runs tool calls (`find_in_catalog`, `order_test`, `check_allergies_and_interactions`, `prescribe`, `schedule_follow_up`), puts the results on the chart, and confirms by voice.
+- **She adapts.** A penicillin allergy blocks amoxicillin: she holds it and tells you why. A stocked strength differs from your dose: she says so.
+- **Mistake alerts.** Allergy conflicts, prescribing before any history, or an irrelevant or harmful test raise an alert. Press "?" and she explains the principle.
+- **Teacher Portal.** A 3D lecture hall where Dr. Meera Iyer teaches any topic by voice, drawing it step by step on a whiteboard, then quizzes you.
+- **Real cases.** 15 cases are adapted from open-access (CC BY) published case reports, mostly from Indian hospitals, each with its citation.
+- **Debrief.** An overall score plus scores for history taking, diagnostic reasoning, test selection, treatment and safety, communication and disposition, with what went well and what to work on.
+
+## How Agora, Murf and Sarvam are used
+
+- **Agora Conversational AI** runs every voice: patient and teacher. The backend mints RTC + RTM tokens and starts an agent with REST v2 `/join`. The browser joins with `agora-rtc-sdk-ng`. Transcripts arrive over Agora RTM and drive the subtitles and the nurse.
+- **Sarvam** is the speech recognition inside Agora (language auto-detect) and the LLM for the patient, nurse, coach, teacher and debrief, with Groq as the fallback.
+- **Murf Falcon** is the TTS inside Agora (Indian English voices, a stable voice per patient), and the nurse's own voice through the Murf HTTP API.
+- **Custom LLM route.** Agora calls `/llm/patient/chat/completions` on our backend. It turns noise-only turns into "(inaudible)" before Sarvam sees them, so the patient never breaks. A per-agent token guards it, and the Sarvam key never leaves the server.
+- **Live context.** `/voice/context` updates the running agent's prompt, so the patient knows which tests and drugs were ordered. Filler words and tuned turn detection keep it sounding human.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  subgraph Browser
-    UI[React + Three.js UI]
-    RTC[agora-rtc-sdk-ng<br/>mic + patient audio]
-    RTM[agora-rtm v2<br/>transcripts]
-    Store[Store<br/>chart, orders, notifications]
-  end
-
-  subgraph Agora
-    CH[RTC channel]
-    subgraph ConvoAI[Conversational AI agent]
-      STT[Sarvam STT<br/>language auto-detect] --> LLM[Sarvam LLM<br/>sarvam-105b] --> TTS[Murf Falcon TTS]
-    end
-  end
-
-  subgraph Backend[FastAPI :8787]
-    Voice[/voice/start, stop, speak, context, tts/]
-    Nurse[/agent/nurse/act<br/>charge nurse + tools/]
-    Debrief[/agent/debrief/simple/]
-  end
-
-  UI --> RTC <--> CH <--> ConvoAI
-  ConvoAI -- transcripts --> RTM --> UI
-  UI -- start / stop --> Voice -- REST v2 join --> ConvoAI
-  RTM -- final doctor transcript --> Nurse
-  UI -- typed order --> Nurse
-  Nurse -- find_in_catalog, order_test,<br/>check_allergies_and_interactions,<br/>prescribe, schedule_follow_up --> Store
-  Nurse -- nurse voice --> MurfHTTP[Murf Falcon HTTP]
-  Store -- what was done --> Voice
-  Voice -- /update system_messages --> ConvoAI
-  Store --> Debrief
+  B[Browser: React + Three.js] -- mic / audio --> A[Agora RTC channel]
+  A <--> C[Agora ConvoAI agent<br/>Sarvam STT, LLM via proxy, Murf Falcon TTS]
+  C -- transcripts over RTM --> B
+  B -- start, stop, context --> S[FastAPI backend]
+  S -- REST v2 join / update --> C
+  C -- custom LLM --> S
+  B -- spoken or typed order --> N[Nurse agent + tools]
+  N --> S
+  S -- Sarvam / Groq --> L[(LLMs)]
+  S -- nurse voice --> M[Murf Falcon HTTP]
 ```
 
-## Tech stack
+One FastAPI process serves the API and the built frontend. State lives in a single `Store` class in the browser.
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 18, TypeScript, Vite |
-| 3D | Three.js via `@react-three/fiber` and `@react-three/drei` |
-| 2D UI | Pixel-art night/paper design system (Jersey 10 + Amarna fonts) |
-| State | Single `Store` class + `useSyncExternalStore` |
-| Realtime voice | Agora RTC (`agora-rtc-sdk-ng`), Agora RTM v2 (`agora-rtm`) for transcripts |
-| Voice agent | Agora Conversational AI Engine (REST v2) |
-| STT | Sarvam, run inside Agora, language auto-detect |
-| LLM (patient) | Sarvam `sarvam-105b` (OpenAI-compatible); Groq or Agora-managed OpenAI as fallbacks |
-| TTS | Murf AI Falcon (Agora vendor `murf`) |
-| Backend | FastAPI, single process, `127.0.0.1:8787` |
-| Nurse and debrief LLM | Sarvam, falling back to Groq |
-| Optional | Anthropic Managed Agent "attending" (Opus), only if `ANTHROPIC_API_KEY` is set |
+## Run it
 
-## How Agora and Murf are used
-
-**Agora**
-- `POST /voice/start` mints an RTC token and an RTM token (vendored AgoraIO token builder in `backend/agora_token/`), then calls the Conversational AI REST v2 `/join` to start an agent in the channel. Body: `{caseId, systemPrompt, initialLine, gender, locale?}`. Response: `{appId, channel, uid, token, agentUid, agentId}`.
-- The browser joins the channel with `agora-rtc-sdk-ng`, publishes the mic, and plays the agent's audio. Transcripts arrive over Agora RTM and drive the on-screen conversation and the order detection.
-- ASR is Sarvam STT configured inside the Agora agent (`VOICE_ASR=sarvam`, language auto-detect). LLM is Sarvam via its OpenAI-compatible API (`PATIENT_LLM_PROVIDER` = `sarvam` | `groq` | `managed`).
-- Custom LLM route: with `PATIENT_LLM_TUNNEL=cloudflared` the backend opens a Cloudflare quick tunnel and registers `POST /llm/patient/chat/completions` as the agent's LLM (`vendor: "custom"`). This proxy turns empty, noise-only user turns into "(inaudible)" before calling Sarvam, which otherwise rejects them with HTTP 400 and makes the patient say the failure line. Each agent gets its own short-lived bearer token; the Sarvam key never leaves the backend. Without a verified tunnel the backend calls Sarvam directly.
-- Turn detection is tuned for noisy rooms: `speech_threshold` 0.6, `interrupt_duration_ms` 240, `silence_duration_ms` 640.
-- `POST /voice/context` calls Agora `/update` with new `llm.system_messages`, the only updatable field, so the patient knows which tests and drugs were ordered.
-- `POST /voice/speak` makes the agent say a line (patient farewell). `POST /voice/stop` is idempotent.
-- The project `.mcp.json` registers the `agora-docs` MCP server (`https://mcp.agora.io`).
-
-**Murf Falcon**
-- Patient voice: Murf is the TTS vendor (`murf`) inside the Agora agent config. Voice IDs come from `MURF_VOICE_MALE` and `MURF_VOICE_FEMALE` by patient gender; region from `MURF_REGION`.
-- Nurse voice: `POST /voice/tts` `{text, voice?: 'nurse'|'M'|'F'}` calls the Murf Falcon HTTP API and returns `audio/mpeg`. The voice defaults to `MURF_NURSE_VOICE`.
-
-**Agentic nurse** (`POST /agent/nurse/act`, `backend/nurse.py`): a function-calling loop with server-side tools `find_in_catalog`, `order_test`, `check_allergies_and_interactions`, `prescribe`, `schedule_follow_up`. It plans, executes at least two coordinated calls, adapts to what the tools return, and confirms by voice. It fires automatically on the doctor's final transcripts or on typed orders.
-
-## Setup
-
-**Prerequisites:** Node 22+, Python 3.12.
-
-**Keys** (all server-side, in `backend/.env.local`; the browser never sees them):
-
-| Variable | Where to get it |
-|---|---|
-| `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE` | [console.agora.io](https://console.agora.io): create a project with the App Certificate enabled |
-| `AGORA_CUSTOMER_ID`, `AGORA_CUSTOMER_SECRET` | Same console, RESTful API credentials; enable Conversational AI on the project |
-| `MURF_API_KEY`, `MURF_REGION` | [murf.ai/api](https://murf.ai/api) dashboard |
-| `SARVAM_API_KEY` | [dashboard.sarvam.ai](https://dashboard.sarvam.ai) |
-| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) (fallback LLM) |
-| `PATIENT_LLM_PROVIDER` | `sarvam` (default), `groq`, or `managed` |
-| `PATIENT_LLM_TUNNEL` | `cloudflared` to route the patient LLM through the noise-safe proxy (needs `cloudflared` installed), or set `PUBLIC_URL` to your own HTTPS URL |
-| `ANTHROPIC_API_KEY` | Optional, only for the Opus attending |
-
-`backend/.env.example` has the full list.
+Requires Node 22+, Python 3.12, and keys for Agora (App ID, certificate, Conversational AI customer ID and secret), Murf, Sarvam and Groq. Names are in `backend/.env.example`.
 
 ```bash
-# install
-npm install
-cd backend
-python -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
-cp .env.example .env.local     # then fill in keys
-cd ..
+npm ci
+python -m venv backend/.venv
+backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
+cp backend/.env.example backend/.env.local      # fill in the keys
+
+backend/.venv/Scripts/python.exe backend/server.py   # API on 127.0.0.1:8787
+npm run dev                                          # app on http://localhost:5173
 ```
 
-## Run
+Locally, set `PATIENT_LLM_TUNNEL=cloudflared` to use the noise-safe LLM route through a Cloudflare quick tunnel. On a server, set `PUBLIC_URL` instead. Deployment is one Render web service; see [DEPLOY.md](DEPLOY.md).
 
-Two terminals, no separate voice worker:
+**Controls:** WASD walk, Shift run, mouse to look, E use a door, T talk, N next patient, Esc menu.
 
-```bash
-# 1. backend (127.0.0.1:8787)
-backend/.venv/Scripts/python.exe backend/server.py
+**Tests:** `npm run verify`, `npm test`, and `backend/.venv/Scripts/python.exe -m unittest discover backend/tests`.
 
-# 2. frontend (Vite proxies /agent/* and /voice/* to the backend)
-npm run dev
-```
+## Disclaimer
 
-Allow microphone access when the browser asks. Check `GET http://127.0.0.1:8787/health` to see which providers are configured; `llm.patient_route` shows `proxy via <host>` once the tunnel is verified (usually 15 to 90 s after start).
-
-**Before a live demo:** start the backend a few minutes early and run one short warm-up conversation. The very first request through a brand-new tunnel can take up to ~25 s while Agora's cloud resolves the new hostname; later turns answer in about 1 to 2 s.
-
-## Controls
-
-Third-person camera: you always see your doctor avatar.
-
-- `W` `A` `S` `D`: walk; `Shift`: run
-- Mouse: look around (click the scene or press a movement key to capture the mouse; Esc, Alt or Tab frees it, a second Esc opens the menu; with a free cursor, drag or rest it near a screen edge to turn); mouse wheel: zoom
-- `E`: open the door you are facing (built clinics open, the rest show "Coming soon"); in a clinic, `E` at the exit door returns to the corridor
-- `T` (in a clinic): connect or hang up the voice conversation with the patient
-- `N` (in a clinic): done with this patient, call the next one
-- `Esc`: menu (leave room, case library, leave the hospital)
-
-The in-game hints always show the current bindings.
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `npm run dev` | Vite dev server |
-| `npm run build` | `tsc -b` + Vite build |
-| `npm run preview` | Preview the production build |
-| `npm run verify` | Deterministic invariant checks on `src/data/*` and the 3D scene |
-| `npm test` | Node test runner, `scripts/test/` |
-
-On machines where group policy blocks `.exe` shims in `node_modules/.bin/`, the npm scripts already call `node node_modules/<pkg>/bin/<entry>.js` directly.
-
-## Project structure
-
-```
-src/
-  game/         store.ts (single state source), types.ts, clinic.ts (24 specialties)
-  data/         pure data: 240 polyclinic cases, tests, treatments, medications
-  voice/        Agora RTC/RTM session, persona prompt builder
-  agents/       nurse agent client, simple debrief, optional managed attending
-  components/   screens, encounter HUD, three/ (corridor, clinic room, avatar)
-  styles/       design tokens
-backend/
-  server.py     FastAPI app: /voice/*, /agent/*, /health
-  voice.py      Agora Conversational AI + Murf wiring
-  nurse.py      charge nurse agent and tools
-  debrief.py    JSON debrief grading
-  llm_provider.py  Sarvam / Groq / managed selection
-  agora_token/  vendored AgoraIO token builder
-  tests/        unittest suite
-scripts/        verify/ and test/ runners
-agent/skills/   skill prompts for case generation, roleplay, simulation tick
-docs/           design system capture, evolution log
-spec.md         hackathon submission plan
-```
-
-## Testing
-
-```bash
-npm run verify
-npm test
-backend/.venv/Scripts/python.exe -m unittest discover backend/tests
-```
-
-Two tests in `npm test` currently fail because `.claude/commands/medsim-verify-simulation.md` and `medsim-idea-evolve.md` do not exist in the repo. They are unrelated to the voice or nurse features.
-
-## Limitations and disclaimer
-
-- Cases are synthetic and plausible, not clinically validated. **This is a training toy, not medical advice**, and makes no claim of clinical accuracy.
-- Single-player, single-shift, no accounts, no persistence beyond the browser session.
-- Desktop browsers only. Unbuilt specialty domains show "Coming soon".
-- Pharmacology covers only the curated `src/data/medications.ts` table.
-- Patient and nurse quality depend on the Sarvam/Groq models and on the network.
-
-## Credits
-
-- Agora Conversational AI, Murf AI Falcon, Sarvam AI, Groq.
-- 3D assets: no `public/assets/CREDITS.md` is present yet. TODO: add attributions for any third-party models once they land.
-- Fonts: Jersey 10, Amarna.
+A training tool, not medical advice. Synthetic cases are plausible but not clinically validated. Real-case adaptations cite their sources in [src/data/REAL_CASES.md](src/data/REAL_CASES.md).
 
 ## License
 
-MedSim's source code is released under the [MIT License](LICENSE).
-
-Third-party assets keep their own licences, listed in `public/assets/CREDITS.md` (Poly Haven models and HDRI are CC0; fonts are OFL). One character model is CC BY-NC 4.0, which is fine for this non-commercial demo but must be replaced before any commercial use. Cases marked "Based on a published case" are adapted from CC BY case reports cited in `src/data/REAL_CASES.md`.
+Code is [MIT](LICENSE). Third-party 3D assets, fonts and case reports keep their own licences, listed in [public/assets/CREDITS.md](public/assets/CREDITS.md) and [src/data/REAL_CASES.md](src/data/REAL_CASES.md). One character model is CC BY-NC 4.0, so replace it before any commercial use.
