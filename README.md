@@ -18,7 +18,7 @@
 </p>
 
 <p align="center"><a href="media/trailer.mp4"><img src="media/trailer.webp" width="900" alt="MedSim trailer"></a></p>
-<p align="center"><a href="media/trailer.mp4">Watch the trailer with sound (MP4)</a></p>
+<p align="center"><sub>The preview above is silent. Click it to play the full 82-second trailer with sound.</sub><br><a href="media/trailer.mp4"><b>▶ Watch the trailer with sound (MP4, 82 s)</b></a></p>
 
 <img src="media/readme/divider.svg" width="100%">
 
