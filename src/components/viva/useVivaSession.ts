@@ -5,12 +5,16 @@ import { EXAMINER, buildVivaPersona, buildVivaPlanPrompt, examinerGreeting, time
 import { LANG_LOCALE } from '../../game/lang';
 import { estimateSpeechMs } from '../teach/lesson';
 import { advanceQuestion, askHistory, isClosingLine, type VivaLine, type VivaQuestion, type VivaSetup } from './vivaCore';
+import { upsertGrade, vivaAction, type AgentEvent, type LiveGrade } from '../../agents/agentEvents';
 
 // The examiner's voice session. Reuses the patient voice stack: a
 // Conversation (POST /voice/start with caseId 'viva-examiner'), then
 // /voice/context to push the hidden question plan and /voice/speak for the
 // time-up line. Typed answers go over RTM when live; with voice off they go
 // to POST /agent/viva/ask and the reply is read out with Murf (/voice/tts).
+// Tool-enabled sessions: the examiner marks each answer, picks the next
+// question and ends the viva himself (agent_toolsets.py); his events arrive
+// through onAgentEvents (live marks, question counter, final marking).
 
 const LIVE: ConversationStatus[] = ['ready', 'listening', 'thinking', 'speaking'];
 
@@ -18,6 +22,17 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`${path} ${r.status}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
   return (await r.json()) as T;
+}
+
+/** What the examiner's tools act on: subject, year and the hidden plan. */
+function vivaContext(setup: VivaSetup, plan: VivaQuestion[]): Record<string, unknown> {
+  return {
+    subject: setup.subject,
+    year: setup.year,
+    topic: setup.topic,
+    plan: plan.slice(0, 12).map((q) => ({ q: q.q.slice(0, 300), difficulty: q.difficulty })),
+    lang: setup.lang,
+  };
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9ऀ-ൿ]+/g, ' ').trim();
@@ -33,6 +48,8 @@ export function useVivaSession() {
   const [closed, setClosed] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
+  const [liveGrades, setLiveGrades] = useState<LiveGrade[]>([]);
+  const toolQuestions = useRef(0);
 
   const convRef = useRef<Conversation | null>(null);
   const setupRef = useRef<VivaSetup | null>(null);
@@ -111,6 +128,19 @@ export function useVivaSession() {
       }
       pushLine('student', sub.text);
     },
+    onAgentEvents: (events: AgentEvent[]) => {
+      for (const e of events) {
+        const a = vivaAction(e);
+        if (!a) continue;
+        if (a.kind === 'grade') setLiveGrades((g) => upsertGrade(g, a.grade));
+        else if (a.kind === 'question') {
+          toolQuestions.current += 1;
+          const next = Math.max(qRef.current, toolQuestions.current - 1);
+          qRef.current = next;
+          setQIndex(next);
+        } else setClosed(true); // end_viva: the screen's existing final marking runs
+      }
+    },
   });
   const syncPromptRef = useRef(syncPrompt);
   syncPromptRef.current = syncPrompt;
@@ -180,6 +210,8 @@ export function useVivaSession() {
       setLines([]);
       setQIndex(-1);
       setClosed(false);
+      setLiveGrades([]);
+      toolQuestions.current = 0;
       setError('');
       setStudentCaption('');
       const greeting = examinerGreeting(setup);
@@ -201,6 +233,7 @@ export function useVivaSession() {
         voiceGender: EXAMINER.gender,
         caseId: EXAMINER.caseId,
         locale: LANG_LOCALE[setup.lang],
+        agentContext: vivaContext(setup, planRef.current),
       });
       convRef.current = conv;
       pushedPromptRef.current = promptRef.current;
@@ -223,6 +256,7 @@ export function useVivaSession() {
       if (!setup) return;
       promptRef.current = buildVivaPlanPrompt(setup, plan);
       syncPrompt();
+      void convRef.current?.updateAgentContext({ plan: vivaContext(setup, plan).plan });
     },
     [syncPrompt],
   );
@@ -342,6 +376,7 @@ export function useVivaSession() {
     lines,
     qIndex,
     closed,
+    liveGrades,
     thinking,
     micMuted,
     start,

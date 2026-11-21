@@ -6,12 +6,16 @@ import { TEACHER, TEACHER_GREETING, buildTeacherLessonPrompt, buildTeacherPerson
 import { estimateSpeechMs, type Lesson } from './lesson';
 import { store, useStore } from '../../game/store';
 import { LANG_LOCALE } from '../../game/lang';
+import type { AgentEvent } from '../../agents/agentEvents';
 
 // The classroom's teacher voice session. Reuses the patient voice stack as
 // is: a Conversation (POST /voice/start with caseId 'teacher'), then
 // /voice/context to ground it in the lesson and /voice/speak for each
 // whiteboard step's narration. Typed questions go over RTM when live, or
 // to POST /teach/ask when voice is off.
+// When the session is tool-enabled, Dr. Iyer decides herself, mid-call, to
+// draw on the board, pop a quiz, assign practice or book a revision
+// (agent_toolsets.py); those events arrive through opts.onAgentEvents.
 
 export interface ClassLine {
   id: number;
@@ -75,7 +79,14 @@ async function playOffline(text: string, onDuration: (ms: number) => void): Prom
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: boolean) => void; onStudentPartial?: () => void }) {
+export function useTeacherSession(opts: {
+  onStudentFinal: (text: string, typed: boolean) => void;
+  onStudentPartial?: () => void;
+  /** UI events from the teacher's own tools (tool-enabled sessions only). */
+  onAgentEvents?: (events: AgentEvent[]) => void;
+  /** What her tools act on: topic, level, teacher email, case catalog. */
+  agentContext?: () => Record<string, unknown>;
+}) {
   const [status, setStatus] = useState<ConversationStatus>('uninitialized');
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
@@ -130,6 +141,7 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
       pushLine('you', sub.text);
       optsRef.current.onStudentFinal(sub.text, false);
     },
+    onAgentEvents: (events: AgentEvent[]) => optsRef.current.onAgentEvents?.(events),
   });
 
   // Leaving the lecture hall stops any offline narration.
@@ -157,6 +169,7 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
       voiceGender: TEACHER.gender,
       caseId: TEACHER.caseId,
       locale: LANG_LOCALE[store.getState().lang],
+      agentContext: optsRef.current.agentContext?.(),
     });
     convRef.current = conv;
     conv.onAvatarTrack(setAvatarTrack);
@@ -209,13 +222,18 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
     lessonRef.current = lesson;
     const lang = store.getState().lang;
     promptRef.current = lesson ? buildTeacherLessonPrompt(lesson, lang) : buildTeacherPersona(lang);
-    const agentId = convRef.current?.getAgentId();
+    const c = convRef.current;
+    const agentId = c?.getAgentId();
     if (agentId) {
-      postJson('/voice/context', { agentId, systemPrompt: promptRef.current }).catch((e) =>
+      const ctx = c?.isToolEnabled() ? optsRef.current.agentContext?.() : undefined;
+      postJson('/voice/context', { agentId, systemPrompt: promptRef.current, ...(ctx ? { agentContext: ctx } : {}) }).catch((e) =>
         console.warn('[teacher] context update failed:', e),
       );
     }
   }, []);
+
+  /** True while a live session whose agent runs its own tools is connected. */
+  const toolsEnabled = useCallback(() => isLive() && !!convRef.current?.isToolEnabled(), [isLive]);
 
   /** Teacher says a line: spoken by the live agent, or captioned with a
    *  simulated mouth when voice is off. */
@@ -339,6 +357,7 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
     toggle,
     toggleMic,
     setLesson,
+    toolsEnabled,
     speak,
     ask,
     sendQuestion,

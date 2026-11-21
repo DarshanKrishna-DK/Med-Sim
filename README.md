@@ -83,6 +83,19 @@ You practise the full loop by voice (interview, order, adapt, prescribe, follow 
 - **Custom LLM route.** Agora calls `/llm/patient/chat/completions` on our backend. It turns noise-only turns into "(inaudible)" before Sarvam sees them, so the patient never breaks. A per-agent token guards it, and the Sarvam key never leaves the server.
 - **Live context.** `/voice/context` updates the running agent's prompt, so the patient knows which tests and drugs were ordered. Filler words and tuned turn detection keep it sounding human.
 
+## Autonomous agents
+
+Four live voice agents decide by themselves, mid-conversation, when to act. Nobody has to say a keyword. Following Agora's tool-calling recipe, the tools run inside the live Agora call through our custom LLM endpoint: Agora calls `/llm/patient/chat/completions`, the per-agent bearer token says which agent it is, and `backend/agent_runtime.py` calls Sarvam with that agent's tools, runs the tool calls on the server (at most 2 or 3 rounds, 8 s caps), speaks a short filler line first and streams the final answer back to Agora as OpenAI SSE for Murf to speak. Tools that change the page (whiteboard, quiz, viva marks) publish to a small event bus that the browser polls (`GET /agent/agent-events/{channel}`).
+
+| Agent | Tools |
+|---|---|
+| Priya at Reception | `get_assignment_status`, `get_my_scores`, `list_assignments`, `email_report_to_teacher` (only ever to the assignment's teacher), `book_study_session` (Google Calendar), `send_to_my_phone` (only the contact saved in this browser) |
+| Dr. Meera Iyer, Teacher Portal | `draw_on_board`, `start_quiz`, `assign_practice` (creates a class assignment and code), `schedule_revision` (Google Calendar) |
+| Prof. Kulkarni, viva examiner | `record_answer_grade` (live marks), `next_question` (adapts the difficulty from the hidden paper), `end_viva` (opens the marking sheet) |
+| Nurse Asha, follow-up call | `escalate_red_flag`, `reschedule_call`, `log_symptom` |
+
+Side-effect tools are deduped per call, and every agent is told what it already did. Tools need the custom LLM route, so they need a public URL (`PUBLIC_URL` or the cloudflared tunnel). Without one the agents still talk, and Priya falls back to the older keyword trigger. Patient consultations never get tools: their turns pass through the proxy unchanged.
+
 ## Architecture
 
 ```mermaid

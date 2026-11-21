@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Conversation, type ConversationStatus, type SubtitleEvent } from '../../voice/conversation';
 import { ensureAudioContext } from '../../voice/conversationStore';
 import { RECEPTIONIST, buildReceptionistPersona, receptionGreeting } from '../../voice/receptionistPersona';
-import { getAssignmentView, localProgressSummary, useAssignment } from '../../assignments/client';
+import { getAssignmentView, localProgressSummary, openAssignment, useAssignment } from '../../assignments/client';
 import { runReceptionAction, setReceptionSink, type ReceptionResult } from '../../agents/receptionAgent';
+import { toolLine, type AgentEvent } from '../../agents/agentEvents';
 import { getProfile, useProfile } from '../../game/profile';
+import { getPatientContact } from '../../game/patientContact';
 import { store, useStore } from '../../game/store';
 import { LANG_LOCALE } from '../../game/lang';
 
@@ -12,6 +14,9 @@ import { LANG_LOCALE } from '../../game/lang';
 // Conversational AI, Murf voice picked server-side). Final transcripts and
 // typed text go to the front-desk agent (/agent/reception/act) from inside
 // conversation.ts; this hook is the sink that logs and speaks the result.
+// When the backend reports the session tool-enabled (custom LLM route), Priya
+// runs those tools herself mid-call (agent_toolsets.py): no keyword trigger;
+// her tool events arrive through onAgentEvents and are logged here.
 
 export interface DeskLine {
   id: number;
@@ -31,6 +36,22 @@ async function postJson(path: string, body: unknown): Promise<void> {
 
 function persona(): string {
   return buildReceptionistPersona(getProfile(), getAssignmentView(), localProgressSummary(), store.getState().lang);
+}
+
+/** What Priya's server-side tools may act on (agent_toolsets.reception_exec). */
+function agentContext(): Record<string, unknown> {
+  const view = getAssignmentView();
+  const p = getProfile();
+  const contact = getPatientContact();
+  const local = localProgressSummary();
+  return {
+    assignmentCode: view.code,
+    knownCodes: view.known.slice(0, 20),
+    profile: { name: p?.name ?? '', university: p?.university ?? '' },
+    localProgress: { ...local, recent: local.recent.slice(0, 8) },
+    ...(contact ? { contact } : {}),
+    lang: store.getState().lang,
+  };
 }
 
 export function useReceptionSession() {
@@ -145,6 +166,16 @@ export function useReceptionSession() {
       }
       push('you', sub.text);
     },
+    onAgentEvents: (events: AgentEvent[]) => {
+      for (const e of events) {
+        const line = toolLine(e);
+        if (line) push('action', line.summary, line.ok);
+        if (e.type === 'report_emailed') {
+          const code = getAssignmentView().code;
+          if (code) void openAssignment(code);
+        }
+      }
+    },
   });
 
   const connect = useCallback(() => {
@@ -166,6 +197,7 @@ export function useReceptionSession() {
       caseId: RECEPTIONIST.caseId,
       locale: LANG_LOCALE[store.getState().lang],
       avatar: false,
+      agentContext: agentContext(),
     });
     convRef.current = conv;
     setStatus('loading');
@@ -224,7 +256,9 @@ export function useReceptionSession() {
     const agentId = isLive() ? convRef.current?.getAgentId() : null;
     if (!agentId) return;
     const t = window.setTimeout(() => {
-      postJson('/voice/context', { agentId, systemPrompt: persona() }).catch((e) => console.warn('[reception] context update failed:', e));
+      const c = convRef.current;
+      const body = c?.isToolEnabled() ? { agentId, systemPrompt: persona(), agentContext: agentContext() } : { agentId, systemPrompt: persona() };
+      postJson('/voice/context', body).catch((e) => console.warn('[reception] context update failed:', e));
     }, 400);
     return () => window.clearTimeout(t);
   }, [view, profile, lang, isLive, live]);

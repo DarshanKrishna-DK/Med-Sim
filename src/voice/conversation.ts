@@ -37,6 +37,7 @@ import AgoraRTM, { type RTMClient } from 'agora-rtm';
 import { voiceMetrics } from './voiceMetrics';
 import { streamClaude, type ChatMessage } from './claude';
 import { decodeRtmJson, mergeTurnText, parseAgentMessage, type AgentRtmMessage } from './transcriptParser';
+import { startAgentEventPoller, type AgentEvent } from '../agents/agentEvents';
 
 const LOG = '[medsim:voice]';
 
@@ -78,6 +79,9 @@ export interface ConversationListeners {
   onSubtitle?: (sub: SubtitleEvent) => void;
   onError?: (err: string) => void;
   onEmotion?: (e: PatientEmotion) => void;
+  /** Autonomous agents: UI events their server-side tools published (whiteboard,
+   *  quiz, viva mark...). Polled only while a tool-enabled session is live. */
+  onAgentEvents?: (events: AgentEvent[]) => void;
 }
 
 function detectEmotion(text: string): PatientEmotion {
@@ -95,7 +99,9 @@ function detectEmotion(text: string): PatientEmotion {
 const NON_PATIENT_SESSIONS = new Set(['teacher', 'viva-examiner', 'radiologist', 'followup-call', 'receptionist']);
 
 /** Priya at Reception: her final transcripts and typed text go to the
- *  front-desk action agent (/agent/reception/act) instead of the nurse. */
+ *  front-desk action agent (/agent/reception/act) instead of the nurse,
+ *  unless the live agent is tool-enabled (then Priya runs the tools herself
+ *  inside our custom LLM endpoint and no client trigger is needed). */
 const RECEPTIONIST_SESSION = 'receptionist';
 
 function runReceptionFromSession(utterance: string, source: 'voice' | 'typed') {
@@ -130,6 +136,9 @@ export interface ConversationOptions {
   startBody?: Record<string, unknown>;
   /** Custom stop endpoint (default /voice/stop), posted {agentId}. */
   stopUrl?: string;
+  /** Autonomous agents (receptionist / teacher / viva-examiner): what their
+   *  server-side tools may act on, sent as /voice/start `agentContext`. */
+  agentContext?: Record<string, unknown>;
 }
 
 interface VoiceStartResponse {
@@ -142,6 +151,8 @@ interface VoiceStartResponse {
   /** Set when an Agora avatar joined the channel as a separate video user. */
   avatarUid?: number;
   avatarError?: string;
+  /** True when this agent runs its own tools server-side (custom LLM route). */
+  toolsEnabled?: boolean;
 }
 
 // ── backend helpers ─────────────────────────────────────────────
@@ -273,6 +284,8 @@ export class Conversation {
   private startUrl: string | null;
   private startBody: Record<string, unknown> | null;
   private stopUrl: string;
+  private agentContext: Record<string, unknown> | null;
+  private stopEvents: (() => void) | null = null;
 
   private messageSubscribers = new Set<(msgs: ReadonlyArray<ChatMessage>) => void>();
 
@@ -312,6 +325,7 @@ export class Conversation {
     this.startUrl = options.startUrl ?? null;
     this.startBody = options.startBody ?? null;
     this.stopUrl = options.stopUrl ?? '/voice/stop';
+    this.agentContext = options.agentContext ?? null;
 
     const restored = this.loadMessages();
     this.messages = restored && restored.length > 0 ? restored : [this.initialMessage];
@@ -412,6 +426,23 @@ export class Conversation {
 
   getCaseId(): string {
     return this.caseId;
+  }
+
+  /** True when the live agent decides on and runs its own tools (no client keyword triggers). */
+  isToolEnabled(): boolean {
+    return !!this.session?.toolsEnabled;
+  }
+
+  /** Update what a tool-enabled agent's tools act on (merged server-side). */
+  async updateAgentContext(ctx: Record<string, unknown>): Promise<void> {
+    this.agentContext = { ...(this.agentContext ?? {}), ...ctx };
+    const agentId = this.getAgentId();
+    if (!agentId || !this.isToolEnabled()) return;
+    try {
+      await postVoice('/voice/context', { agentId, agentContext: ctx });
+    } catch (err) {
+      console.warn(LOG, 'agent context update failed:', err);
+    }
   }
 
   /** Mute/unmute the doctor's mic without changing conversation status.
@@ -559,7 +590,12 @@ export class Conversation {
       const utterance = this.nurseCandidate;
       this.nurseCandidate = '';
       if (this.disposed || !utterance) return;
-      if (this.caseId === RECEPTIONIST_SESSION) return void runReceptionFromSession(utterance, 'voice');
+      if (this.caseId === RECEPTIONIST_SESSION) {
+        // Tool-enabled Priya acts on her own inside the call; the keyword
+        // trigger is only the fallback when the proxy route is unavailable.
+        if (this.isToolEnabled()) return;
+        return void runReceptionFromSession(utterance, 'voice');
+      }
       if (!this.clinicalAgents) return;
       // Dynamic import breaks the conversation ↔ nurseAgent ↔ store cycle.
       void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach'), import('../observer/observerCall')])
@@ -597,6 +633,7 @@ export class Conversation {
               gender: this.voiceGender,
               ...(this.locale ? { locale: this.locale } : {}),
               ...(this.wantAvatar !== undefined ? { avatar: this.wantAvatar } : {}),
+              ...(this.agentContext ? { agentContext: this.agentContext } : {}),
             },
       );
       if (!session || !session.appId || !session.channel || !session.token) {
@@ -698,6 +735,11 @@ export class Conversation {
 
       this.listeners.onProgress?.('Live.');
       this.setStatus('ready');
+      if (session.toolsEnabled && this.listeners.onAgentEvents) {
+        this.stopEvents = startAgentEventPoller(session.channel, (evs) => {
+          if (!this.disposed) this.listeners.onAgentEvents?.(evs);
+        });
+      }
 
       // Placeholder until the agent's greeting transcript arrives.
       this.listeners.onSubtitle?.({ who: 'patient', text: '…' });
@@ -813,7 +855,9 @@ export class Conversation {
     this.emitMessages();
     this.setStatus('thinking', 'Thinking…');
 
-    if (this.caseId === RECEPTIONIST_SESSION) runReceptionFromSession(clean, 'typed');
+    // Typed text over RTM reaches a tool-enabled Priya as a normal turn: she acts herself.
+    const viaLiveAgent = !!(this.rtm && this.session && opts?.speak !== false);
+    if (this.caseId === RECEPTIONIST_SESSION && !(viaLiveAgent && this.isToolEnabled())) runReceptionFromSession(clean, 'typed');
     if (this.clinicalAgents) {
       void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach'), import('../observer/observerCall')])
         .then(([ex, m, coach, obs]) => {
@@ -880,6 +924,10 @@ export class Conversation {
   /** Release Agora resources and stop the backend agent. Safe to call
    *  more than once and while init() is still in flight. */
   private teardown() {
+    if (this.stopEvents) {
+      this.stopEvents();
+      this.stopEvents = null;
+    }
     if (this.nurseTimer !== null) {
       window.clearTimeout(this.nurseTimer);
       this.nurseTimer = null;
