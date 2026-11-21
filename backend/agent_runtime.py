@@ -358,5 +358,14 @@ async def handle(payload: dict[str, Any], meta: dict[str, Any], model: str) -> R
         return await ts.handler(payload, meta, model)
     cid = f"chatcmpl-{re.sub(r'[^a-z]', '', ts.kind)[:12]}-" + secrets.token_hex(6)
     if payload.get("stream", True) is False:
-        return llm_proxy.completion_json(cid, model, await run_turn(ts, payload, meta))
-    return sse_response(cid, model, lambda filler: run_turn(ts, payload, meta, filler))
+        return llm_proxy.completion_json(cid, model, _no_dashes(await run_turn(ts, payload, meta)))
+
+    async def turn(filler):
+        return _no_dashes(await run_turn(ts, payload, meta, filler))
+
+    return sse_response(cid, model, turn)
+
+
+def _no_dashes(text: str) -> str:
+    """Spoken replies and captions never carry em or en dashes (house style)."""
+    return re.sub(r"\s*[—–]\s*", ", ", text or "").strip(", ")

@@ -54,6 +54,7 @@ const BEYOND = [
   { title: 'Follow-up calls', what: 'At the booked time Asha messages the patient and calls them over Agora. A red flag mid-call alerts the doctor on Telegram.' },
   { title: 'Observer, by phone', what: '“Asha, invite Darshan to observe.” She phones him, answers his questions, and he joins the live call listen-only.' },
   { title: 'Assignments and Reception', what: 'Teachers assign cases with a code. Priya at the front desk tells you what is pending and emails your report card.' },
+  { title: 'Agents with their own tools', what: 'Priya, Dr. Iyer and Prof. Kulkarni decide mid-call when to act: book a study slot, text you the plan, draw on the board, set an assignment, mark your answer.' },
   { title: 'Logbook and referrals', what: 'Every debrief adds a CBME logbook row in Google Sheets; referrals become PDFs in Drive.' },
 ];
 
