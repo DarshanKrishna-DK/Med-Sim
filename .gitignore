@@ -40,3 +40,6 @@ desktop.ini
 # Local AI-assistant notes and any chat transcripts never leave this machine
 CLAUDE.md
 *.jsonl
+
+# Deployment notes live in the README (render.yaml is the real config)
+DEPLOY.md

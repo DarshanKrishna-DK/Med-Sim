@@ -1,152 +1,232 @@
-<p align="center">
-  <img src="public/brand/medsim-logo-256.png" alt="MedSim" width="110" />
-</p>
-
-<h1 align="center">MedSim</h1>
-
-<h3 align="center">The Voice-First Clinical Simulator</h3>
-
-<p align="center"><strong>Walk into a 3D Indian hospital, talk to an AI patient in 7 Indian languages, speak your orders, and an AI charge nurse carries them out, then grades how you did.</strong></p>
-
-<p align="center">Agora Conversational AI · Murf Falcon · Sarvam · React Three Fiber · FastAPI</p>
-
-<p align="center"><a href="https://medsim-0cla.onrender.com">Live demo</a> · <a href="#run-it">Run it</a> · <a href="#how-agora-murf-and-sarvam-are-used">How it works</a></p>
+<p align="center"><img src="media/readme/header.svg" width="100%" alt="MedSim, The Voice-First Clinical Simulator"></p>
 
 <p align="center">
-  <img alt="Voice: Agora ConvoAI" src="https://img.shields.io/badge/voice-Agora_ConvoAI-0b1f4b" />
-  <img alt="TTS: Murf Falcon" src="https://img.shields.io/badge/TTS-Murf_Falcon-a8e27c" />
-  <img alt="LLM: Sarvam" src="https://img.shields.io/badge/LLM-Sarvam-0b1f4b" />
-  <img alt="Cases: 327" src="https://img.shields.io/badge/cases-327-a8e27c" />
-  <img alt="Clinics: 33" src="https://img.shields.io/badge/clinics-33-0b1f4b" />
-  <img alt="Languages: 7" src="https://img.shields.io/badge/languages-7-a8e27c" />
-  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0b1f4b" />
+  <a href="https://medsim-0cla.onrender.com"><img alt="Live demo" src="https://img.shields.io/badge/live_demo-open-a8e27c?style=for-the-badge"></a>
+  <img alt="Agora Conversational AI" src="https://img.shields.io/badge/Agora-Conversational_AI-0b1f4b?style=for-the-badge">
+  <img alt="Murf Falcon" src="https://img.shields.io/badge/Murf-Falcon_TTS-a8e27c?style=for-the-badge">
+  <img alt="Sarvam" src="https://img.shields.io/badge/Sarvam-STT_+_LLM-0b1f4b?style=for-the-badge">
+  <img alt="React Three Fiber" src="https://img.shields.io/badge/React_Three_Fiber-3D-a8e27c?style=for-the-badge">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-backend-0b1f4b?style=for-the-badge">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-a8e27c?style=for-the-badge"></a>
 </p>
+
+<p align="center">
+  <a href="https://medsim-0cla.onrender.com"><b>Live demo</b></a> &nbsp;·&nbsp;
+  <a href="media/trailer.mp4"><b>Watch trailer</b></a> &nbsp;·&nbsp;
+  <a href="#run-it"><b>Run it</b></a> &nbsp;·&nbsp;
+  <a href="#how-it-works"><b>How it works</b></a>
+</p>
+
+<p align="center"><a href="media/trailer.mp4"><img src="media/trailer.webp" width="900" alt="MedSim trailer"></a></p>
+<p align="center"><a href="media/trailer.mp4">Watch the trailer with sound (MP4)</a></p>
+
+<img src="media/readme/divider.svg" width="100%">
+
+## 🩺 What is MedSim
+
+- **A 3D Indian hospital you walk through.** 38 doors: 33 clinics, an Operation Theatre, a Radiology reading room and a Teacher Portal.
+- **Patients you talk to by voice.** They answer only what you ask, hesitate, worry and ask questions back.
+- **A nurse who does what you say.** Speak an order and Nurse Asha runs it with real tool calls, catches unsafe ones and confirms by voice.
+- **A grade at the end.** Every consult ends in a scored debrief, so students get safe, unlimited practice before real patients.
+
+<img src="media/readme/loop.svg" width="100%">
+
+<img src="media/readme/divider.svg" width="100%">
+
+## ✨ Features
+
+<table>
+  <tr>
+    <td width="33%" valign="top">🗣️ <b>AI patients by voice</b><br>327 cases in 33 clinics, 7 Indian languages, and mixed-language speech like Hinglish.</td>
+    <td width="33%" valign="top">💉 <b>Nurse Asha, real tools</b><br>NIH RxNorm and openFDA checks, HL7 FHIR R4 records, Google Calendar invites.</td>
+    <td width="33%" valign="top">📲 <b>Voice prescription</b><br>Sent by Telegram or WhatsApp with a Murf voice note in the patient's language.</td>
+  </tr>
+  <tr>
+    <td valign="top">📞 <b>Follow-up calls</b><br>The patient talks to Asha live from their phone; red flags alert the doctor mid-call.</td>
+    <td valign="top">👀 <b>Observers by phone</b><br>"Asha, invite my senior to observe" sends the Agora link and phones them.</td>
+    <td valign="top">🤖 <b>Autonomous agents</b><br>Priya at reception, Dr. Iyer teaching (optional Anam avatar), Prof. Kulkarni's viva, Dr. Rao in radiology.</td>
+  </tr>
+  <tr>
+    <td valign="top">🎓 <b>Exam modes</b><br>Timed OSCE, viva voce, 18 real radiology images and an Operation Theatre drill.</td>
+    <td valign="top">🏫 <b>Assignments for institutes</b><br>Teachers set work with a code; scores record themselves and reports arrive by email.</td>
+    <td valign="top">✍️ <b>Custom patients from Telegram</b><br><code>/newpatient</code>, answer 12 questions, and the patient appears in the clinic.</td>
+  </tr>
+  <tr>
+    <td valign="top">📒 <b>Logbook and referrals</b><br>CBME logbook in Google Sheets; SBAR referrals as a Google Doc, PDF and FHIR record.</td>
+    <td valign="top">📊 <b>Debrief and report cards</b><br>Scores across six clinical domains, OSCE sheets and PDF report cards.</td>
+    <td valign="top">🛟 <b>Coaching and drills</b><br>Mistake alerts, "How am I doing, Asha?", 8 communication stations, triage drill.</td>
+  </tr>
+</table>
+
+<details>
+<summary><b>More detail</b></summary>
+
+- **Languages:** English, Hindi, Kannada, Tamil, Telugu, Marathi, Bengali. One toggle switches every voice.
+- **Asha's tools:** `find_in_catalog`, `order_test`, `check_allergies_and_interactions`, `prescribe`, `schedule_follow_up`, `send_to_patient`. A penicillin allergy blocks amoxicillin, and she says why.
+- **Case quality:** automated consistency checks ([CLINICAL_AUDIT.md](src/data/CLINICAL_AUDIT.md)); 15 cases adapted from open-access reports ([REAL_CASES.md](src/data/REAL_CASES.md)).
+
+</details>
+
+<img src="media/readme/divider.svg" width="100%">
+
+## 🎭 The cast
+
+<img src="media/readme/agents.svg" width="100%">
+
+| Agent | Tools it calls on its own |
+|---|---|
+| Priya, reception | `get_assignment_status`, `list_assignments`, `email_report_to_teacher`, `book_study_session`, `send_to_my_phone` |
+| Dr. Meera Iyer, Teacher Portal | `draw_on_board`, `start_quiz`, `assign_practice`, `schedule_revision` |
+| Prof. Kulkarni, viva | `record_answer_grade`, `next_question`, `end_viva` |
+| Nurse Asha, follow-up call | `escalate_red_flag`, `reschedule_call`, `log_symptom` |
+
+<img src="media/readme/divider.svg" width="100%">
+
+## ⚙️ How it works
+
+<img src="media/readme/architecture.svg" width="100%">
+
+**One spoken turn:**
+
+```mermaid
+sequenceDiagram
+  participant D as Doctor (browser)
+  participant R as Agora RTC
+  participant C as Agora ConvoAI
+  participant B as FastAPI backend
+  participant S as Sarvam LLM
+  participant M as Murf Falcon
+  D->>R: speaks into the mic
+  R->>C: audio stream
+  C->>C: ASR with Sarvam STT
+  C->>B: custom LLM endpoint /llm/patient
+  alt talking to the patient
+    B->>S: chat completion
+    S-->>B: patient reply
+    B-->>C: streamed reply
+    C->>M: TTS
+    M-->>D: patient voice over RTC
+  else starts with "Nurse" or "Asha"
+    B-->>C: empty turn, patient stays silent
+    D->>B: /agent/nurse/act
+    B->>B: tool calls (catalog, allergies, order, prescribe, follow-up)
+    B-->>D: chart update
+    B->>M: confirmation line
+    M-->>D: nurse voice
+  end
+  C-->>D: transcripts over Agora RTM
+```
+
+**How Agora, Murf and Sarvam are used**
+
+| Product | What for | Where |
+|---|---|---|
+| Agora Conversational AI | Every live voice agent: ASR, LLM and TTS in one REST v2 `/join` | `backend/voice.py` |
+| Agora RTC | Mic, agent audio, listen-only observer, avatar video | `src/voice/`, `backend/observer.py` |
+| Agora RTM | Transcripts, live chart events, observer whispers and marks | `src/voice/` |
+| Agora metrics | Per-turn latency panel (press M), average response time in the debrief | `enable_metrics` |
+| Custom LLM route | Noise-safe patient turns and in-call agent tools | `backend/agent_runtime.py` |
+| Sarvam STT | Speech recognition inside Agora, language auto-detect | `backend/voice.py` |
+| Sarvam LLM | Patient, nurse, coach, grading, teacher, debrief (Groq fallback) | `backend/llm_provider.py` |
+| Murf Falcon | Agent voices in 7 languages, nurse, theatre team, voice prescriptions | `backend/voice.py`, `/voice/tts` |
+
+<img src="media/readme/divider.svg" width="100%">
+
+## 🚀 Run it
+
+1. **Prerequisites:** Node 22+, Python 3.12, and keys for Agora, Murf, Sarvam and Groq.
+2. **Clone:**
+   ```bash
+   git clone https://github.com/DarshanKrishna-DK/MedSim.git
+   cd MedSim
+   ```
+3. **Add your keys:**
+   ```bash
+   cp backend/.env.example backend/.env.local   # then fill in the keys
+   ```
+4. **Start the backend** (API on `127.0.0.1:8787`):
+   ```bash
+   python -m venv backend/.venv
+   backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
+   backend/.venv/Scripts/python.exe backend/server.py
+   ```
+5. **Start the app** (on `http://localhost:5173`):
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+> **Windows, one click:** after step 3, double-click `start-medsim.bat`. It installs what's missing, starts both servers and opens the browser.
+
+**Controls:** WASD walk, Shift run, mouse look, E use a door, T talk, N next patient, Esc menu.
+
+<details>
+<summary><b>Environment variables</b> (names only, see <code>backend/.env.example</code>)</summary>
+
+| Group | Variables |
+|---|---|
+| Agora (required) | `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`, `AGORA_CUSTOMER_ID`, `AGORA_CUSTOMER_SECRET` |
+| Murf (required) | `MURF_API_KEY`, `MURF_REGION`, optional `MURF_VOICE_MALE`, `MURF_VOICE_FEMALE`, `MURF_NURSE_VOICE` |
+| LLMs (required) | `SARVAM_API_KEY`, `SARVAM_MODEL`, `GROQ_API_KEY`, `GROQ_MODEL`, `PATIENT_LLM_PROVIDER` |
+| Public URL | `PUBLIC_URL` or `PATIENT_LLM_TUNNEL=cloudflared`, `BACKEND_PORT`, `VOICE_ASR` |
+| Messaging (optional) | `TELEGRAM_BOT_TOKEN`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `TWILIO_SMS_FROM`, `TWILIO_VOICE_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `DOCTOR_ALERT_DEST` |
+| Avatar (optional) | `AVATAR_VENDOR`, `AVATAR_API_KEY`, `AVATAR_ID`, `AVATAR_QUALITY` |
+| Attending (optional) | `ANTHROPIC_API_KEY`, `MEDSIM_AGENT_ID`, `MEDSIM_ENV_ID` |
+
+Agent tools and the noise-safe patient route need a public HTTPS URL. Locally, set `PATIENT_LLM_TUNNEL=cloudflared`; on a server, set `PUBLIC_URL`.
+
+</details>
+
+<details>
+<summary><b>Troubleshooting</b></summary>
+
+| Problem | Fix |
+|---|---|
+| Mic silent | Check the mic permission, reload, press **Connect voice** again, or type |
+| Echo, or the AI interrupts itself | Use headphones |
+| Voice agent will not start | Check `/health` and the backend logs (Agora minutes or keys) |
+| Patient silent after noise | Speak a full sentence; noise-only turns become "(inaudible)" |
+| Language toggle does nothing mid-call | End and restart the consultation |
+| Tunnel route not ready | It turns on 15 to 90 s after start; see `llm.patient_route` in `/health` |
+
+Everything also works by typing if voice fails.
+
+</details>
+
+<img src="media/readme/divider.svg" width="100%">
+
+## ☁️ Deploy
+
+- **One Render web service** (`render.yaml`, Python 3.12, Singapore) serves the FastAPI API and the built app from `dist/`, same origin, no CORS.
+- **Build:** `pip install -r backend/requirements.txt && npm ci && npm run build`
+- **Start:** `cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT`; health check at `/health`, autodeploy from `main`.
+- **Env vars** go in the Render dashboard, never in git: the Agora, Murf, Sarvam and Groq keys plus `PATIENT_LLM_PROVIDER=sarvam`.
+- **Set `PUBLIC_URL` and `FRONTEND_ORIGINS`** to `https://<service>.onrender.com` so Agora reaches the LLM route with no tunnel (leave `PATIENT_LLM_TUNNEL` unset).
+- **Free plan** sleeps after 15 minutes idle; the first request takes about 50 s.
+
+<img src="media/readme/divider.svg" width="100%">
+
+## 🧪 Tests
+
+```bash
+npm run verify                                                # data and scene invariants
+npm test                                                      # frontend tests
+backend/.venv/Scripts/python.exe -m unittest discover backend/tests   # backend tests
+```
+
+<img src="media/readme/divider.svg" width="100%">
+
+## 🌱 Vision
+
+- **Institutes assign practice:** faculty set cases, OSCEs and vivas for a whole class and get reports back.
+- **The library grows with its users:** faculty and students contribute their own agent patients, starting from Telegram today.
+- **Every student, every language:** unlimited bedside practice in the language they think in.
+
+> **Not medical advice.** MedSim is a training simulator. Cases are synthetic and plausible but not clinically validated; real-case adaptations cite their sources in [REAL_CASES.md](src/data/REAL_CASES.md).
 
 ---
 
-## The problem
-
-- Doctors learn history taking, ordering and prescribing on real patients, with little safe practice before that.
-- OSCE-style practice needs trained actors and examiners, so most students in India get a few sessions a year.
-- Text quizzes don't train what matters at the bedside: listening, asking the right follow-up, and catching a dangerous order before it happens.
-
-## The solution
-
-MedSim gives every student an unlimited, always-available ward: patients who talk back in Indian English, and a nurse agent who executes orders, catches mistakes and explains why.
-You practise the full loop by voice (interview, order, adapt, prescribe, follow up) and get graded at the end.
-
-<p align="center"><a href="media/trailer.mp4"><img src="media/trailer.webp" width="900" alt="MedSim trailer" /></a></p>
-<p align="center"><a href="media/trailer.mp4">Watch the full 65-second trailer with sound (MP4)</a></p>
-
-## What it does
-
-- **3D hospital, third person.** Walk your doctor down a corridor of 38 doors: 33 clinics with 327 Indian patients, an Operation Theatre, a Radiology reading room and a Teacher Portal.
-- **Your own doctor.** Enter your name, university and gender before your shift. You play a woman or man doctor to match, and your name and avatar appear on your debriefs, OSCE sheets and progress page. Stored only in your browser.
-- **Talk to the patient.** A real-time voice conversation through Agora. Patients answer only what you ask, hesitate, worry and ask questions back.
-- **Examine by voice.** "Let me listen to your chest." Findings consistent with the case appear on the chart, with real heart and lung sounds on a stethoscope button.
-- **7 Indian languages.** English, Hindi, Kannada, Tamil, Telugu, Marathi and Bengali. One toggle switches the patient, nurse, coach, teacher and examiner. Murf speaks the language and Sarvam understands whichever you use.
-- **Voice prescription.** After you prescribe, Murf reads a take-home audio prescription in the patient's own language (what each medicine is for, when to take it, warning signs), downloadable as an MP3, for patients who can't read a prescription.
-- **Speak orders, the nurse does them.** "Get an ECG and a troponin, start aspirin 75." Nurse Asha plans and runs tool calls (`find_in_catalog`, `order_test`, `check_allergies_and_interactions`, `prescribe`, `schedule_follow_up`), puts the results on the chart, and confirms by voice.
-- **Real-world tools, not just talk.** Asha's tool calls reach real systems:
-  - `check_allergies_and_interactions` also queries **NIH RxNorm/RxClass** and **openFDA drug labels**, and she cites them out loud ("the openFDA label flags...").
-  - Every test order, prescription and follow-up is written to a real **HL7 FHIR R4** server (public HAPI test server) as ServiceRequest, MedicationRequest and Appointment, with clickable record links.
-  - `schedule_follow_up` returns a **Google Calendar** link and an `.ics` invite.
-  - `send_to_patient` ("Nurse, send it to the patient") delivers the prescription, a **Murf voice note in the patient's language** and the calendar invite by **Telegram**, WhatsApp (Twilio), SMS or email. The live **Agora** patient is told their phone just buzzed and reacts.
-- **Autonomous voice agents with their own tools.** Priya (reception) books study sessions and texts you the plan, Dr. Iyer assigns class work and schedules revisions, Prof. Kulkarni marks the viva live. They decide when to act; see [Autonomous agents](#autonomous-agents).
-- **Consultation results on Telegram.** After the debrief, the patient gets a summary, a PDF and a Murf voice note in their language.
-- **Create a patient from Telegram.** Message @medsim_asha_bot `/newpatient`, answer 12 questions, and the patient appears in the clinic with a "Created on Telegram" badge (`/list`, `/delete <id>`, `/cancel`).
-- **Recurring follow-ups in your real Google Calendar.** "Set up weekly check-in calls for a month" becomes a recurring event in the doctor's Google Calendar (Apps Script bridge, `scripts/apps-script`), plus an `.ics` and a Google Calendar link for the patient.
-- **Asha follow-up calls (Agora).** Every follow-up carries a link the patient opens on their phone to talk to Nurse Asha live, through Agora Conversational AI with her Murf voice, in their language. She checks adherence, side effects and red flags (108 for emergencies), and a structured report lands back on the doctor's chart.
-- **Agora avatar (optional).** With an Anam key (free tier), the teacher and viva examiner appear as a lip-synced video avatar joined to the same Agora channel.
-- **Asha acts during the follow-up call.** If the patient reports a red flag ("my lips are swelling"), Asha alerts the doctor on Telegram while still talking and writes a FHIR Flag; "can we move this to Friday?" re-books the calendar mid-call.
-- **Invite an observer by name.** "Asha, invite Darshan to observe" finds Darshan in your contacts (friends, seniors, teachers), creates the live Agora observer link, sends it on Telegram and **phones him** (Twilio). It shows in the feed as an Asha agent run. Asha talks to him in her Murf voice and answers his questions (which specialty, what his role is, whether he can talk to the student) and passes his message back as a toast.
-- **Teacher assignments + Priya at Reception.** A teacher creates an assignment (cases, OSCE, viva, due date, pass mark) and shares a code. Scores are recorded automatically. At the lobby reception desk, Priya (Agora voice agent, Murf voice) tells the student what is pending and emails a formatted HTML report card to the teacher through Gmail.
-- **CBME logbook and referrals.** Each debrief appends a row to the student's "MedSim Clinical Logbook" Google Sheet. "Asha, refer her to cardiology, urgent" writes an SBAR referral as a Google Doc and PDF in Drive, a FHIR referral and a Murf voice handover.
-- **She adapts.** A penicillin allergy blocks amoxicillin: she holds it and tells you why. A stocked strength differs from your dose: she says so.
-- **"How am I doing, Asha?"** Press the button or just say it. Asha checks your history, exam, orders and drugs against the case and gives one honest, Socratic nudge in her Murf voice ("On track", "Getting there" or "Rethink the plan") without giving away the diagnosis.
-- **Talk to the nurse mid-consultation.** Start a sentence with "Nurse" or "Asha" and the patient stays silent: our custom LLM route returns an empty turn to Agora, and the nurse agent takes the order.
-- **Mistake alerts.** Allergy conflicts, prescribing before any history, or an irrelevant or harmful test raise an alert. Press "?" and she explains the principle.
-- **Radiology reading room.** 18 real X-rays, ECGs, CT heads and ultrasounds (credited Wikimedia images). Describe the film aloud, Dr. Vikram Rao asks one probing question, and you're graded on the findings you caught and missed.
-- **OSCE exam mode.** A timed 8-minute station with no hints, marked like a real examiner: a checklist with evidence quotes, critical errors and a pass/fail global rating. Save it as a PDF.
-- **Operation Theatre drill.** You're the junior in theatre. The surgeon and anaesthetist call out problems by voice ("BP 78 over 40", "heart rate 42", "give the antibiotic before I cut", "field full of blood"). You walk to the right station (IV pump, drug cart, suction, diathermy, warmer, ventilator) and set it, or say the order. A live monitor recovers or worsens, a WHO checklist runs at sign-in and time-out, and a report card scores each response.
-- **Viva voce.** An AI professor examines you orally on any subject from first to final year (anatomy to medicine). He adapts the difficulty and grades each answer against key points.
-- **Live faculty observer.** Invite a teacher with a link. They join the same Agora call as a listen-only participant, follow the live transcript and chart over Agora RTM, whisper private notes to you, and send marks that land on your debrief.
-- **Communication skills.** Eight stations: breaking bad news (SPIKES), consent, an angry relative, treatment refusal, error disclosure, HIV confidentiality, stillbirth and gutka cessation, with emotional patients and communication rubrics.
-- **Triage drill.** Five ED arrivals in three minutes whose vitals worsen if you leave them untriaged. Assign the colour and the first action by click or by voice.
-- **My progress.** Score trend, weakest domains, recurring mistakes, a streak, and what to practise next.
-- **Teacher Portal.** A 3D lecture hall where Dr. Meera Iyer teaches any topic by voice, drawing it step by step on a whiteboard (ECG, Wiggers and other physiology curves are drawn from accurate code presets), then quizzes you.
-- **Clinically audited cases.** Every case passes an automated consistency check (diagnosis supported, abnormal flags match reference ranges, age-appropriate doses), and a review fixed about 160 errors ([CLINICAL_AUDIT.md](src/data/CLINICAL_AUDIT.md)). 15 cases are adapted from open-access (CC BY) case reports with citations.
-- **Debrief.** An overall score plus scores for history taking, diagnostic reasoning, test selection, treatment and safety, communication and disposition, with what went well and what to work on.
-
-## How Agora, Murf and Sarvam are used
-
-- **Agora Conversational AI** runs every voice: the patient, the teacher, the radiologist and the viva examiner. The backend mints RTC + RTM tokens and starts an agent with REST v2 `/join`. The browser joins with `agora-rtc-sdk-ng`. Transcripts arrive over Agora RTM and drive the subtitles and the nurse.
-- **Agora RTC + RTM beyond one-to-one.** A faculty observer joins the same channel in listen-only mode, and RTM carries live chart events, private whispers and marks between them.
-- **Agora metrics, made visible.** With `enable_metrics`, a "Voice engine" panel (press M) shows each turn's speech recognition, LLM first-token and TTS first-byte latency, barge-ins and fillers. The debrief reports the average response time.
-- **Sarvam** is the speech recognition inside Agora (language auto-detect) and the LLM for the patient, nurse, coach, exam findings, radiology grading, OSCE marking, teacher and debrief, with Groq as the fallback.
-- **Murf Falcon** is the TTS inside Agora (Indian voices in 7 languages, a stable voice per patient), and it's also the voice of the nurse, the theatre team (surgeon, anaesthetist) and the take-home voice prescription, through the Murf HTTP API.
-- **Custom LLM route.** Agora calls `/llm/patient/chat/completions` on our backend. It turns noise-only turns into "(inaudible)" before Sarvam sees them, so the patient never breaks. A per-agent token guards it, and the Sarvam key never leaves the server.
-- **Live context.** `/voice/context` updates the running agent's prompt, so the patient knows which tests and drugs were ordered. Filler words and tuned turn detection keep it sounding human.
-
-## Autonomous agents
-
-Four live voice agents decide by themselves, mid-conversation, when to act. Nobody has to say a keyword. Following Agora's tool-calling recipe, the tools run inside the live Agora call through our custom LLM endpoint: Agora calls `/llm/patient/chat/completions`, the per-agent bearer token says which agent it is, and `backend/agent_runtime.py` calls Sarvam with that agent's tools, runs the tool calls on the server (at most 2 or 3 rounds, 8 s caps), speaks a short filler line first and streams the final answer back to Agora as OpenAI SSE for Murf to speak. Tools that change the page (whiteboard, quiz, viva marks) publish to a small event bus that the browser polls (`GET /agent/agent-events/{channel}`).
-
-| Agent | Tools |
-|---|---|
-| Priya at Reception | `get_assignment_status`, `get_my_scores`, `list_assignments`, `email_report_to_teacher` (only ever to the assignment's teacher), `book_study_session` (Google Calendar), `send_to_my_phone` (only the contact saved in this browser) |
-| Dr. Meera Iyer, Teacher Portal | `draw_on_board`, `start_quiz`, `assign_practice` (creates a class assignment and code), `schedule_revision` (Google Calendar) |
-| Prof. Kulkarni, viva examiner | `record_answer_grade` (live marks), `next_question` (adapts the difficulty from the hidden paper), `end_viva` (opens the marking sheet) |
-| Nurse Asha, follow-up call | `escalate_red_flag`, `reschedule_call`, `log_symptom` |
-
-Side-effect tools are deduped per call, and every agent is told what it already did. Tools need the custom LLM route, so they need a public URL (`PUBLIC_URL` or the cloudflared tunnel). Without one the agents still talk, and Priya falls back to the older keyword trigger. Patient consultations never get tools: their turns pass through the proxy unchanged.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  B[Browser: React + Three.js] -- mic / audio --> A[Agora RTC channel]
-  A <--> C[Agora ConvoAI agent<br/>Sarvam STT, LLM via proxy, Murf Falcon TTS]
-  C -- transcripts over RTM --> B
-  B -- start, stop, context --> S[FastAPI backend]
-  S -- REST v2 join / update --> C
-  C -- custom LLM --> S
-  B -- spoken or typed order --> N[Nurse agent + tools]
-  N --> S
-  S -- Sarvam / Groq --> L[(LLMs)]
-  S -- nurse voice --> M[Murf Falcon HTTP]
-```
-
-One FastAPI process serves the API and the built frontend. State lives in a single `Store` class in the browser.
-
-## Run it
-
-Requires Node 22+, Python 3.12, and keys for Agora (App ID, certificate, Conversational AI customer ID and secret), Murf, Sarvam and Groq. Names are in `backend/.env.example`.
-
-**Windows, one click:** copy `backend/.env.example` to `backend/.env.local`, fill in the keys, then double-click **`start-medsim.bat`**. It installs what's missing on first run, starts the backend and the app in their own windows, and opens http://localhost:5173.
-
-**Manual:**
-
-```bash
-npm ci
-python -m venv backend/.venv
-backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
-cp backend/.env.example backend/.env.local      # fill in the keys
-
-backend/.venv/Scripts/python.exe backend/server.py   # API on 127.0.0.1:8787
-npm run dev                                          # app on http://localhost:5173
-```
-
-Locally, set `PATIENT_LLM_TUNNEL=cloudflared` to use the noise-safe LLM route through a Cloudflare quick tunnel. On a server, set `PUBLIC_URL` instead. Deployment is one Render web service; see [DEPLOY.md](DEPLOY.md).
-
-**Controls:** WASD walk, Shift run, mouse to look, E use a door, T talk, N next patient, Esc menu.
-
-**Tests:** `npm run verify`, `npm test`, and `backend/.venv/Scripts/python.exe -m unittest discover backend/tests`.
-
-## Disclaimer
-
-A training tool, not medical advice. Synthetic cases are plausible but not clinically validated. Real-case adaptations cite their sources in [src/data/REAL_CASES.md](src/data/REAL_CASES.md).
-
-## License
-
-Code is [MIT](LICENSE). Third-party 3D assets, fonts and case reports keep their own licences, listed in [public/assets/CREDITS.md](public/assets/CREDITS.md) and [src/data/REAL_CASES.md](src/data/REAL_CASES.md). One character model is CC BY-NC 4.0, so replace it before any commercial use.
+<p align="center">
+  <b>MedSim</b>, The Voice-First Clinical Simulator<br>
+  Code under the <a href="LICENSE">MIT license</a>. Third-party assets keep their own licences: <a href="public/assets/CREDITS.md">CREDITS.md</a>. One character model is CC BY-NC 4.0, so replace it before commercial use.
+</p>

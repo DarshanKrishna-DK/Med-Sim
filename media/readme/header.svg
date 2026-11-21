@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="t d">
+<title id="t">MedSim</title>
+<desc id="d">MedSim, the voice-first clinical simulator. Talk to AI patients, speak your orders, an AI nurse acts.</desc>
+<defs>
+<pattern id="px" width="12" height="12" patternUnits="userSpaceOnUse"><rect width="2" height="2" fill="#2b4c8a" fill-opacity="0.35"/></pattern>
+<filter id="glow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<filter id="softglow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="6"/></filter>
+<radialGradient id="halo" cx="0.25" cy="0.35" r="0.6"><stop offset="0" stop-color="#2b4c8a" stop-opacity="0.55"/><stop offset="1" stop-color="#061431" stop-opacity="0"/></radialGradient>
+</defs>
+<style>
+.comet{stroke-dasharray:0.16 0.84;animation:run 7s linear infinite}
+@keyframes run{to{stroke-dashoffset:-1}}
+.draw{stroke-dasharray:1;animation:draw 4s ease-in-out infinite}
+@keyframes draw{0%{stroke-dashoffset:1;opacity:1}62%{stroke-dashoffset:0;opacity:1}88%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0.15}}
+.beat{transform-box:fill-box;transform-origin:center;animation:beat 1.1s ease-in-out infinite}
+@keyframes beat{0%,100%{transform:scale(1)}14%{transform:scale(1.18)}28%{transform:scale(0.96)}42%{transform:scale(1.1)}}
+.blink{animation:blink 1.1s steps(2,start) infinite}
+@keyframes blink{50%{opacity:0.2}}
+.pulse{animation:pulse 3.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:0.35}50%{opacity:0.9}}
+.glowtxt{animation:gt 3.2s ease-in-out infinite}
+@keyframes gt{0%,100%{opacity:0.25}50%{opacity:0.75}}
+.chip{animation:chip 4.5s ease-in-out infinite}
+.c2{animation-delay:1.5s}.c3{animation-delay:3s}
+@keyframes chip{0%,100%{stroke-opacity:0.45}20%{stroke-opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<rect width="1200" height="300" rx="18" fill="#061431"/><rect width="1200" height="300" rx="18" fill="url(#px)"/><rect x="1.5" y="1.5" width="1197" height="297" rx="17" fill="none" stroke="#173571" stroke-width="3"/>
+<rect width="1200" height="300" rx="18" fill="url(#halo)"/>
+<rect x="14" y="14" width="1172" height="272" rx="12" fill="none" stroke="#a8e27c" stroke-opacity="0.22" stroke-width="2"/>
+<rect x="14" y="14" width="1172" height="272" rx="12" fill="none" stroke="#a8e27c" stroke-width="6" pathLength="1" class="comet" filter="url(#softglow)" opacity="0.8"/>
+<rect x="14" y="14" width="1172" height="272" rx="12" fill="none" stroke="#a8e27c" stroke-width="2.5" pathLength="1" class="comet"/>
+
+<g transform="translate(58 58)"><g class="beat"><g class="logo"><path d="M35.2 0.0 h39.6 a9.9 9.9 0 0 1 9.9 9.9 v25.3 h25.3 a9.9 9.9 0 0 1 9.9 9.9 v39.6 a9.9 9.9 0 0 1 -9.9 9.9 h-25.3 v25.3 a9.9 9.9 0 0 1 -9.9 9.9 h-39.6 l-24.2 17.6 l6.6 -22.0 a9.9 9.9 0 0 1 -3.3 -6.6 v-25.3 h-15.4 a9.9 9.9 0 0 1 -9.9 -9.9 v-39.6 a9.9 9.9 0 0 1 9.9 -9.9 h25.3 v-25.3 a9.9 9.9 0 0 1 9.9 -9.9 z" fill="#ff5a5f" stroke="#ffffff" stroke-opacity="0.85" stroke-width="3.8"/><path d="M6.6 55.0 h26.4 l7.7 -17.6 l12.1 37.4 l11.0 -39.6 l8.8 19.8 h30.8" fill="none" stroke="#ffffff" stroke-width="8.2" stroke-linecap="round" stroke-linejoin="round"/></g></g></g>
+
+<g>
+<text x="196" y="132" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="92" font-weight="800" letter-spacing="-2" fill="#a8e27c" filter="url(#softglow)" class="glowtxt">Med<tspan>Sim</tspan></text>
+<text x="196" y="132" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="92" font-weight="800" letter-spacing="-2" fill="#f3f1e2">Med<tspan fill="#a8e27c">Sim</tspan></text>
+</g>
+<g>
+<text x="200" y="180" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="31" font-weight="600" fill="#f3f1e2">The Voice-First Clinical Simulator</text>
+</g>
+<g>
+<text x="201" y="214" font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Courier New', monospace" font-size="16.5" fill="#9fb0d6">Talk to AI patients. Speak your orders. An AI nurse acts.</text>
+</g>
+
+<g transform="translate(870 46)">
+<rect width="282" height="176" rx="10" fill="#0b1f4b" stroke="#2b4c8a" stroke-width="2"/>
+<rect x="0" y="0" width="282" height="30" rx="10" fill="#173571"/>
+<rect x="0" y="20" width="282" height="10" fill="#173571"/>
+<text x="14" y="21" font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Courier New', monospace" font-size="13" font-weight="700" fill="#f3f1e2" letter-spacing="2">BED 1 . OPD</text>
+<g class="blink"><rect x="214" y="10" width="10" height="10" fill="#ff5a5f" shape-rendering="crispEdges"/></g>
+<text x="230" y="20" font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Courier New', monospace" font-size="12" font-weight="700" fill="#ff5a5f">LIVE</text>
+<g transform="translate(22 50)"><g class="beat"><g fill="#ff5a5f" shape-rendering="crispEdges" class=""><rect x="6" y="0" width="6" height="6"/><rect x="12" y="0" width="6" height="6"/><rect x="36" y="0" width="6" height="6"/><rect x="42" y="0" width="6" height="6"/><rect x="0" y="6" width="6" height="6"/><rect x="6" y="6" width="6" height="6"/><rect x="12" y="6" width="6" height="6"/><rect x="18" y="6" width="6" height="6"/><rect x="30" y="6" width="6" height="6"/><rect x="36" y="6" width="6" height="6"/><rect x="42" y="6" width="6" height="6"/><rect x="48" y="6" width="6" height="6"/><rect x="0" y="12" width="6" height="6"/><rect x="6" y="12" width="6" height="6"/><rect x="12" y="12" width="6" height="6"/><rect x="18" y="12" width="6" height="6"/><rect x="24" y="12" width="6" height="6"/><rect x="30" y="12" width="6" height="6"/><rect x="36" y="12" width="6" height="6"/><rect x="42" y="12" width="6" height="6"/><rect x="48" y="12" width="6" height="6"/><rect x="0" y="18" width="6" height="6"/><rect x="6" y="18" width="6" height="6"/><rect x="12" y="18" width="6" height="6"/><rect x="18" y="18" width="6" height="6"/><rect x="24" y="18" width="6" height="6"/><rect x="30" y="18" width="6" height="6"/><rect x="36" y="18" width="6" height="6"/><rect x="42" y="18" width="6" height="6"/><rect x="48" y="18" width="6" height="6"/><rect x="6" y="24" width="6" height="6"/><rect x="12" y="24" width="6" height="6"/><rect x="18" y="24" width="6" height="6"/><rect x="24" y="24" width="6" height="6"/><rect x="30" y="24" width="6" height="6"/><rect x="36" y="24" width="6" height="6"/><rect x="42" y="24" width="6" height="6"/><rect x="12" y="30" width="6" height="6"/><rect x="18" y="30" width="6" height="6"/><rect x="24" y="30" width="6" height="6"/><rect x="30" y="30" width="6" height="6"/><rect x="36" y="30" width="6" height="6"/><rect x="18" y="36" width="6" height="6"/><rect x="24" y="36" width="6" height="6"/><rect x="30" y="36" width="6" height="6"/><rect x="24" y="42" width="6" height="6"/></g></g></g>
+<text x="96" y="70" font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Courier New', monospace" font-size="13" fill="#9fb0d6">HR</text>
+<text x="96" y="98" font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Courier New', monospace" font-size="30" font-weight="700" fill="#a8e27c">72<tspan font-size="14" fill="#9fb0d6"> bpm</tspan></text>
+<text x="196" y="70" font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Courier New', monospace" font-size="13" fill="#9fb0d6">SpO2</text>
+<text x="196" y="98" font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Courier New', monospace" font-size="30" font-weight="700" fill="#7fd3ff">98<tspan font-size="14" fill="#9fb0d6">%</tspan></text>
+<line x1="14" y1="118" x2="268" y2="118" stroke="#2b4c8a" stroke-dasharray="4 4"/>
+<g font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Courier New', monospace" font-size="12" font-weight="700">
+<rect class="chip" x="14" y="132" width="76" height="28" rx="5" fill="#03091a" stroke="#a8e27c" stroke-width="2"/>
+<text x="52" y="151" text-anchor="middle" fill="#a8e27c">AGORA</text>
+<rect class="chip c2" x="102" y="132" width="76" height="28" rx="5" fill="#03091a" stroke="#ffd84d" stroke-width="2"/>
+<text x="140" y="151" text-anchor="middle" fill="#ffd84d">MURF</text>
+<rect class="chip c3" x="190" y="132" width="78" height="28" rx="5" fill="#03091a" stroke="#7fd3ff" stroke-width="2"/>
+<text x="229" y="151" text-anchor="middle" fill="#7fd3ff">SARVAM</text>
+</g>
+</g>
+
+<path d="M40.0 266.0 L107.2 266.0 L116.2 261.9 L125.1 261.9 L134.1 266.0 L145.3 266.0 L149.8 270.1 L156.5 232.0 L163.2 278.9 L169.9 266.0 L187.8 266.0 L196.8 258.5 L210.2 257.2 L221.4 266.0 L264.0 266.0 L331.2 266.0 L340.2 261.9 L349.1 261.9 L358.1 266.0 L369.3 266.0 L373.8 270.1 L380.5 232.0 L387.2 278.9 L393.9 266.0 L411.8 266.0 L420.8 258.5 L434.2 257.2 L445.4 266.0 L488.0 266.0 L555.2 266.0 L564.2 261.9 L573.1 261.9 L582.1 266.0 L593.3 266.0 L597.8 270.1 L604.5 232.0 L611.2 278.9 L617.9 266.0 L635.8 266.0 L644.8 258.5 L658.2 257.2 L669.4 266.0 L712.0 266.0 L779.2 266.0 L788.2 261.9 L797.1 261.9 L806.1 266.0 L817.3 266.0 L821.8 270.1 L828.5 232.0 L835.2 278.9 L841.9 266.0 L859.8 266.0 L868.8 258.5 L882.2 257.2 L893.4 266.0 L936.0 266.0 L1003.2 266.0 L1012.2 261.9 L1021.1 261.9 L1030.1 266.0 L1041.3 266.0 L1045.8 270.1 L1052.5 232.0 L1059.2 278.9 L1065.9 266.0 L1083.8 266.0 L1092.8 258.5 L1106.2 257.2 L1117.4 266.0 L1160.0 266.0" fill="none" stroke="#a8e27c" stroke-opacity="0.18" stroke-width="2" stroke-linejoin="round"/>
+<path d="M40.0 266.0 L107.2 266.0 L116.2 261.9 L125.1 261.9 L134.1 266.0 L145.3 266.0 L149.8 270.1 L156.5 232.0 L163.2 278.9 L169.9 266.0 L187.8 266.0 L196.8 258.5 L210.2 257.2 L221.4 266.0 L264.0 266.0 L331.2 266.0 L340.2 261.9 L349.1 261.9 L358.1 266.0 L369.3 266.0 L373.8 270.1 L380.5 232.0 L387.2 278.9 L393.9 266.0 L411.8 266.0 L420.8 258.5 L434.2 257.2 L445.4 266.0 L488.0 266.0 L555.2 266.0 L564.2 261.9 L573.1 261.9 L582.1 266.0 L593.3 266.0 L597.8 270.1 L604.5 232.0 L611.2 278.9 L617.9 266.0 L635.8 266.0 L644.8 258.5 L658.2 257.2 L669.4 266.0 L712.0 266.0 L779.2 266.0 L788.2 261.9 L797.1 261.9 L806.1 266.0 L817.3 266.0 L821.8 270.1 L828.5 232.0 L835.2 278.9 L841.9 266.0 L859.8 266.0 L868.8 258.5 L882.2 257.2 L893.4 266.0 L936.0 266.0 L1003.2 266.0 L1012.2 261.9 L1021.1 261.9 L1030.1 266.0 L1041.3 266.0 L1045.8 270.1 L1052.5 232.0 L1059.2 278.9 L1065.9 266.0 L1083.8 266.0 L1092.8 258.5 L1106.2 257.2 L1117.4 266.0 L1160.0 266.0" fill="none" stroke="#a8e27c" stroke-width="7" stroke-linejoin="round" pathLength="1" class="draw" filter="url(#softglow)" opacity="0.55"/>
+<path d="M40.0 266.0 L107.2 266.0 L116.2 261.9 L125.1 261.9 L134.1 266.0 L145.3 266.0 L149.8 270.1 L156.5 232.0 L163.2 278.9 L169.9 266.0 L187.8 266.0 L196.8 258.5 L210.2 257.2 L221.4 266.0 L264.0 266.0 L331.2 266.0 L340.2 261.9 L349.1 261.9 L358.1 266.0 L369.3 266.0 L373.8 270.1 L380.5 232.0 L387.2 278.9 L393.9 266.0 L411.8 266.0 L420.8 258.5 L434.2 257.2 L445.4 266.0 L488.0 266.0 L555.2 266.0 L564.2 261.9 L573.1 261.9 L582.1 266.0 L593.3 266.0 L597.8 270.1 L604.5 232.0 L611.2 278.9 L617.9 266.0 L635.8 266.0 L644.8 258.5 L658.2 257.2 L669.4 266.0 L712.0 266.0 L779.2 266.0 L788.2 261.9 L797.1 261.9 L806.1 266.0 L817.3 266.0 L821.8 270.1 L828.5 232.0 L835.2 278.9 L841.9 266.0 L859.8 266.0 L868.8 258.5 L882.2 257.2 L893.4 266.0 L936.0 266.0 L1003.2 266.0 L1012.2 261.9 L1021.1 261.9 L1030.1 266.0 L1041.3 266.0 L1045.8 270.1 L1052.5 232.0 L1059.2 278.9 L1065.9 266.0 L1083.8 266.0 L1092.8 258.5 L1106.2 257.2 L1117.4 266.0 L1160.0 266.0" fill="none" stroke="#a8e27c" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" pathLength="1" class="draw"/>
+<circle r="5" fill="#eaffd9" filter="url(#glow)"><animateMotion dur="4s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;0.62;1" calcMode="linear" path="M40.0 266.0 L107.2 266.0 L116.2 261.9 L125.1 261.9 L134.1 266.0 L145.3 266.0 L149.8 270.1 L156.5 232.0 L163.2 278.9 L169.9 266.0 L187.8 266.0 L196.8 258.5 L210.2 257.2 L221.4 266.0 L264.0 266.0 L331.2 266.0 L340.2 261.9 L349.1 261.9 L358.1 266.0 L369.3 266.0 L373.8 270.1 L380.5 232.0 L387.2 278.9 L393.9 266.0 L411.8 266.0 L420.8 258.5 L434.2 257.2 L445.4 266.0 L488.0 266.0 L555.2 266.0 L564.2 261.9 L573.1 261.9 L582.1 266.0 L593.3 266.0 L597.8 270.1 L604.5 232.0 L611.2 278.9 L617.9 266.0 L635.8 266.0 L644.8 258.5 L658.2 257.2 L669.4 266.0 L712.0 266.0 L779.2 266.0 L788.2 261.9 L797.1 261.9 L806.1 266.0 L817.3 266.0 L821.8 270.1 L828.5 232.0 L835.2 278.9 L841.9 266.0 L859.8 266.0 L868.8 258.5 L882.2 257.2 L893.4 266.0 L936.0 266.0 L1003.2 266.0 L1012.2 261.9 L1021.1 261.9 L1030.1 266.0 L1041.3 266.0 L1045.8 270.1 L1052.5 232.0 L1059.2 278.9 L1065.9 266.0 L1083.8 266.0 L1092.8 258.5 L1106.2 257.2 L1117.4 266.0 L1160.0 266.0"/></circle>
+</svg>
