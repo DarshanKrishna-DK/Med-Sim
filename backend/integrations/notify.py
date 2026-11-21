@@ -194,16 +194,59 @@ def _client_factory() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0))
 
 
+_GLOBAL_KEY = "*"
+
+
+def _max_per_hour() -> int:
+    try:
+        return max(1, int(_env("NOTIFY_MAX_PER_HOUR") or 30))
+    except ValueError:
+        return 30
+
+
+def _norm_dest(raw: str) -> str:
+    """Comparable form of a destination: E.164 phone, lower-case email, tg:<id> or 'telegram'."""
+    d = (raw or "").strip()
+    return normalize_phone(d) or d.lower()
+
+
+def dest_allowed(key: str) -> bool:
+    """NOTIFY_ALLOWED_DESTS (comma list) limits where messages may go; unset means anywhere.
+    'telegram' in the list allows every Telegram chat ('telegram', '@user', tg:<id>)."""
+    raw = _env("NOTIFY_ALLOWED_DESTS")
+    if not raw:
+        return True
+    allowed = {_norm_dest(x) for x in raw.split(",") if x.strip()}
+    k = _norm_dest(key)
+    if is_telegram(k):
+        return "telegram" in allowed or k in allowed
+    return k in allowed
+
+
 def _rate_ok(key: str) -> bool:
+    """Per-destination cap (RATE_MAX an hour), a global cap across all destinations
+    (NOTIFY_MAX_PER_HOUR, default 30) and the optional NOTIFY_ALLOWED_DESTS list."""
+    if not dest_allowed(key):
+        return False
     now = time.time()
     with _lock:
         hits = [t for t in _sends.get(key, []) if now - t < RATE_WINDOW_S]
-        if len(hits) >= RATE_MAX:
+        total = [t for t in _sends.get(_GLOBAL_KEY, []) if now - t < RATE_WINDOW_S]
+        if len(hits) >= RATE_MAX or len(total) >= _max_per_hour():
             _sends[key] = hits
+            _sends[_GLOBAL_KEY] = total
             return False
         hits.append(now)
+        total.append(now)
         _sends[key] = hits
+        _sends[_GLOBAL_KEY] = total
     return True
+
+
+def _rate_error(key: str) -> str:
+    if not dest_allowed(key):
+        return "This destination is not on the allowed list (NOTIFY_ALLOWED_DESTS)"
+    return f"Rate limit: at most {RATE_MAX} messages per destination per hour ({_max_per_hour()} in total)"
 
 
 def _fail(channel: str, to: str, error: str) -> dict[str, Any]:
@@ -304,6 +347,35 @@ async def telegram_bot_info() -> Optional[dict[str, Any]]:
         return None
 
 
+# Next getUpdates offset (last update_id + 1): only new updates are scanned, and
+# chats already seen stay in _tg_chats ('@username' -> id, 'telegram' -> latest chat).
+_tg_offset: dict[str, Optional[int]] = {"next": None}
+
+
+async def _tg_scan(c: httpx.AsyncClient) -> None:
+    params: dict[str, Any] = {"limit": 100, "timeout": 0}
+    if _tg_offset["next"] is not None:
+        params["offset"] = _tg_offset["next"]
+    r = await c.get(_tg_url("getUpdates"), params=params)
+    updates = (r.json() or {}).get("result") or []
+    top: Optional[int] = None
+    for u in updates:
+        if not isinstance(u, dict):
+            continue
+        uid = u.get("update_id")
+        if isinstance(uid, int) and (top is None or uid > top):
+            top = uid
+        msg = u.get("message") or u.get("edited_message") or {}
+        chat = msg.get("chat") or {}
+        if not chat.get("id"):
+            continue
+        if chat.get("username"):
+            _tg_chats["@" + str(chat["username"]).lower()] = chat["id"]
+        _tg_chats["telegram"] = chat["id"]
+    if top is not None:
+        _tg_offset["next"] = top + 1
+
+
 async def _tg_resolve_chat(c: httpx.AsyncClient, dest: str) -> Optional[int]:
     d = dest.strip().lower()
     if d.startswith("tg:"):
@@ -311,18 +383,39 @@ async def _tg_resolve_chat(c: httpx.AsyncClient, dest: str) -> Optional[int]:
             return int(d[3:])
         except ValueError:
             return None
-    r = await c.get(_tg_url("getUpdates"), params={"limit": 100, "timeout": 0})
-    updates = (r.json() or {}).get("result") or []
-    for u in reversed(updates):
-        msg = u.get("message") or u.get("edited_message") or {}
-        chat = msg.get("chat") or {}
-        if not chat.get("id"):
-            continue
-        uname = "@" + str(chat.get("username") or "").lower()
-        _tg_chats[uname] = chat["id"]
-        if d in ("telegram", "tg") or d == uname:
-            return chat["id"]
+    if d == "tg":
+        d = "telegram"
+    try:
+        await _tg_scan(c)
+    except Exception as e:  # noqa: BLE001
+        log.warning("telegram getUpdates failed: %s", type(e).__name__)
     return _tg_chats.get(d)
+
+
+async def resolve_telegram(dest: str) -> Optional[str]:
+    """'telegram' / '@user' / 'tg:<id>' -> 'tg:<chat id>', or None when unknown. Never raises."""
+    if not (_telegram_ready() and is_telegram(dest)):
+        return None
+    try:
+        async with _client_factory() as c:
+            chat_id = await _tg_resolve_chat(c, dest)
+    except Exception as e:  # noqa: BLE001
+        log.warning("telegram resolve failed: %s", type(e).__name__)
+        return None
+    return f"tg:{chat_id}" if chat_id else None
+
+
+_SAFE_URL = re.compile(r"https://[^\s\"'<>]+")
+
+
+def _tg_link(url_escaped: str, label: str, original: str) -> str:
+    """An <a> tag only for a clean https:// URL; anything else stays plain (escaped) text."""
+    import html as _html
+
+    url = _html.unescape(url_escaped)
+    if not _SAFE_URL.fullmatch(url):
+        return original
+    return f'<a href="{_html.escape(url, quote=True)}">{label}</a>'
 
 
 def telegram_html(message: str, audio_attached: bool) -> str:
@@ -335,10 +428,11 @@ def telegram_html(message: str, audio_attached: bool) -> str:
         text = re.sub(r"\s*(Listen to your prescription|Listen in your language): \S+?\.(?=\s|$)", "", text)
     else:
         text = re.sub(r"(Listen to your prescription|Listen in your language): (\S+?)\.(?=\s|$)",
-                      lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>.', text)
-    text = re.sub(r"Add to calendar: (\S+?)\.(?=\s|$)", lambda m: f'<a href="{m.group(1)}">Add to Google Calendar</a>.', text)
+                      lambda m: _tg_link(m.group(2), m.group(1), m.group(0)[:-1]) + ".", text)
+    text = re.sub(r"Add to calendar: (\S+?)\.(?=\s|$)",
+                  lambda m: _tg_link(m.group(1), "Add to Google Calendar", m.group(0)[:-1]) + ".", text)
     text = re.sub(r"(Join your Asha follow-up call|Asha call): (\S+?)\.?(?=\s|$)",
-                  lambda m: f'<a href="{m.group(2)}">Join your Asha follow-up call</a>', text)
+                  lambda m: _tg_link(m.group(2), "Join your Asha follow-up call", m.group(0)), text)
     return text
 
 
@@ -347,21 +441,34 @@ async def _send_telegram(dest: str, message: str, mp3: Optional[bytes], ics: Opt
         chat_id = await _tg_resolve_chat(c, dest)
         if not chat_id:
             return _fail("telegram", dest, "No Telegram chat yet: open the bot link on the phone and press Start, then retry")
+        resolved = f"tg:{chat_id}"
+        # Rate-limited per real chat: 'telegram' and '@user' never share one bucket across people.
+        if not _rate_ok(resolved):
+            return _fail("telegram", dest, _rate_error(resolved))
         r = await c.post(_tg_url("sendMessage"), json={"chat_id": chat_id, "text": telegram_html(message, bool(mp3)),
                                                         "parse_mode": "HTML", "disable_web_page_preview": True})
         body = r.json() if r.content else {}
         if not body.get("ok"):
             return _fail("telegram", dest, f"Telegram error: {str(body.get('description') or r.status_code)[:120]}")
-        sent = {"ok": True, "channel": "telegram", "to": mask(dest), "messageId": str(body["result"]["message_id"])}
+        sent = {"ok": True, "channel": "telegram", "to": mask(dest), "messageId": str(body["result"]["message_id"]),
+                "resolvedTo": resolved}
         if mp3:
-            a = await c.post(_tg_url("sendAudio"), data={"chat_id": str(chat_id), "title": "Your prescription (MedSim)",
-                                                          "performer": "MedSim Clinic"},
-                             files={"audio": ("prescription.mp3", mp3, "audio/mpeg")})
-            sent["audioSent"] = bool(a.content and a.json().get("ok"))
+            try:
+                a = await c.post(_tg_url("sendAudio"), data={"chat_id": str(chat_id), "title": "Your prescription (MedSim)",
+                                                              "performer": "MedSim Clinic"},
+                                 files={"audio": ("prescription.mp3", mp3, "audio/mpeg")})
+                sent["audioSent"] = bool(a.content and a.json().get("ok"))
+            except Exception as e:  # noqa: BLE001
+                log.warning("telegram sendAudio failed: %s", type(e).__name__)
+                sent["audioSent"] = False
         if ics:
-            d = await c.post(_tg_url("sendDocument"), data={"chat_id": str(chat_id), "caption": "Follow-up: add to your calendar"},
-                             files={"document": ("follow-up.ics", ics, "text/calendar")})
-            sent["inviteSent"] = bool(d.content and d.json().get("ok"))
+            try:
+                d = await c.post(_tg_url("sendDocument"), data={"chat_id": str(chat_id), "caption": "Follow-up: add to your calendar"},
+                                 files={"document": ("follow-up.ics", ics, "text/calendar")})
+                sent["inviteSent"] = bool(d.content and d.json().get("ok"))
+            except Exception as e:  # noqa: BLE001
+                log.warning("telegram sendDocument failed: %s", type(e).__name__)
+                sent["inviteSent"] = False
         return sent
 
 
@@ -387,8 +494,8 @@ async def send_to_patient(
             if not _telegram_ready():
                 return _fail(ch, dest, "Telegram is not configured (set TELEGRAM_BOT_TOKEN)")
             tdest = dest if is_telegram(dest) else "telegram"
-            if not _rate_ok("tg:" + tdest.lower()):
-                return _fail(ch, tdest, f"Rate limit: at most {RATE_MAX} messages per destination per hour")
+            if not dest_allowed(tdest):
+                return _fail(ch, tdest, _rate_error(tdest))
             res = await _send_telegram(tdest, message, mp3, ics)
             log.info("notify telegram ok=%s", res.get("ok"))
             return res
@@ -411,7 +518,7 @@ async def send_to_patient(
                 return _fail(ch, dest, "Invalid phone number (use E.164 like +919876543210)")
             key, target = phone, phone
         if not _rate_ok(key):
-            return _fail(ch, target, f"Rate limit: at most {RATE_MAX} messages per destination per hour")
+            return _fail(ch, target, _rate_error(key))
         if ch == "email":
             res = await _send_email(target, message, mp3, ics)
         else:
