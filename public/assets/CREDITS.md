@@ -23,7 +23,7 @@ generated procedurally in code.
 ## Auscultation sounds (sounds/)
 
 Trimmed to 8-10 s, mixed to mono, loudness-normalised and re-encoded as 64 kbps MP3 with ffmpeg.
-The CC BY-SA clips stay under CC BY-SA (same licence as the source); the code of this repository stays MIT.
+The CC BY-SA clips stay under CC BY-SA (same licence as the source).
 
 | File | Source | Author | Licence |
 |---|---|---|---|
@@ -40,7 +40,7 @@ the Web Audio API in `src/voice/auscultation.ts` (no files).
 
 Downloaded from Wikimedia Commons (licence re-checked on each file page via the Commons API, 2026-11-21),
 resized to at most 1200 px and re-encoded as JPEG (each under 400 KB). The attribution is also shown on
-screen under every film. CC BY-SA images stay under CC BY-SA; the code of this repository stays MIT.
+screen under every film. CC BY-SA images stay under CC BY-SA.
 The patient vignettes paired with the images are synthetic and are not the people in the images.
 
 | File | Source | Author | Licence | Changes |

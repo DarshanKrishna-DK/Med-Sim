@@ -7,7 +7,6 @@
   <img alt="Sarvam" src="https://img.shields.io/badge/Sarvam-STT_+_LLM-0b1f4b?style=for-the-badge">
   <img alt="React Three Fiber" src="https://img.shields.io/badge/React_Three_Fiber-3D-a8e27c?style=for-the-badge">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-backend-0b1f4b?style=for-the-badge">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-a8e27c?style=for-the-badge"></a>
 </p>
 
 <p align="center">
@@ -228,5 +227,5 @@ backend/.venv/Scripts/python.exe -m unittest discover backend/tests   # backend 
 
 <p align="center">
   <b>MedSim</b>, The Voice-First Clinical Simulator<br>
-  Code under the <a href="LICENSE">MIT license</a>. Third-party assets keep their own licences: <a href="public/assets/CREDITS.md">CREDITS.md</a>. One character model is CC BY-NC 4.0, so replace it before commercial use.
+  Third-party assets and their attributions: <a href="public/assets/CREDITS.md">CREDITS.md</a>.
 </p>
