@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
 import unittest
@@ -204,25 +205,28 @@ class TwimlTests(Base):
         self.assertEqual(r.status_code, 200)
         self.assertIn("application/xml", r.headers["content-type"])
         x = r.text
-        self.assertTrue(x.startswith('<?xml version="1.0" encoding="UTF-8"?><Response><Play>'))
-        self.assertIn(f"<Play>{PUB}/rx/audio/", x)
-        self.assertIn(f'<Gather input="speech" language="en-IN" speechTimeout="auto" actionOnEmptyResult="true" '
-                      f'action="{PUB}/rx/obs-call/{tok}/turn" method="POST"><Pause length="1"/></Gather>', x)
-        self.assertTrue(x.endswith("</Response>"))
+        # Barge-in: the opener <Play> is nested INSIDE <Gather>, so speech interrupts it.
+        gather = (f'<Gather input="speech" language="en-IN" speechTimeout="auto" actionOnEmptyResult="true" '
+                  f'hints="{oc.SPEECH_HINTS}" action="{PUB}/rx/obs-call/{tok}/turn" method="POST"><Play>{PUB}/rx/audio/')
+        self.assertTrue(x.startswith('<?xml version="1.0" encoding="UTF-8"?><Response>' + gather), x)
+        self.assertRegex(x, r"<Gather [^>]*><Play>[^<]+</Play></Gather><Play>[^<]+</Play></Response>$")
+        self.assertNotIn("<Pause", x)
         status = self.client.get(f"/agent/observer/call/{tok}", headers=HDR).json()
         self.assertEqual(status["status"], "in-progress")
         opener = status["transcript"][0]["text"]
         self.assertEqual(
             opener,
-            "Hi Darshan, this is Asha, the nurse assistant from MedSim. Ananya Rao from RGUHS has invited you, as her "
-            "teacher, to observe a live Cardiology consultation. I've sent you the link on Telegram. Do you have any questions?",
+            "Hi Darshan, it's Asha from MedSim. Ananya invited you, as her teacher, to watch a live Cardiology consult. "
+            "Link's on Telegram, shall I add it to your calendar too?",
         )
+        self.assertLessEqual(len(re.findall(r"[.!?](?:\s|$)", opener)), 3)
+        self.assertEqual(oc.schedule_intent("yes please", status["transcript"]), "now")  # the opener offers booking
 
     def test_say_fallback_when_murf_fails(self):
         with mock.patch("rx_audio.synthesize", mock.AsyncMock(side_effect=RuntimeError("murf down"))):
             tok = self.start_call()["token"]
         x = self.hook(tok, "twiml", {"CallSid": "CA123"}).text
-        self.assertIn('<Say language="en-IN">Hi Darshan', x)
+        self.assertIn('method="POST"><Say language="en-IN">Hi Darshan', x)  # Say also nested for barge-in
 
     def test_signature_required_and_checked(self):
         os.environ["TWILIO_STRICT_SIGNATURE"] = "1"  # removed by self.env.stop() in tearDown
@@ -261,9 +265,12 @@ class TurnTests(Base):
         self.reply("As her teacher you can follow the transcript and chart live, and send private notes. Anything else?")
         r = self.hook(tok, "turn", {"SpeechResult": "What can I do as an observer?", "Confidence": "0.9"})
         self.assertEqual(r.status_code, 200)
-        self.assertIn(f"<Play>{PUB}/rx/audio/", r.text)
-        self.assertIn("<Gather", r.text)
+        self.assertRegex(r.text, rf'<Gather [^>]*method="POST"><Play>{re.escape(PUB)}/rx/audio/[^<]+</Play></Gather>')
         system = self.chat.await_args.args[0][0]["content"]
+        self.assertIn("Do not repeat information you already gave", system)
+        self.assertIn("Never say you did not understand", system)
+        self.assertIn("link bhej do", system)
+        self.assertNotIn("End with a short question like 'Anything else?'", system)
         self.assertIn(oc.ROLE_TEXT["teacher"], system)
         self.assertIn("chest pain on exertion", system)
         self.assertIn("Pronouns: she/her", system)
@@ -274,6 +281,20 @@ class TurnTests(Base):
         tr = self.client.get(f"/agent/observer/call/{tok}", headers=HDR).json()["transcript"]
         self.assertEqual(tr[-2], {"who": "observer", "text": "What can I do as an observer?", "at": tr[-2]["at"]})
         self.assertEqual(tr[-1]["who"], "asha")
+        self.assertEqual(tr[-1]["text"], "As her teacher you can follow the transcript and chart live, and send private notes.")
+
+    def test_link_request_answers_without_llm(self):
+        tok = self.start_call()["token"]
+        for said in ("send me the link", "can you resend the link", "link bhej do"):
+            r = self.hook(tok, "turn", {"SpeechResult": said})
+            self.assertIn("<Gather", r.text)
+            tr = self.client.get(f"/agent/observer/call/{tok}", headers=HDR).json()["transcript"]
+            self.assertIn("Telegram", tr[-1]["text"])
+            self.assertIn("calendar invite", tr[-1]["text"])
+        self.chat.assert_not_awaited()
+        # "yes" after the link offer books it (deterministic, not the model).
+        tr = self.client.get(f"/agent/observer/call/{tok}", headers=HDR).json()["transcript"]
+        self.assertEqual(oc.schedule_intent("haan", tr), "now")
 
     def test_family_role_text(self):
         b = body(make_invite())
@@ -341,6 +362,29 @@ class TurnTests(Base):
         self.assertEqual(out["reply"], "Open the link, no app needed.")
         self.assertEqual(oc._parse_reply("Plain text answer.")["reply"], "Plain text answer.")
 
+    def test_reply_word_cap_keeps_whole_sentences(self):
+        long = ("Sure, you just open the link on your phone browser. It's listen only so nobody hears you at all. "
+                "You can also send her a quick tip that pops up on her screen while she works.")
+        out = oc._parse_reply(json.dumps({"reply": long}))["reply"]
+        self.assertLessEqual(len(out.split()), oc.MAX_REPLY_WORDS)
+        self.assertEqual(out, "Sure, you just open the link on your phone browser. It's listen only so nobody hears you at all.")
+        one = oc.cap_reply(" ".join(["word"] * 40))
+        self.assertEqual(len(one.split()), oc.MAX_REPLY_WORDS)
+        self.assertTrue(one.endswith("."))
+
+    def test_no_trailing_anything_else(self):
+        for tail in ("Anything else?", "Is there anything else I can help you with?", "Do you have any other questions?"):
+            self.assertEqual(oc.cap_reply(f"Got it, I'll tell her. {tail}"), "Got it, I'll tell her.")
+        self.assertEqual(oc.cap_reply("Anything else?"), "Anything else?")  # never blank the reply
+        for line in (oc.CANNED_TROUBLE, oc.REPROMPT, oc.goodbye_text({"student": {"name": "Ananya"},
+                                                                         "contact": {"name": "Darshan"}})):
+            self.assertNotIn("anything else", line.lower())
+
+    def test_hangup_twiml_unchanged(self):
+        x = oc.twiml_hangup("Bye.", "https://p/a.mp3", "See you.", None)
+        self.assertEqual(x, '<?xml version="1.0" encoding="UTF-8"?><Response><Play>https://p/a.mp3</Play>'
+                            '<Say language="en-IN">See you.</Say><Hangup/></Response>')
+
     def test_mismatch_allowed_without_strict_mode(self):
         tok = self.start_call()["token"]
         self.assertEqual(self.hook(tok, "twiml", {"CallSid": "CA123"}, signature="AAAA").status_code, 200)
@@ -405,3 +449,9 @@ class ScheduleIntentTests(unittest.TestCase):
         self.assertIsNone(oc.schedule_intent("does the invite have a link?", []))
         self.assertIsNone(oc.schedule_intent("Which specialty is this?", self.OFFER))
         self.assertIsNone(oc.schedule_intent("no questions", self.OFFER))
+
+    def test_link_intent(self):
+        for t in ("send me the link", "resend link please", "link bhej do", "I didn't get the link", "where is the link"):
+            self.assertTrue(oc.link_intent(t), t)
+        for t in ("how do I join", "does the invite have a link?", "what time is it"):
+            self.assertFalse(oc.link_intent(t), t)

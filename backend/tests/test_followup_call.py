@@ -97,6 +97,11 @@ class PersonaTest(unittest.TestCase):
         self.assertIn("108", p)
         self.assertIn("Never change", p)
         self.assertIn("ONE question", p)
+        self.assertIn("at most two short sentences", p)
+        self.assertIn("never restart your earlier sentence", p)
+        self.assertIn("Never say you did not understand", p)
+        self.assertIn("Tele-MANAS on 14416", p)  # red-flag safety intact
+        self.assertLessEqual(len(greeting_for(SNAP).split()), 22)
         hi = build_persona({**SNAP, "lang": "hi"})
         self.assertIn("Devanagari", hi)
         self.assertIn("Ravi Kumar", greeting_for(SNAP))

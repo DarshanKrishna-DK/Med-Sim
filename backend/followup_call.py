@@ -56,7 +56,7 @@ _locks: dict[str, asyncio.Lock] = {}
 _joining = {"n": 0}  # global joins in flight (count toward FOLLOWUP_MAX_CONCURRENT)
 
 GREETINGS = {
-    "en": "Namaste {name}, this is Nurse Asha calling from the MedSim clinic for your follow-up check. Is this a good time to talk for two or three minutes?",
+    "en": "Namaste {name}, it's Nurse Asha from the MedSim clinic, just checking in after your visit. Is now a good time?",
     "hi": "नमस्ते {name} जी, मैं MedSim क्लिनिक से नर्स आशा बोल रही हूँ, आपके फॉलो-अप के लिए। क्या अभी दो-तीन मिनट बात कर सकते हैं?",
     "kn": "ನಮಸ್ಕಾರ {name} ಅವರೇ, ನಾನು MedSim ಕ್ಲಿನಿಕ್‌ನಿಂದ ನರ್ಸ್ ಆಶಾ ಮಾತನಾಡುತ್ತಿದ್ದೇನೆ, ನಿಮ್ಮ ಫಾಲೋ-ಅಪ್‌ಗಾಗಿ. ಈಗ ಎರಡು ಮೂರು ನಿಮಿಷ ಮಾತನಾಡಬಹುದೇ?",
     "ta": "வணக்கம் {name}, நான் MedSim கிளினிக்கிலிருந்து நர்ஸ் ஆஷா பேசுகிறேன், உங்கள் ஃபாலோ-அப்புக்காக. இப்போது இரண்டு மூன்று நிமிடம் பேசலாமா?",
@@ -66,7 +66,7 @@ GREETINGS = {
 }
 
 WRAPUPS = {
-    "en": "We are almost out of time. Thank you for talking with me. Please keep taking your medicines as advised, and contact the clinic if anything worries you. Goodbye and take care.",
+    "en": "We're nearly out of time, thanks for talking with me. Keep taking your medicines as advised, and call the clinic if anything worries you. Take care, bye.",
     "hi": "हमारा समय लगभग पूरा हो गया है। बात करने के लिए धन्यवाद। दवाइयाँ बताए अनुसार लेते रहिए, और कोई भी चिंता हो तो क्लिनिक से संपर्क कीजिए। अपना ध्यान रखिए, नमस्ते।",
     "kn": "ನಮ್ಮ ಸಮಯ ಬಹುತೇಕ ಮುಗಿದಿದೆ. ಮಾತನಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ಹೇಳಿದಂತೆ ಔಷಧಿಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳುತ್ತಿರಿ, ಏನಾದರೂ ಚಿಂತೆ ಇದ್ದರೆ ಕ್ಲಿನಿಕ್ ಅನ್ನು ಸಂಪರ್ಕಿಸಿ. ಆರೋಗ್ಯವಾಗಿರಿ, ನಮಸ್ಕಾರ.",
     "ta": "நம் நேரம் கிட்டத்தட்ட முடிந்துவிட்டது. பேசியதற்கு நன்றி. சொன்னபடி மருந்துகளைத் தொடர்ந்து எடுத்துக்கொள்ளுங்கள், ஏதாவது கவலை இருந்தால் கிளினிக்கைத் தொடர்பு கொள்ளுங்கள். உடம்பைப் பார்த்துக்கொள்ளுங்கள், வணக்கம்.",
@@ -132,7 +132,8 @@ def build_persona(snapshot: dict[str, Any], *, acting: bool = False) -> str:
 The doctor prescribed:
 {_meds_text(snapshot)}
 
-THIS IS A LIVE PHONE CALL. Speak in short, natural spoken sentences, at most two per turn. Ask ONE question at a time and wait for the answer. No lists, no markdown, no emojis, no stage directions.
+THIS IS A LIVE PHONE CALL. Sound like a real nurse chatting on the phone, not a script. Keep every turn to at most two short sentences, usually one. Ask ONE question at a time and wait for the answer. Use contractions and short, natural acknowledgements ("Okay,", "Got it,", "Oh, sorry to hear that,", "That's good,"). Do not lecture or explain unless they ask, and do not repeat what you or they already said. They may cut in while you talk: stop, answer what they just said, and never restart your earlier sentence. Avoid robotic phrases such as "Thank you for sharing", "I understand your concern" or "Is there anything else I can help you with". No lists, no markdown, no emojis, no stage directions.
+UNDERSTANDING: speech recognition mishears words and people answer in fragments or mix languages (Hinglish and other mixes). Work out what they mean from context. Never say you did not understand; if it is really unclear, ask one short, natural question to check.
 
 Cover these briefly, in order:
 1. How they are feeling overall compared with the clinic visit.
