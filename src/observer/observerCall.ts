@@ -182,8 +182,35 @@ function titleCase(s: string) {
   return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 
+// ── Asha's feed: the invite shows as an agent run with tool steps ─────────
+
+type Step = { tool: string; args: Record<string, unknown>; ok: boolean; summary: string; result?: unknown };
+
+function startRun(utterance: string, caseId: string) {
+  const id = `obs-${Date.now().toString(36)}`;
+  const steps: Step[] = [];
+  store.pushAgentRun({ id, caseId, utterance, source: 'voice', status: 'running', startedAt: Date.now(), steps: [] });
+  return {
+    step(st: Step) {
+      steps.push(st);
+      store.updateAgentRun(id, { steps: [...steps] });
+    },
+    finish(ok: boolean, spoken: string) {
+      store.updateAgentRun(id, {
+        status: ok ? 'done' : 'error',
+        intent: 'order',
+        plan: 'Invite an observer: find the contact, create the Agora link, send it and phone them.',
+        steps: [...steps],
+        spokenConfirmation: spoken,
+        ...(ok ? {} : { error: spoken }),
+        finishedAt: Date.now(),
+      });
+    },
+  };
+}
+
 /** Mint (or reuse) the observer link, send it, and have Asha phone `contact`. */
-export async function callObserver(contact: ObserverContact, note = ''): Promise<void> {
+export async function callObserver(contact: ObserverContact, note = '', utterance = ''): Promise<void> {
   if (isCallBusy(state.status)) {
     void speakAsNurse(`I'm still on the call with ${state.contactName ? firstName(state.contactName) : 'them'}, doctor.`);
     return;
@@ -200,6 +227,13 @@ export async function callObserver(contact: ObserverContact, note = ''): Promise
     return;
   }
   setCall({ ...IDLE, status: 'inviting', contactName: contact.name });
+  const run = startRun(utterance || `Invite ${contact.name} to observe`, patient.case.id);
+  run.step({
+    tool: 'find_contact',
+    args: { name: contact.name },
+    ok: true,
+    summary: `${contact.name} (${contact.relation})${contact.telegram ? ', Telegram on file' : ''}`,
+  });
 
   let link = getLinkState();
   const reusable = link.status === 'live' && link.caseId === patient.case.id && link.channel === info.channel;
@@ -209,9 +243,17 @@ export async function callObserver(contact: ObserverContact, note = ''): Promise
   }
   if (link.status !== 'live' || !link.inviteUrl) {
     setCall({ status: 'error', error: link.error || 'Could not create the observer link.' });
+    run.step({ tool: 'create_observer_link', args: { channel: info.channel }, ok: false, summary: link.error || 'Could not create the observer link' });
+    run.finish(false, "Sorry doctor, I couldn't create the observer link.");
     void speakAsNurse("Sorry doctor, I couldn't create the observer link.");
     return;
   }
+  run.step({
+    tool: 'create_observer_link',
+    args: { channel: info.channel },
+    ok: true,
+    summary: reusable ? 'Reused the live Agora observer link (listen-only)' : 'Agora observer link created (listen-only audience)',
+  });
 
   setCall({ status: 'placing' });
   const profile = getProfile();
@@ -241,12 +283,29 @@ export async function callObserver(contact: ObserverContact, note = ''): Promise
     }
     const snap = (await r.json()) as CallSnapshot;
     applySnapshot(snap);
+    const d = (snap as unknown as { delivery?: { ok?: boolean; channel?: string; error?: string } }).delivery;
+    run.step({
+      tool: 'send_invite',
+      args: { channel: d?.channel || 'auto' },
+      ok: !!d?.ok,
+      summary: d?.ok ? `Invite link sent on ${d.channel}` : `Link not sent${d?.error ? `: ${d.error}` : ''}`,
+    });
+    const called = !TERMINAL.has(snap.status) || snap.status === 'completed';
+    run.step({
+      tool: 'place_call',
+      args: { to: (snap as unknown as { contact?: { phone?: string } }).contact?.phone ?? contact.phone, via: 'Twilio' },
+      ok: called,
+      summary: called ? `Calling ${firstName(contact.name)}: Asha speaks in her Murf voice and answers questions` : `Call not placed${(snap as unknown as { error?: string }).error ? `: ${(snap as unknown as { error?: string }).error}` : ''}`,
+    });
+    run.finish(called || !!d?.ok, snap.spoken || `Calling ${firstName(contact.name)} now.`);
     if (snap.spoken) void speakAsNurse(snap.spoken);
     if (!TERMINAL.has(snap.status)) startPolling(snap.token);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(LOG, 'call failed:', msg);
     setCall({ status: 'error', error: msg });
+    run.step({ tool: 'place_call', args: { via: 'Twilio' }, ok: false, summary: msg });
+    run.finish(false, `Sorry doctor, I couldn't call ${firstName(contact.name)}.`);
     void speakAsNurse(`Sorry doctor, I couldn't call ${firstName(contact.name)}.`);
   }
 }
@@ -267,6 +326,6 @@ export function maybeHandleObserverCommand(text: string): boolean {
     requestObserverPopover(name);
     return true;
   }
-  void callObserver(contact);
+  void callObserver(contact, '', text.trim());
   return true;
 }
