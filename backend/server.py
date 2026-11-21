@@ -1464,6 +1464,9 @@ app.include_router(reception_router)
 # checked); the doctor's call start / status routes sit under /agent/.
 from observer_call import router as observer_call_router  # noqa: E402
 app.include_router(observer_call_router)
+# Consultation result to Telegram: summary, PDF report card and a Murf voice summary.
+from results import router as results_router  # noqa: E402
+app.include_router(results_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the

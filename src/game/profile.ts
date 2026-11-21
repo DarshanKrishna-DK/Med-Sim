@@ -8,7 +8,12 @@ export interface Profile {
   name: string;
   university: string;
   gender: Gender;
+  /** Telegram destination for consultation results ('telegram', '@username', 'tg:<id>'); '' turns auto-send off. */
+  resultsTo?: string;
 }
+
+/** Default Telegram destination: the latest chat that pressed Start on the bot. */
+export const DEFAULT_RESULTS_TO = 'telegram';
 
 const KEY = 'medsim.profile.v1';
 const listeners = new Set<() => void>();
@@ -21,7 +26,12 @@ function read(): Profile | null {
     if (!raw) return null;
     const p = JSON.parse(raw) as Partial<Profile>;
     if (!p.name || !p.gender) return null;
-    return { name: String(p.name), university: String(p.university ?? ''), gender: p.gender as Gender };
+    return {
+      name: String(p.name),
+      university: String(p.university ?? ''),
+      gender: p.gender as Gender,
+      resultsTo: typeof p.resultsTo === 'string' ? p.resultsTo : DEFAULT_RESULTS_TO,
+    };
   } catch {
     return null;
   }
@@ -41,7 +51,12 @@ export function getProfile(): Profile | null {
 }
 
 export function saveProfile(p: Profile) {
-  current = { name: p.name.trim(), university: p.university.trim(), gender: p.gender };
+  current = {
+    name: p.name.trim(),
+    university: p.university.trim(),
+    gender: p.gender,
+    resultsTo: (p.resultsTo ?? current?.resultsTo ?? DEFAULT_RESULTS_TO).trim().slice(0, 40),
+  };
   try {
     window.localStorage.setItem(KEY, JSON.stringify(current));
   } catch {

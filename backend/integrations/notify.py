@@ -472,6 +472,66 @@ async def _send_telegram(dest: str, message: str, mp3: Optional[bytes], ics: Opt
         return sent
 
 
+async def _tg_file(c: httpx.AsyncClient, method: str, field: str, chat_id: int, filename: str, data: bytes,
+                   mime: str, extra: dict[str, str]) -> dict[str, Any]:
+    """One sendDocument / sendAudio upload; {ok} or {ok: False, error}. Never raises."""
+    try:
+        r = await c.post(_tg_url(method), data={"chat_id": str(chat_id), **extra},
+                         files={field: (filename, data, mime)})
+        body = r.json() if r.content else {}
+    except Exception as e:  # noqa: BLE001
+        log.warning("telegram %s failed: %s", method, type(e).__name__)
+        return {"ok": False, "error": f"Telegram request failed: {type(e).__name__}"}
+    if not body.get("ok"):
+        return {"ok": False, "error": f"Telegram error: {str(body.get('description') or r.status_code)[:120]}"}
+    return {"ok": True, "messageId": str((body.get("result") or {}).get("message_id", ""))}
+
+
+async def send_telegram_bundle(
+    dest: str,
+    html_text: str,
+    document: Optional[tuple[str, bytes, str, str]] = None,
+    audio: Optional[tuple[str, bytes, str]] = None,
+) -> dict[str, Any]:
+    """Telegram HTML message, then an optional document (filename, bytes, mime, caption) and an
+    optional MP3 (filename, bytes, title). Per-part results under 'parts'. The caller owns rate
+    limiting; NOTIFY_ALLOWED_DESTS is still honoured. Never raises."""
+    d = (dest or "telegram").strip()
+    if not _telegram_ready():
+        return _fail("telegram", d, "Telegram is not configured (set TELEGRAM_BOT_TOKEN)")
+    if not is_telegram(d):
+        return _fail("telegram", d, "Not a Telegram destination (use 'telegram', '@username' or 'tg:<chat id>')")
+    if not dest_allowed(d):
+        return _fail("telegram", d, _rate_error(d))
+    try:
+        async with _client_factory() as c:
+            chat_id = await _tg_resolve_chat(c, d)
+            if not chat_id:
+                return _fail("telegram", d, "No Telegram chat yet: open the bot link on the phone and press Start, then retry")
+            parts: dict[str, Any] = {}
+            try:
+                r = await c.post(_tg_url("sendMessage"), json={"chat_id": chat_id, "text": html_text,
+                                                                "parse_mode": "HTML", "disable_web_page_preview": True})
+                body = r.json() if r.content else {}
+                parts["text"] = ({"ok": True, "messageId": str(body["result"]["message_id"])} if body.get("ok")
+                                 else {"ok": False, "error": f"Telegram error: {str(body.get('description') or r.status_code)[:120]}"})
+            except Exception as e:  # noqa: BLE001
+                parts["text"] = {"ok": False, "error": f"Telegram request failed: {type(e).__name__}"}
+            if document:
+                name, data, mime, caption = document
+                parts["document"] = await _tg_file(c, "sendDocument", "document", chat_id, name, data, mime,
+                                                   {"caption": caption[:1000]} if caption else {})
+            if audio:
+                name, data, title = audio
+                parts["audio"] = await _tg_file(c, "sendAudio", "audio", chat_id, name, data, "audio/mpeg",
+                                                {"title": title[:64], "performer": "MedSim"})
+    except Exception as e:  # noqa: BLE001
+        return _fail("telegram", d, f"Unexpected error: {type(e).__name__}")
+    ok = bool(parts.get("text", {}).get("ok"))
+    log.info("notify telegram bundle ok=%s parts=%s", ok, {k: v.get("ok") for k, v in parts.items()})
+    return {"ok": ok, "channel": "telegram", "to": mask(d), "resolvedTo": f"tg:{chat_id}", "parts": parts}
+
+
 # ------------------------------------------------------------------ public entry
 
 

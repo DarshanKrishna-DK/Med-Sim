@@ -16,6 +16,11 @@ import { AppHeader } from '../ui/chrome';
 import { FacultyMarksCard } from '../observer/FacultyMarksCard';
 import { fmtMs, voiceMetrics } from '../../voice/voiceMetrics';
 import { logEncounterOnce, logbookLinkFor, subscribeLogbook } from '../../agents/logbook';
+import { SendResultButton } from '../ui/SendResultButton';
+import { buildResultPayload } from '../../agents/resultSend';
+import { getProfile } from '../../game/profile';
+import { getCaseClinic } from '../../data/cases';
+import { CLINIC_LABELS } from '../../game/clinic';
 
 const VERDICT: Record<VerdictBand, { word: string; tone: 'good' | 'mid' | 'bad' }> = {
   excellent: { word: 'Excellent', tone: 'good' },
@@ -188,6 +193,28 @@ function DebriefBody({
     score: evaluation.domain_scores[k],
     criteria: evaluation.criteria.filter((x) => x.domain === k),
   }));
+  const sessionLang = useStore((s) => s.lang);
+  const clinic = getCaseClinic(c.id);
+  const submitted = encounter.submittedDiagnosisId;
+  const resultPayload = buildResultPayload({
+    profile: getProfile(),
+    caseId: c.id,
+    caseTitle: `${c.name}, ${c.age}${c.gender}`,
+    patientName: c.name,
+    specialty: clinic ? CLINIC_LABELS[clinic] : '',
+    chiefComplaint: c.chiefComplaint,
+    verdict: v.word,
+    domains: domains.map((d) => ({ name: d.label, score: d.score?.raw ?? 0, max: d.score?.max ?? 0 })),
+    strengths: highlights,
+    improvements,
+    narrative: evaluation.narrative,
+    diagnosisChosen: dxLabel(submitted ?? null),
+    diagnosisCorrect: dxLabel(c.correctDiagnosisId),
+    diagnosisIsCorrect: submitted ? submitted === c.correctDiagnosisId : false,
+    prescriptions: (encounter.prescriptions ?? []).map((p) => `${medicationById(p.medicationId)?.name ?? p.medicationId} ${p.dose}`),
+    tests: encounter.orderedTestIds.map((t) => testById(t)?.name ?? t),
+    lang: sessionLang,
+  });
 
   return (
     <article className="debrief-body">
@@ -218,6 +245,7 @@ function DebriefBody({
             Back to cases
           </button>
         </div>
+        <SendResultButton sendKey={`debrief:${c.id}:${encounter.arrivedAt}`} payload={resultPayload} auto={!savedAt} />
       </header>
 
       {evaluation.safety_breach && (
