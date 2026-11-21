@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ProfileBadge } from '../ui/ProfileBadge';
 import { ThinkingOrb } from 'thinking-orbs';
 import { ClipboardArt } from '../ui/pixel/MedArt';
@@ -15,6 +15,7 @@ import type { ActivePatient } from '../../game/types';
 import { AppHeader } from '../ui/chrome';
 import { FacultyMarksCard } from '../observer/FacultyMarksCard';
 import { fmtMs, voiceMetrics } from '../../voice/voiceMetrics';
+import { logEncounterOnce, logbookLinkFor, subscribeLogbook } from '../../agents/logbook';
 
 const VERDICT: Record<VerdictBand, { word: string; tone: 'good' | 'mid' | 'bad' }> = {
   excellent: { word: 'Excellent', tone: 'good' },
@@ -104,6 +105,8 @@ function LiveDebrief({
     saved.current = true;
     const c = encounter.case;
     const dx = encounter.submittedDiagnosisId ?? c.correctDiagnosisId;
+    const extras = practiceHistoryExtras(encounter, d.evaluation, d.simple);
+    void logEncounterOnce(encounter, extras.specialty, extras.score);
     saveEvalHistory({
       caseId: c.id,
       caseName: c.name,
@@ -113,7 +116,7 @@ function LiveDebrief({
       verdict: d.evaluation.global_rating,
       evaluation: d.evaluation,
       patientSnapshot: encounter,
-      ...practiceHistoryExtras(encounter, d.evaluation, d.simple),
+      ...extras,
     });
   }, [d.evaluation, encounter]);
 
@@ -175,6 +178,10 @@ function DebriefBody({
   const highlights = asBullets(evaluation.highlights);
   const improvements = asBullets(evaluation.improvements);
   const c = encounter.case;
+  const logbookUrl = useSyncExternalStore(
+    subscribeLogbook,
+    () => logbookLinkFor(c.id, encounter.arrivedAt),
+  );
   const domains = (Object.keys(DOMAIN_LABEL) as Array<keyof typeof DOMAIN_LABEL>).map((k) => ({
     key: k,
     label: DOMAIN_LABEL[k],
@@ -194,6 +201,11 @@ function DebriefBody({
           <h1 className={`verdict-word verdict-word--${v.tone}`}>{v.word}</h1>
           <p className="verdict-narrative">{evaluation.narrative}</p>
           {(() => { const vs = voiceMetrics.statsFor(encounter.case.id); return vs && vs.avgE2eMs !== null ? <p className="muted-note">Voice: average response {fmtMs(vs.avgE2eMs)} over {vs.turns} turns, {vs.interruptions} interruptions (Agora Conversational AI + Murf Falcon).</p> : null; })()}
+          {logbookUrl && (
+            <p className="muted-note">
+              <a className="step-link" href={logbookUrl} target="_blank" rel="noreferrer noopener">Logged to your CBME logbook</a>
+            </p>
+          )}
           {source === 'simple' && (
             <p className="muted-note">Quick debrief: the full rubric marker was unavailable.</p>
           )}

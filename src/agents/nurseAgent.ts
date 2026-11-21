@@ -15,6 +15,9 @@
 //      patient can react naturally ("a blood test? okay...").
 
 import { getPatientContact } from '../game/patientContact';
+import { CLINIC_LABELS } from '../game/clinic';
+import { getCaseSpecialty, POLYCLINIC_DIAGNOSIS_LABELS } from '../data/polyclinicPatients';
+import { skillsPerformed } from './logbook';
 import { doctorName, getProfile } from '../game/profile';
 import { store, POLYCLINIC_BED_INDEX } from '../game/store';
 import { LANG_LOCALE, langOfText } from '../game/lang';
@@ -31,7 +34,7 @@ const LOG = '[medsim:nurse]';
 // ── prefilter ───────────────────────────────────────────────────
 
 const ORDER_VERB =
-  /\b(order(?:ing)?|prescrib(?:e|ing)|start (?:him|her|them|you|the patient)?\s*on|put (?:him|her|them|you) on|give (?:him|her|them|you|the patient)?|send (?:off|for|a|an|the|him|her|them)|run (?:a|an|the|some)|get (?:a|an|me|us|some|the)|check (?:a|an|the|her|his|their|your)|book|schedule|follow[- ]?up|nurse|draw (?:some|a|the)?\s*bloods?|let'?s (?:do|get|run|send|start|check|book)|i'?d like (?:a|an|to order)|we(?:'ll| will) need (?:a|an|some))\b/i;
+  /\b(order(?:ing)?|prescrib(?:e|ing)|start (?:him|her|them|you|the patient)?\s*on|put (?:him|her|them|you) on|give (?:him|her|them|you|the patient)?|send (?:off|for|a|an|the|him|her|them)|run (?:a|an|the|some)|get (?:a|an|me|us|some|the)|check (?:a|an|the|her|his|their|your)|book|schedule|refer(?:ral)?|log (?:this|the) case|add (?:this|the) case to|logbook|follow[- ]?up|nurse|draw (?:some|a|the)?\s*bloods?|let'?s (?:do|get|run|send|start|check|book)|i'?d like (?:a|an|to order)|we(?:'ll| will) need (?:a|an|some))\b/i;
 
 const CLINICAL_NOUN =
   /\b(cbc|fbc|bmp|cmp|lfts?|tsh|hba1c|a1c|ecg|ekg|x-?ray|cxr|ultrasound|scan|mri|ct|labs?|bloods?|urinalysis|urine|swab|culture|troponin|lipid|panel|mg|milligrams?|tablets?|twice a day|three times|once daily|bd|tds|od|prn)\b/i;
@@ -113,6 +116,13 @@ function buildPayload(p: ActivePatient, utterance: string) {
     doctorName: doctorName(getProfile()),
     prescriptionsSoFar: (p.prescriptions ?? []).map(({ medicationId, dose, duration }) => ({ medicationId, dose, duration })),
     followUpSoFar: p.followUp ?? undefined,
+    // Logbook (log_case) and referral (refer_patient) context.
+    student: getProfile()?.name || undefined,
+    university: getProfile()?.university || undefined,
+    specialty: (() => { const sp = getCaseSpecialty(c.id); return sp ? CLINIC_LABELS[sp] : undefined; })(),
+    caseName: c.name,
+    diagnosis: p.submittedDiagnosisId ? POLYCLINIC_DIAGNOSIS_LABELS[p.submittedDiagnosisId] ?? p.submittedDiagnosisId : undefined,
+    skills: skillsPerformed(p),
   };
 }
 

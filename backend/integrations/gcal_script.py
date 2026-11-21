@@ -45,3 +45,35 @@ async def book_event(title: str, description: str, start: datetime, minutes: int
     except Exception as e:  # noqa: BLE001
         log.warning("apps script booking failed: %s", type(e).__name__)
         return None
+
+
+async def _post_action(action: str, fields: dict) -> Optional[dict]:
+    """POST {action, secret, **fields} to the Apps Script web app. None on any problem."""
+    url = (os.environ.get("GCAL_SCRIPT_URL") or "").strip()
+    secret = (os.environ.get("GCAL_SCRIPT_SECRET") or "").strip()
+    if not url or not secret:
+        return None
+    payload = {"action": action, "secret": secret, **fields}
+    try:
+        async with _client_factory() as client:
+            r = await client.post(url, json=payload)
+            if r.status_code != 200:
+                log.warning("apps script %s returned %s", action, r.status_code)
+                return None
+            data = r.json()
+            return data if isinstance(data, dict) else None
+    except Exception as e:  # noqa: BLE001
+        log.warning("apps script %s failed: %s", action, type(e).__name__)
+        return None
+
+
+async def append_logbook(row: dict) -> Optional[dict]:
+    """Append one row to the user's "MedSim Clinical Logbook" sheet.
+
+    Returns {ok, sheetUrl, row} from Apps Script, or None when unconfigured or failed."""
+    return await _post_action("logbook", {"row": row})
+
+
+async def create_referral(fields: dict) -> Optional[dict]:
+    """Create the referral Google Doc and its PDF. Returns {ok, docUrl, pdfUrl} or None."""
+    return await _post_action("referral", dict(fields))

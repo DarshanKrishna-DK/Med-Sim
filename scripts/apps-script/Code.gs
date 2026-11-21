@@ -1,12 +1,32 @@
 /**
- * MedSim -> Google Calendar bridge. Deploy as a Web app:
+ * MedSim -> Google Workspace bridge. Deploy as a Web app:
  * Execute as: Me, Who has access: Anyone. Optional script property MEDSIM_SECRET.
  *
- * POST body (JSON):
+ * OAuth scopes (authorised on first run / new deployment version):
+ *   https://www.googleapis.com/auth/calendar          (CalendarApp)
+ *   https://www.googleapis.com/auth/spreadsheets      (SpreadsheetApp, logbook)
+ *   https://www.googleapis.com/auth/documents         (DocumentApp, referral)
+ *   https://www.googleapis.com/auth/drive             (DriveApp, folders and PDF export)
+ *
+ * POST body (JSON), switched on `action` (missing or "calendar" = calendar):
+ *
+ * action "calendar" (default):
  * { secret, title, description, location, startIso, minutes,
  *   recurrence: {freq: "DAILY"|"WEEKLY"|"MONTHLY", count: int, interval?: int} | null,
  *   guestEmail?: string }
  * Reply: {ok:true, id, seriesId?, htmlLink, startText} or {ok:false, error}
+ *
+ * action "logbook": append a row to the "MedSim Clinical Logbook" sheet (created on
+ * first use, id kept in script property LOGBOOK_ID).
+ * { action:"logbook", secret, row:{date, student, university, specialty, caseName, patient,
+ *   diagnosis, skills, tests, prescriptions, score, facultySignoff, notes} }
+ * Reply: {ok:true, sheetUrl, row} or {ok:false, error}
+ *
+ * action "referral": Google Doc "Referral: <patient> to <specialty>", exported as PDF into
+ * the Drive folder "MedSim Referrals".
+ * { action:"referral", secret, patient, specialty, urgency, reason, situation, background,
+ *   assessment, recommendation, label }
+ * Reply: {ok:true, docUrl, pdfUrl} or {ok:false, error}
  */
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
@@ -25,6 +45,17 @@ function doPost(e) {
     if (expected && body.secret !== expected) {
       return json_({ ok: false, error: 'unauthorized' });
     }
+    var action = String(body.action || 'calendar').toLowerCase();
+    if (action === 'logbook') return json_(logbook_(body));
+    if (action === 'referral') return json_(referral_(body));
+    if (action !== 'calendar') return json_({ ok: false, error: 'unknown action' });
+    return calendar_(body);
+  } catch (err) {
+    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+  }
+}
+
+function calendar_(body) {
     var start = new Date(body.startIso);
     if (isNaN(start.getTime())) return json_({ ok: false, error: 'bad startIso' });
     var minutes = Math.max(5, Math.min(240, Number(body.minutes) || 20));
@@ -75,7 +106,73 @@ function doPost(e) {
     };
     if (seriesId) out.seriesId = seriesId;
     return json_(out);
-  } catch (err) {
-    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+}
+
+var LOGBOOK_NAME = 'MedSim Clinical Logbook';
+var LOGBOOK_HEADER = ['Date', 'Student', 'University', 'Clinic/Specialty', 'Case', 'Patient (synthetic)',
+  'Diagnosis', 'Skills performed', 'Tests ordered', 'Prescriptions', 'Score', 'Faculty sign-off', 'Notes'];
+
+// Stop spreadsheet formula injection: text starting with = + - @ gets a leading apostrophe.
+function cell_(v) {
+  var t = (v === null || v === undefined) ? '' : String(v);
+  t = t.slice(0, 1000);
+  return /^[=+\-@]/.test(t) ? "'" + t : t;
+}
+
+function logbookSheet_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('LOGBOOK_ID');
+  var ss = null;
+  if (id) {
+    try { ss = SpreadsheetApp.openById(id); } catch (err) { ss = null; }
   }
+  if (!ss) {
+    ss = SpreadsheetApp.create(LOGBOOK_NAME);
+    props.setProperty('LOGBOOK_ID', ss.getId());
+    var first = ss.getSheets()[0];
+    first.setName('Logbook');
+    first.getRange(1, 1, 1, LOGBOOK_HEADER.length).setValues([LOGBOOK_HEADER]).setFontWeight('bold');
+    first.setFrozenRows(1);
+  }
+  return ss;
+}
+
+function logbook_(body) {
+  var r = body.row || {};
+  var ss = logbookSheet_();
+  var sheet = ss.getSheets()[0];
+  var date = r.date ? String(r.date) : Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  sheet.appendRow([
+    cell_(date), cell_(r.student), cell_(r.university), cell_(r.specialty), cell_(r.caseName),
+    cell_(r.patient), cell_(r.diagnosis), cell_(r.skills), cell_(r.tests), cell_(r.prescriptions),
+    cell_(r.score), cell_(r.facultySignoff), cell_(r.notes)
+  ]);
+  return { ok: true, sheetUrl: ss.getUrl(), row: sheet.getLastRow() };
+}
+
+function referral_(body) {
+  var patient = String(body.patient || 'Patient').slice(0, 120);
+  var specialty = String(body.specialty || 'Specialist').slice(0, 120);
+  var title = 'Referral: ' + patient + ' to ' + specialty;
+  var doc = DocumentApp.create(title);
+  var d = doc.getBody();
+  var label = String(body.label || 'SIMULATION, synthetic patient').slice(0, 200);
+  d.appendParagraph(label).setBold(true);
+  d.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  d.appendParagraph('Urgency: ' + String(body.urgency || 'routine'));
+  d.appendParagraph('Reason: ' + String(body.reason || '').slice(0, 1000));
+  var parts = [['Situation', body.situation], ['Background', body.background],
+    ['Assessment', body.assessment], ['Recommendation', body.recommendation]];
+  for (var i = 0; i < parts.length; i++) {
+    d.appendParagraph(parts[i][0]).setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    d.appendParagraph(String(parts[i][1] || '').slice(0, 3000));
+  }
+  d.appendParagraph(label).setItalic(true);
+  doc.saveAndClose();
+  var file = DriveApp.getFileById(doc.getId());
+  var folders = DriveApp.getFoldersByName('MedSim Referrals');
+  var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('MedSim Referrals');
+  var pdf = folder.createFile(file.getAs('application/pdf').setName(title + '.pdf'));
+  file.moveTo(folder);
+  return { ok: true, docUrl: doc.getUrl(), pdfUrl: pdf.getUrl() };
 }

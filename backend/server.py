@@ -66,6 +66,7 @@ from rx_audio import router as rx_audio_router
 from exam import router as exam_router
 from observer import router as observer_router
 from viva import router as viva_router
+from logbook import router as logbook_router
 
 # The API (/agent, /voice, /teach, /coach, /llm) is only served to trusted
 # browser origins: localhost for `npm run dev`, plus the deployed site via
@@ -1444,6 +1445,7 @@ app.include_router(osce_router)
 app.include_router(exam_router)
 app.include_router(observer_router)
 app.include_router(viva_router)
+app.include_router(logbook_router)
 # Real-world delivery: public, token-guarded links the patient's phone opens
 # (Murf voice prescription MP3, follow-up .ics invite).
 from integrations import calendar_invite as _calendar_invite, notify as _notify  # noqa: E402

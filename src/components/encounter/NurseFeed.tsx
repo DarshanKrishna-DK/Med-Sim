@@ -50,6 +50,12 @@ function stepLinks(step: NurseStep): Link[] {
     for (const rec of (r.records ?? []) as Array<{ resourceType?: string; id?: string; url?: string }>) add(`FHIR ${rec.resourceType}/${rec.id}`, rec.url);
   }
   if (step.tool === 'send_to_patient') add('Murf voice note', r.audioUrl);
+  if (step.tool === 'refer_patient') {
+    add('Referral PDF', r.pdfUrl ?? r.docUrl);
+    if (r.fhir?.id) add(`FHIR ServiceRequest/${r.fhir.id}`, r.fhir.url);
+    add('Voice handover', r.audioUrl);
+  }
+  if (step.tool === 'log_case') add('CBME logbook', r.sheetUrl);
   return out;
 }
 

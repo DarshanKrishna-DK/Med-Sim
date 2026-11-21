@@ -143,6 +143,45 @@ async def record_appointment(patient_id: str, in_days: int, reason: str) -> Opti
     return await _post("Appointment", body)
 
 
+_REFERRAL_PRIORITY = {"routine": "routine", "urgent": "urgent", "emergency": "stat"}
+
+
+async def record_referral(patient_id: str, specialty: str, urgency: str, reason: str,
+                          diagnosis: Optional[str] = None, note: Optional[str] = None) -> Optional[dict]:
+    """ServiceRequest (category referral) plus an optional Condition with the working diagnosis."""
+    condition: Optional[dict] = None
+    if diagnosis and diagnosis.strip():
+        condition = await _post("Condition", {
+            "resourceType": "Condition",
+            "meta": {"tag": [_TAG]},
+            "clinicalStatus": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active"}]},
+            "verificationStatus": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-ver-status", "code": "provisional"}]},
+            "code": {"text": diagnosis.strip()[:200]},
+            "subject": {"reference": f"Patient/{patient_id}"},
+            "note": [{"text": "SIMULATION, synthetic patient"}],
+        })
+    body: dict = {
+        "resourceType": "ServiceRequest",
+        "meta": {"tag": [_TAG]},
+        "status": "active",
+        "intent": "order",
+        "category": [{"coding": [{"system": "http://snomed.info/sct", "code": "3457005", "display": "Patient referral"}],
+                      "text": "referral"}],
+        "priority": _REFERRAL_PRIORITY.get((urgency or "").lower(), "routine"),
+        "code": {"text": f"Referral to {specialty}"[:200]},
+        "reasonCode": [{"text": (reason or "")[:300]}],
+        "subject": {"reference": f"Patient/{patient_id}"},
+        "note": [{"text": ("SIMULATION, synthetic patient. " + (note or ""))[:2000]}],
+    }
+    if condition:
+        body["reasonReference"] = [{"reference": f"Condition/{condition['id']}"}]
+    body.update(_order_meta())
+    rec = await _post("ServiceRequest", body)
+    if rec and condition:
+        rec["condition"] = condition
+    return rec
+
+
 async def record_batch(case: dict, tests: list, meds: list, follow_up: Optional[dict] = None) -> list[dict]:
     """Ensure the patient, then post all orders concurrently. Bounded to about 7s."""
     if not _enabled():

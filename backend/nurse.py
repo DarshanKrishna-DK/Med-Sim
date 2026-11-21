@@ -83,6 +83,13 @@ class NurseActRequest(BaseModel):
     # prescriptions and the follow-up from earlier orders.
     prescriptionsSoFar: list[dict[str, Any]] = Field(default_factory=list)
     followUpSoFar: Optional[dict[str, Any]] = None
+    # Logbook (log_case) and referral (refer_patient) context.
+    student: Optional[str] = None
+    university: Optional[str] = None
+    specialty: Optional[str] = None
+    caseName: Optional[str] = None
+    diagnosis: Optional[str] = None
+    skills: list[str] = Field(default_factory=list)
 
 
 # ── tool executors (pure, no network) ──────────────────────────────────────
@@ -295,9 +302,9 @@ class NurseState:
 
     # --- real-world tools (network; never raise)
     async def aexecute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
-        if tool == "send_to_patient":
+        if tool in ("send_to_patient", "log_case", "refer_patient"):
             try:
-                return await self.send_to_patient(**args)
+                return await getattr(self, tool)(**args)
             except TypeError as e:
                 return {"ok": False, "error": f"bad arguments: {e}"}
         res = self.execute(tool, args)
@@ -415,6 +422,58 @@ class NurseState:
                                             datetime.fromisoformat(cal["start"]), rec, res.get("reason", ""))
             if times:
                 res["calendar"]["reminders"] = len(times)
+
+    def _med_names(self, ids: list[str]) -> list[str]:
+        return [self.meds[i].name if i in self.meds else i for i in ids]
+
+    def _all_prescription_names(self) -> list[str]:
+        names: list[str] = []
+        for mid in list(self.prescribed):
+            n = self.meds[mid].name if mid in self.meds else mid
+            if n not in names:
+                names.append(n)
+        for rx in self.req.prescriptionsSoFar:
+            n = str(rx.get("name") or "") or (self.meds[str(rx.get("medicationId"))].name
+                                              if str(rx.get("medicationId")) in self.meds else str(rx.get("medicationId", "")))
+            if n and n not in names:
+                names.append(n)
+        return names
+
+    async def log_case(self, diagnosis: str = "", notes: str = "") -> dict[str, Any]:
+        """Append this encounter to the student's CBME clinical logbook (Google Sheet)."""
+        import logbook
+
+        r = self.req
+        lreq = logbook.LogbookRequest(
+            caseId=r.caseId, caseName=r.caseName or "", specialty=r.specialty or "",
+            patientName=r.patient.name, diagnosis=(diagnosis or r.diagnosis or "").strip(),
+            skills=list(r.skills), tests=[self.tests[t].name if t in self.tests else t for t in self.ordered],
+            prescriptions=self._all_prescription_names(),
+            student=r.student or r.doctorName or "", university=r.university or "", notes=notes or "")
+        out = await logbook.log_row(logbook.build_row(lreq))
+        if out.get("ok"):
+            out["case"] = lreq.caseName or lreq.caseId
+        return out
+
+    async def refer_patient(self, specialty: str = "", urgency: str = "routine", reason: str = "",
+                            workingDiagnosis: str = "") -> dict[str, Any]:
+        """FHIR referral ServiceRequest, SBAR letter (Doc/PDF) and a Murf voice handover."""
+        import referral
+
+        if not str(specialty or "").strip():
+            return {"ok": False, "error": "which specialty should the patient be referred to?"}
+        p = self.req.patient
+        abnormal = [f"{self.tests[tid].name if tid in self.tests else tid}: {r.result}"
+                    for tid, r in self.results.items() if r.abnormal and tid in self.ordered]
+        ctx = {
+            "caseId": self.req.caseId, "name": p.name, "age": p.age, "gender": p.gender,
+            "complaint": p.chiefComplaint, "vitals": p.vitals, "allergies": p.allergies,
+            "specialty": str(specialty).strip()[:80], "urgency": urgency, "reason": reason,
+            "diagnosis": (workingDiagnosis or self.req.diagnosis or "").strip(),
+            "abnormal": abnormal, "tests": [self.tests[t].name if t in self.tests else t for t in self.ordered],
+            "prescriptions": self._all_prescription_names(),
+        }
+        return await referral.make_referral(ctx)
 
     async def send_to_patient(self, channel: str = "auto") -> dict[str, Any]:
         from integrations import calendar_invite, notify
@@ -545,6 +604,17 @@ def summarize(tool: str, args: dict[str, Any], res: dict[str, Any]) -> str:
         return text
     if tool == "send_to_patient":
         return f"Sent to the patient by {res.get('channel')} ({res.get('to')}): " + ", ".join(res.get("medications") or [])
+    if tool == "log_case":
+        return "Logged to your CBME clinical logbook" + (f": {res['case']}" if res.get("case") else "")
+    if tool == "refer_patient":
+        bits = [b for b, ok in (("FHIR ServiceRequest", res.get("fhir")), ("referral PDF", res.get("pdfUrl")),
+                                ("voice handover", res.get("audioUrl"))) if ok]
+        text = f"Referred to {res.get('specialty')} ({res.get('urgency')})"
+        if bits:
+            text += ": " + ", ".join(bits)
+        if (res.get("delivered") or {}).get("ok"):
+            text += "; sent to the consultant"
+        return text
     if tool == "record_to_ehr":
         return "Saved to the FHIR health record: " + ", ".join(f"{r['resourceType']}/{r['id']}" for r in res.get("records", []))
     return "ok"
@@ -593,6 +663,23 @@ TOOL_SPECS: list[dict[str, Any]] = [
                        "Only when the doctor asks to send, share, message, Telegram, WhatsApp or email it to the patient.",
         "parameters": {"type": "object", "properties": {
             "channel": {"type": "string", "enum": ["auto", "telegram", "whatsapp", "sms", "email"]}}, "required": ["channel"]}}},
+    {"type": "function", "function": {
+        "name": "log_case",
+        "description": "Log this case in the doctor's NMC CBME clinical logbook (a Google Sheet): specialty, diagnosis, skills, tests, "
+                       "prescriptions. Only when the doctor asks to log, record or add this case to their logbook.",
+        "parameters": {"type": "object", "properties": {
+            "diagnosis": {"type": "string", "description": "Working or final diagnosis if the doctor stated one"},
+            "notes": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "refer_patient",
+        "description": "Refer the patient to a specialty: writes a FHIR referral ServiceRequest, an SBAR referral letter (Google Doc and PDF) "
+                       "and a short Murf voice handover. Only when the doctor asks to refer, or hand over, the patient to a specialist or consultant.",
+        "parameters": {"type": "object", "properties": {
+            "specialty": {"type": "string", "description": "e.g. cardiology"},
+            "urgency": {"type": "string", "enum": ["routine", "urgent", "emergency"]},
+            "reason": {"type": "string"},
+            "workingDiagnosis": {"type": "string", "description": "Only if the doctor stated one"}},
+            "required": ["specialty", "urgency", "reason"]}}},
 ]
 
 SYSTEM_PROMPT = (
@@ -608,7 +695,10 @@ SYSTEM_PROMPT = (
     "{freq, count, interval}; for phone, video or remote check-ins pass mode call (a remote voice call with Nurse Asha), "
     "otherwise mode visit. Follow-ups are added to the doctor's Google Calendar automatically. "
     "If the doctor asks to send, share, WhatsApp, SMS or email the prescription or follow-up "
-    "to the patient, call send_to_patient (after any prescribe or schedule_follow_up in the same request). If a tool fails or a drug is refused for allergy, adapt: say so and (only if the doctor "
+    "to the patient, call send_to_patient (after any prescribe or schedule_follow_up in the same request). "
+    "If the doctor asks to log or record the case in their logbook, call log_case (after any orders in the same request). "
+    "If the doctor asks to refer the patient to a specialist, call refer_patient with the specialty, urgency (routine unless they say urgent or emergency) "
+    "and a short reason; the letter and voice handover are created for you. If a tool fails or a drug is refused for allergy, adapt: say so and (only if the doctor "
     "named a class or indication) pick a safe alternative from the catalog; otherwise just hold it.\n"
     "- Never invent results, ids, or doses beyond tool outputs and the catalog.\n"
     "- Dose: pass the doctor's spoken dose and frequency to prescribe exactly as said (e.g. '75 mg once daily'). "
