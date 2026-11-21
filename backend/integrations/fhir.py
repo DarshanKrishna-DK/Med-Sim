@@ -166,3 +166,35 @@ async def record_batch(case: dict, tests: list, meds: list, follow_up: Optional[
     except Exception as e:  # noqa: BLE001
         log.warning("FHIR batch failed: %s", e)
         return []
+
+
+async def record_flag(case: dict, text: str) -> Optional[dict]:
+    """Post an active clinical Flag (e.g. a red flag from Asha's follow-up call). Bounded to about 7s."""
+    if not _enabled():
+        return None
+
+    async def run() -> Optional[dict]:
+        pid = await ensure_patient(case.get("id", ""), case.get("name", "Synthetic Patient"),
+                                   case.get("age"), case.get("gender", ""))
+        if not pid:
+            return None
+        meta = _order_meta()
+        body = {
+            "resourceType": "Flag",
+            "meta": {"tag": [_TAG]},
+            "identifier": meta["identifier"],
+            "status": "active",
+            "category": [{"coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/flag-category",
+                "code": "clinical", "display": "Clinical"}]}],
+            "code": {"text": str(text)[:500]},
+            "subject": {"reference": f"Patient/{pid}"},
+            "period": {"start": meta["authoredOn"]},
+        }
+        return await _post("Flag", body)
+
+    try:
+        return await asyncio.wait_for(run(), timeout=7.0)
+    except Exception as e:  # noqa: BLE001
+        log.warning("FHIR flag failed: %s", e)
+        return None

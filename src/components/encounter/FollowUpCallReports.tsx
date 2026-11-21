@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   absoluteCallUrl,
+  callActionChips,
   callApi,
   followupCallsForCase,
   subscribeFollowupCalls,
@@ -10,6 +11,8 @@ import {
 import '../../styles/followup.css';
 
 const POLL_MS = 20_000;
+
+const CHIP_CLASS = { flag: 'tag--critical', reschedule: 'tag--ok', symptom: '' } as const;
 
 const ADHERENCE_LABEL: Record<string, string> = {
   good: 'Taking meds',
@@ -72,7 +75,8 @@ function CallLinkReports({ link }: { link: StoredCallLink }) {
     } catch { /* clipboard blocked */ }
   };
 
-  const done = (calls ?? []).filter((c) => c.summary).slice().reverse();
+  // A call shows once it has a summary, or as soon as Asha acted in it (live red flag).
+  const done = (calls ?? []).filter((c) => c.summary || callActionChips(c.actions).length > 0).slice().reverse();
   return (
     <div className="fu-link">
       <div className="fu-link-actions">
@@ -91,24 +95,39 @@ function CallLinkReports({ link }: { link: StoredCallLink }) {
       ) : (
         <ul className="fu-list">
           {done.map((c) => {
-            const s = c.summary!;
+            const s = c.summary;
+            const chips = callActionChips(c.actions);
+            const flagged = (s?.redFlags.length ?? 0) > 0 || chips.some((x) => x.kind === 'flag');
             return (
-              <li key={c.callId} className={`fu-report${s.redFlags.length ? ' fu-report--flag' : ''}`}>
+              <li key={c.callId} className={`fu-report${flagged ? ' fu-report--flag' : ''}`}>
                 <div className="fu-report-head">
                   <span className="fu-when">{clock(c.startedAt)}</span>
-                  <span className={`tag ${s.adherence === 'good' ? 'tag--ok' : s.adherence === 'unknown' ? '' : 'tag--urgent'}`}>
-                    {ADHERENCE_LABEL[s.adherence] ?? s.adherence}
-                  </span>
-                  {s.followUpNeeded && <span className="tag tag--urgent">Needs follow-up</span>}
+                  {s ? (
+                    <span className={`tag ${s.adherence === 'good' ? 'tag--ok' : s.adherence === 'unknown' ? '' : 'tag--urgent'}`}>
+                      {ADHERENCE_LABEL[s.adherence] ?? s.adherence}
+                    </span>
+                  ) : (
+                    <span className="tag">{c.endedAt ? 'Summary pending' : 'Call in progress'}</span>
+                  )}
+                  {s?.followUpNeeded && <span className="tag tag--urgent">Needs follow-up</span>}
                 </div>
-                {s.redFlags.length > 0 && (
+                {chips.length > 0 && (
+                  <ul className="fu-chips" aria-label="What Asha did during the call">
+                    {chips.map((x, i) => (
+                      <li key={i} className={`tag fu-chip ${CHIP_CLASS[x.kind]}`} title={x.title}>{x.label}</li>
+                    ))}
+                  </ul>
+                )}
+                {s && s.redFlags.length > 0 && (
                   <p className="fu-flags"><span className="tag tag--critical">Red flag</span> {s.redFlags.join(', ')}</p>
                 )}
-                <p className="fu-summary">{s.summary}</p>
-                <dl className="fu-meta">
-                  <dt>Side effects</dt><dd>{s.sideEffects.length ? s.sideEffects.join(', ') : 'None reported'}</dd>
-                  <dt>Mood</dt><dd>{s.patientMood}</dd>
-                </dl>
+                {s && <p className="fu-summary">{s.summary}</p>}
+                {s && (
+                  <dl className="fu-meta">
+                    <dt>Side effects</dt><dd>{s.sideEffects.length ? s.sideEffects.join(', ') : 'None reported'}</dd>
+                    <dt>Mood</dt><dd>{s.patientMood}</dd>
+                  </dl>
+                )}
                 {c.transcript && c.transcript.length > 0 && (
                   <details className="fu-transcript">
                     <summary>Transcript</summary>

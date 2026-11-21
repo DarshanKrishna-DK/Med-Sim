@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 
 import {
   FOLLOWUP_STORAGE_KEY,
+  callActionChips,
   callUrlsFromSteps,
   followupCallsForCase,
   parseCallToken,
@@ -61,4 +62,19 @@ test('rememberFollowupCall stores links per case, newest first, no duplicates', 
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
   }
+});
+
+test('callActionChips orders red flags, reschedules, then symptoms', () => {
+  assert.deepEqual(callActionChips(undefined), []);
+  const chips = callActionChips({
+    symptoms: [{ symptom: 'mild nausea', adherence: 'partial', at: 3 }],
+    reschedules: [{ whenText: 'tomorrow', startText: 'Sat 22 Nov, 10:00 AM', at: 2, booked: true, reminders: 1 }],
+    redFlags: [{ symptom: 'chest pain', severity: 'emergency', at: 1, doctorNotified: true }],
+  });
+  assert.deepEqual(chips.map((c) => c.kind), ['flag', 'reschedule', 'symptom']);
+  assert.equal(chips[0].label, 'Red flag: chest pain');
+  assert.match(chips[0].title, /Doctor alerted/);
+  assert.equal(chips[1].label, 'Moved to Sat 22 Nov, 10:00 AM');
+  assert.match(chips[1].title, /Google Calendar/);
+  assert.equal(chips[2].title, 'Adherence: partial');
 });
