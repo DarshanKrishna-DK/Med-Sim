@@ -40,7 +40,8 @@ const LOG = '[medsim:observer-link]';
 
 export interface FacultyToast {
   id: string;
-  kind: 'whisper' | 'marks';
+  /** 'call': a message an invited observer left with Asha on the phone. */
+  kind: 'whisper' | 'marks' | 'call';
   text: string;
   examiner: string;
   at: number;
@@ -264,6 +265,11 @@ class Link {
 function pushToast(t: FacultyToast) {
   if (state.toasts.some((x) => x.id === t.id)) return;
   setState({ toasts: [...state.toasts, t].slice(-4) });
+}
+
+/** A message an observer asked Asha to pass on during her phone call. */
+export function pushObserverMessage(id: string, from: string, text: string) {
+  pushToast({ id, kind: 'call', text, examiner: from, at: Date.now() });
 }
 
 let link: Link | null = null;

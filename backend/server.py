@@ -1460,6 +1460,10 @@ from assignments import router as assignments_router  # noqa: E402
 from reception import router as reception_router  # noqa: E402
 app.include_router(assignments_router)
 app.include_router(reception_router)
+# Observer phone call: Twilio webhooks under /rx/obs-call/* are public (signature
+# checked); the doctor's call start / status routes sit under /agent/.
+from observer_call import router as observer_call_router  # noqa: E402
+app.include_router(observer_call_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the

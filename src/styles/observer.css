@@ -101,6 +101,157 @@
   color: var(--muted);
 }
 
+/* ── Observer contact book + Asha's phone call (inside the popover) ── */
+
+.obs-pop {
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+.obs-contacts {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 2px solid var(--line);
+}
+.obs-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.obs-sec-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.obs-pop-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.obs-contact-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.obs-contact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px 8px 10px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+.obs-contact-id {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.obs-contact-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.obs-contact-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.obs-contact-del {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.obs-contact-del:hover {
+  color: var(--text);
+}
+.obs-contact-del:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 1px;
+}
+.obs-add {
+  display: grid;
+  gap: 8px;
+}
+.obs-field {
+  display: grid;
+  gap: 4px;
+}
+.obs-add .input {
+  min-height: 38px;
+}
+.obs-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.obs-call {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  background: var(--bg-deep);
+  box-shadow: 0 0 0 2px var(--accent2);
+}
+.obs-call-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.obs-call-status {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+.obs-call-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--muted);
+}
+.obs-call-dot.is-live {
+  background: var(--green);
+  animation: obs-blink 1.6s steps(2, start) infinite;
+}
+.obs-call-lines {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.obs-call-line,
+.obs-call-msg {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.obs-call-who {
+  font-weight: 700;
+  color: var(--text);
+}
+.obs-call-line.is-observer .obs-call-who,
+.obs-call-msg .obs-call-who {
+  color: var(--accent2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .obs-call-dot.is-live {
+    animation: none;
+  }
+}
+
 /* ── Faculty toasts (student side) ─────────────────────────────────── */
 
 .faculty-toasts {
