@@ -8,6 +8,7 @@ import { AppHeader } from '../ui/chrome';
 import { VitalsRow } from '../ui/Vitals';
 import { useAssignment } from '../../assignments/client';
 import { assignedCaseIds } from '../../assignments/core';
+import { useCustomCasesVersion } from '../../data/customCases';
 import '../../styles/reception.css';
 
 const SEVERITY_LABEL: Record<Severity, string | null> = {
@@ -20,15 +21,20 @@ function clinicLabel(id: ClinicId): string {
   return id === 'all-specialties' ? 'All specialties' : CLINIC_LABELS[id];
 }
 
-const COUNTS: Record<string, number> = CASES.reduce<Record<string, number>>((acc, c) => {
-  acc[c.clinic] = (acc[c.clinic] ?? 0) + 1;
-  return acc;
-}, {});
+function countByClinic(): Record<string, number> {
+  return CASES.reduce<Record<string, number>>((acc, c) => {
+    acc[c.clinic] = (acc[c.clinic] ?? 0) + 1;
+    return acc;
+  }, {});
+}
 
 export function LibraryScreen({ briefOpen = false }: { briefOpen?: boolean }) {
   const clinic = useStore((s) => s.polyclinic.clinic);
   const selectedCaseId = useStore((s) => s.selectedCaseId);
   const [query, setQuery] = useState('');
+  // Telegram-created cases arrive at runtime; recount when they do.
+  const customVersion = useCustomCasesVersion();
+  const COUNTS = useMemo(countByClinic, [customVersion]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -41,7 +47,7 @@ export function LibraryScreen({ briefOpen = false }: { briefOpen?: boolean }) {
         CLINIC_LABELS[c.clinic].toLowerCase().includes(q)
       );
     });
-  }, [clinic, query]);
+  }, [clinic, query, customVersion]);
 
   const clinics = CLINIC_IDS.filter((id) => id === 'all-specialties' || (COUNTS[id] ?? 0) > 0);
 
@@ -179,6 +185,7 @@ function CaseCard({ c, showClinic }: { c: Case; showClinic: boolean }) {
         {showClinic && <span className="case-clinic">{CLINIC_LABELS[c.clinic]}</span>}
         {sevLabel && <span className={`tag tag--${severity}`}>{sevLabel}</span>}
         {p?.source && <span className="chip" title="Adapted from an open-access case report">Based on a published case</span>}
+        {c.badge && <span className="chip chip--telegram" title={c.badgeTitle}>{c.badge}</span>}
       </span>
     </button>
   );
@@ -208,7 +215,7 @@ function BriefDrawer({ caseId }: { caseId: string }) {
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="brief-title">
         <div className="drawer-head">
           <div>
-            <p className="drawer-kicker">{CLINIC_LABELS[c.clinic]}</p>
+            <p className="drawer-kicker">{CLINIC_LABELS[c.clinic]}{c.badgeTitle ? ` · ${c.badgeTitle}` : ''}</p>
             <h2 id="brief-title" className="drawer-title">{p.name}</h2>
             <p className="drawer-sub">
               {p.age} years, {p.gender === 'F' ? 'female' : 'male'}

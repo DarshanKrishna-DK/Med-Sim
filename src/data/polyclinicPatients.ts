@@ -6780,6 +6780,11 @@ export function getCaseSpecialty(caseId: string): ClinicId | undefined {
   return _caseIdToSpecialty.get(caseId);
 }
 
+/** Runtime-added cases (Telegram, see data/customCases.ts) join the reverse lookup. */
+export function registerCaseSpecialty(caseId: string, specialty: ClinicId): void {
+  if (!_caseIdToSpecialty.has(caseId)) _caseIdToSpecialty.set(caseId, specialty);
+}
+
 export const POLYCLINIC_DIAGNOSIS_LABELS: Record<string, string> = {
   ...NEW_DOMAIN_DIAGNOSIS_LABELS,
   ...COMMS_DIAGNOSIS_LABELS,

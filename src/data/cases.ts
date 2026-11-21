@@ -2,7 +2,7 @@ import type { FaceAccessory, FaceMood } from '../components/primitives';
 import type { PatientCase } from '../game/types';
 import type { ClinicId } from '../game/clinic';
 import { CLINIC_LABELS } from '../game/clinic';
-import { POLYCLINIC_CASES, POLYCLINIC_DIAGNOSIS_LABELS } from './polyclinicPatients';
+import { POLYCLINIC_CASES, POLYCLINIC_DIAGNOSIS_LABELS, registerCaseSpecialty } from './polyclinicPatients';
 
 /** Cute-cartoon face descriptor for the case library. Derived deterministically
  *  from the underlying `PatientCase` so the same patient always renders the
@@ -25,6 +25,9 @@ export interface Case {
   /** The clinic / specialty this patient belongs to, so the library can filter
    *  by specialty as well as by condition. */
   clinic: ClinicId;
+  /** Chip for cases added at runtime, e.g. "Created on Telegram". */
+  badge?: string;
+  badgeTitle?: string;
 }
 
 // ── deterministic palette pickers ─────────────────────────────────────
@@ -157,4 +160,27 @@ export function getPatientCase(id: string): PatientCase | undefined {
 /** Which clinic does this case belong to? */
 export function getCaseClinic(id: string): ClinicId | undefined {
   return BY_ID.get(id)?.clinic;
+}
+
+/** Add a case created at runtime (Telegram, see customCases.ts) to the
+ *  library, the clinic rosters and the diagnosis labels. It goes to the
+ *  front, so the next patient through that clinic's door is the new one.
+ *  Static data is untouched, so `npm run verify` never sees these. */
+export function registerRuntimeCase(
+  p: PatientCase,
+  clinic: ClinicId,
+  labels: Record<string, string>,
+  badge: { label: string; title: string },
+): boolean {
+  if (BY_ID.has(p.id)) return false;
+  for (const [id, label] of Object.entries(labels)) {
+    if (!(id in POLYCLINIC_DIAGNOSIS_LABELS)) POLYCLINIC_DIAGNOSIS_LABELS[id] = label;
+  }
+  BY_ID.set(p.id, { p, clinic });
+  CASES.unshift({ ...toCase(p, clinic), badge: badge.label, badgeTitle: badge.title });
+  // New arrays: the per-specialty lists are shared with the source data modules.
+  POLYCLINIC_CASES[clinic] = [p, ...(POLYCLINIC_CASES[clinic] ?? [])];
+  POLYCLINIC_CASES['all-specialties'] = [p, ...POLYCLINIC_CASES['all-specialties']];
+  registerCaseSpecialty(p.id, clinic);
+  return true;
 }

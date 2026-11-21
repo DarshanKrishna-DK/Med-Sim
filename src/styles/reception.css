@@ -59,3 +59,8 @@
   color: var(--green, #1f7a3d);
   box-shadow: inset 0 0 0 1.5px currentColor;
 }
+/* Case library: patients created from the Telegram bot */
+.chip--telegram {
+  color: #fff;
+  background: #2a8bd6;
+}
