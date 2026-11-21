@@ -260,7 +260,7 @@ export async function requestHint(): Promise<void> {
 
 /** Check-in phrases: "how am I doing", "am I on the right track", "any hints". */
 export function isHintRequest(text: string): boolean {
-  return /\b(how am i doing|how'?m i doing|am i on (the )?(right )?track|am i doing (this |it )?right|any (hints?|tips|suggestions)|give me a hint|what am i missing|kya main sahi)\b/i.test(
+  return /\b(how am i doing|how'?m i doing|am i on (the )?(right )?track|am i doing (this |it )?right|on track|any (hints?|tips|suggestions?|ideas?|advice)|(give me|need) a (hint|tip|clue)|hint please|what am i missing|what(?:'s| is)? next|what (?:should|do|can) i do (?:next|now)|what now|next step|i'?m stuck|i am stuck|help me|i need help|suggest (?:something|what)|kya main sahi|kya karu+n?|ab kya karu+n?|aage kya)\b/i.test(
     text,
   );
 }

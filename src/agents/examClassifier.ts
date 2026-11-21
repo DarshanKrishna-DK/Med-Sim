@@ -77,6 +77,29 @@ const KN_PARTS: Array<[ExamSystem, RegExp]> = [
 const ORDER_WORDS =
   /\b(x-?ray|cxr|ecg|ekg|echo(?:cardiogram)?|ultrasound|usg|scan|ct|mri|cbc|fbc|blood (?:test|sugar|work)|bloods|labs?|urine|culture|swab|troponin|report|results?|tablets?|mg|prescri\w*|order\w*)\b|एक्स-?रे|एक्सरे|अल्ट्रासाउंड|ईसीजी|रिपोर्ट|खून|टेस्ट|ಎಕ್ಸ್-?ರೇ|ಸ್ಕ್ಯಾನ್|ರಿಪೋರ್ಟ್|ರಕ್ತ|ಟೆಸ್ಟ್/i;
 
+// Looser English phrasings: "have a look in the throat", "let me feel the
+// tummy", "take her BP", "quick listen to the chest", "look in throat".
+const EN_VERB_LOOSE =
+  /\b(have a (?:look|feel|quick look|quick listen)|take a (?:look|quick look)|quick (?:look|listen|check|feel)|let me (?:feel|hear|see|look|check|listen|examine|press|test)|(?:take|measure|record)\s+(?:a |an |the |your |his |her |their )?(?:bp|blood pressure|pulse|temperature|temp|sats|vitals?)|look (?:at|in|into)|listen (?:to|in|at)|feel (?:for|the|your)|sound (?:the|your|his|her))\b/i;
+
+// Romanized Hindi (Hinglish): "BP lena", "pulse dekho", "pet dabao", "chest sunna".
+const HING_VERB =
+  /\b(dekh(?:o|na|ta|ti|enge|unga|ungi|iye|lo|le|ne do)?|sun(?:o|na|ne do|unga|ungi|enge)|check kar(?:o|na|te|unga|ungi|enge)?|chek kar\w*|le(?:na|lo|te|nge|ta)|naap(?:o|na|te)?|nap(?:o|na)|daba(?:o|na|unga|ke)|jaanch\w*|janch\w*)\b/i;
+const HING_PART = /\b(pet|chhati|chaati|seena|dil|gala|gale|kaan|naak|aankh|aankhen|nabz|nadi|bukhar|tapman|kamar|ghutna|ghutne)\b/i;
+const HING_PART_MAP: Array<[ExamSystem, RegExp]> = [
+  ['vitals', /\b(nabz|nadi|bukhar|tapman)\b/i],
+  ['cardio', /\bdil\b/i],
+  ['resp', /\b(chhati|chaati|seena)\b/i],
+  ['abdomen', /\bpet\b/i],
+  ['eye', /\b(aankh|aankhen)\b/i],
+  ['ent', /\b(gala|gale|kaan|naak)\b/i],
+  ['msk', /\b(kamar|ghutna|ghutne)\b/i],
+];
+
+// History questions to the patient ("did you check your BP at home?",
+// "does your chest hurt?") are never exam requests.
+const HISTORY_Q = /^\W*(?:(?:ok(?:ay)?|so|and|right|accha)\W+)*(do|does|did|have|has|had|is|are|was|were|when|how|how long|where|why|any)\b[^.!]*\b(you|your|she|he|her|his|it)\b/i;
+
 function firstMatch(parts: Array<[ExamSystem, RegExp]>, text: string): ExamSystem | null {
   for (const [sys, rx] of parts) if (rx.test(text)) return sys;
   return null;
@@ -87,13 +110,18 @@ function firstMatch(parts: Array<[ExamSystem, RegExp]>, text: string): ExamSyste
 export function classifyExam(text: string): ExamSystem | null {
   const t = text.trim();
   if (t.length < 4 || ORDER_WORDS.test(t)) return null;
-  if (EN_VERB.test(t)) {
+  if (HISTORY_Q.test(t) && !/^\W*(?:ok(?:ay)?\W+)?(?:can|could|may) i\b/i.test(t)) return null;
+  if (EN_VERB.test(t) || EN_VERB_LOOSE.test(t)) {
     const sys = firstMatch(EN_PARTS, t);
     if (sys) return sys;
   }
   if (/\b(general|systemic|full|physical) exam(?:ination)?\b/i.test(t)) return 'general';
   if (HI_VERB.test(t)) {
     const sys = firstMatch(HI_PARTS, t);
+    if (sys) return sys;
+  }
+  if (HING_VERB.test(t)) {
+    const sys = HING_PART.test(t) ? firstMatch(HING_PART_MAP, t) : firstMatch(EN_PARTS, t);
     if (sys) return sys;
   }
   if (KN_VERB.test(t)) {
