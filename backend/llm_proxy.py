@@ -250,9 +250,11 @@ _OBS_NAME = (
     r"(?:\s+(?!to\b|please\b|now\b)[a-z][a-z'.-]*)?"
 )
 _OBSERVER_CMD = re.compile(
-    r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha|please|can you|could you)\W+){0,3}"
-    r"(?:(?:invite|ask|call|ring|phone)\s+" + _OBS_NAME + r"\s+to\s+(?:observe|watch|join|sit in|listen)\b"
-    r"|invite\s+" + _OBS_NAME + r"(?:\s+(?:please|now))?\W*$)",
+    r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha|please|can you|could you|would you)\W+){0,3}"
+    r"(?:(?:nurse|sister|a{1,2}sha)\W+)?(?:(?:please|can you|could you|would you)\W+){0,2}"
+    r"(?:(?:invite|add|bring|loop in)\s+" + _OBS_NAME + r"(?:\s+(?:as|to|for|into|in|please|now|too)\b.*)?\W*$"
+    r"|(?:ask|call|ring|phone|get|have)\s+" + _OBS_NAME
+    + r"\b.*\b(?:observ\w*|watch\w*|join\w*|sit in|listen\w*|session|consultation)\b)",
     re.IGNORECASE,
 )
 

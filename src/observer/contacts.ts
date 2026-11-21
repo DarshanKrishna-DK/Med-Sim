@@ -125,24 +125,34 @@ const STOP_NAMES = new Set([
 ]);
 
 const LEAD = /^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha|please|can you|could you|would you)\W+)*(?:(?:nurse|sister|a{1,2}sha)\W+)?(?:(?:please|can you|could you|would you)\W+)*/i;
-const CMD = /^(invite|ask|call|ring|phone)\s+([a-z][a-z'.-]*(?:\s+[a-z][a-z'.-]*)?)(?:\s+(to\s+(?:come\s+and\s+)?(?:observe|watch|join|sit in|listen)\b.*|please|now))?\s*[.!?]*$/i;
+const VERB = /^(invite|ask|call|ring|phone|add|get|bring|loop in|have)\s+(.+)$/i;
+/** Words that end the name and start the purpose: "Darshan as an observer". */
+const TAIL_START = new Set(['as', 'to', 'for', 'in', 'into', 'please', 'now', 'too', 'also', 'over', 'up', 'on', 'so', 'and', 'join', 'observe', 'watch']);
+const PURPOSE = /\b(observ\w*|watch\w*|join\w*|sit\s+in|listen\w*|session|consult\w*|this call|the call)\b/i;
 
-/** Parses "invite Darshan (to observe)", "call Darshan to watch",
- *  "Asha, ask Darshan to join". Null for anything else. */
+/** Intent, not one fixed phrase: "invite Darshan", "invite Darshan as an observer",
+ *  "Asha, can you get Darshan to join", "add Darshan as observer",
+ *  "call Darshan to watch", "loop in Darshan for this session". Null otherwise. */
 export function parseInviteCommand(text: string): InviteCommand | null {
-  const t = (text ?? '').trim().replace(LEAD, '').trim();
-  const m = CMD.exec(t);
+  const t = (text ?? '').trim().replace(LEAD, '').trim().replace(/[.!?]+$/, '');
+  const m = VERB.exec(t);
   if (!m) return null;
   const verb = m[1].toLowerCase();
-  let words = m[2].split(/\s+/);
-  // "call Darshan please" / "invite Darshan now" when the tail regex let a filler slip into the name.
-  words = words.filter((w, i) => i === 0 || !/^(please|now|in|over|up)$/i.test(w));
-  if (STOP_NAMES.has(words[0].toLowerCase())) return null;
-  const tail = (m[3] ?? '').toLowerCase();
-  const hasPurpose = tail.startsWith('to');
+  const words = m[2].trim().split(/\s+/);
+  const nameWords: string[] = [];
+  for (const w of words) {
+    const bare = w.replace(/[.,'!?]+$/, '');
+    if (nameWords.length >= 2 || TAIL_START.has(bare.toLowerCase())) break;
+    if (!/^[a-z][a-z'.-]*$/i.test(bare)) break;
+    nameWords.push(bare);
+  }
+  if (!nameWords.length || STOP_NAMES.has(nameWords[0].toLowerCase())) return null;
+  const tail = words.slice(nameWords.length).join(' ');
+  const hasPurpose = PURPOSE.test(tail);
+  const inviteVerb = ['invite', 'add', 'bring', 'loop in'].includes(verb);
   if (verb === 'ask' && !hasPurpose) return null;
-  const name = words.map((w) => w.replace(/[.']+$/, '')).join(' ');
-  return { name, explicit: verb === 'invite' || hasPurpose };
+  if ((verb === 'get' || verb === 'have') && !hasPurpose) return null;
+  return { name: nameWords.join(' '), explicit: inviteVerb || hasPurpose };
 }
 
 // ── storage ─────────────────────────────────────────────────────
