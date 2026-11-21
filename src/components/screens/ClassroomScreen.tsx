@@ -13,6 +13,7 @@ import { Whiteboard,type BoardStep } from '../teach/Whiteboard';
 import { FALLBACK_LESSON, SUGGESTED_TOPICS, detectTopicRequest, fetchLesson, type Lesson, type LessonLevel } from '../teach/lesson';
 import { useTeacherSession, type TeacherSession } from '../teach/useTeacherSession';
 import { TEACHER } from '../../voice/teacherPersona';
+import { AssignPanel } from '../assignments/AssignPanel';
 
 const CAMERA_RIG = { distance: 2.8, minDistance: 1.2, maxDistance: 5.5, pivotHeight: 1.58, shoulder: 0.4, ceiling: 3.4 };
 const PANEL_W = 360;
@@ -80,6 +81,7 @@ export function ClassroomScreen() {
   const [fade, setFade] = useState(1);
   const [menu, setMenu] = useState(false);
   const [nearExit, setNearExit] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const leaving = useRef(false);
 
   const lang = useStore((s) => s.lang);
@@ -174,8 +176,8 @@ export function ClassroomScreen() {
   }, [runtime]);
 
   useEffect(() => {
-    runtime.inputEnabled = !menu && !leaving.current;
-  }, [menu, runtime]);
+    runtime.inputEnabled = !menu && !leaving.current && !assignOpen;
+  }, [menu, assignOpen, runtime]);
 
   useEffect(() => {
     logEnd.current?.scrollIntoView({ block: 'end' });
@@ -220,7 +222,7 @@ export function ClassroomScreen() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target) || e.repeat) return;
+      if (isTypingTarget(e.target) || e.repeat || assignOpen) return;
       if (e.code === 'Escape') {
         if (!leaving.current) setMenu((m) => !m);
         return;
@@ -239,7 +241,7 @@ export function ClassroomScreen() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [menu, nearExit, leave]);
+  }, [menu, nearExit, leave, assignOpen]);
 
   const submitTopic = (t: string) => {
     if (!t.trim()) return;
@@ -375,6 +377,9 @@ export function ClassroomScreen() {
             </button>
           )}
         </div>
+        <button type="button" onClick={() => setAssignOpen(true)} style={{ ...smallBtn, fontSize: 11, padding: '9px 10px', borderColor: UI.primary }}>
+          Assign to class · cases, OSCE, viva
+        </button>
         {teacher.status === 'loading' && teacher.progress && <div style={{ ...labelStyle, fontSize: 10, opacity: 0.8 }}>{teacher.progress}</div>}
         {teacher.error && (
           <div role="alert" style={{ fontFamily: UI.label, fontSize: 13, color: UI.amber, lineHeight: 1.3 }}>
@@ -521,9 +526,11 @@ export function ClassroomScreen() {
           </div>
           <MenuButton primary autoFocus onClick={() => setMenu(false)}>Resume</MenuButton>
           {lesson && <MenuButton onClick={() => { setMenu(false); setBoardOpen((o) => !o); }}>{boardOpen ? 'Room view' : 'Whiteboard view'}</MenuButton>}
+          <MenuButton onClick={() => { setMenu(false); setAssignOpen(true); }}>Assign to class</MenuButton>
           <MenuButton onClick={leave}>Leave lecture hall (back to corridor)</MenuButton>
         </PauseMenu>
       )}
+      {assignOpen && <AssignPanel onClose={() => setAssignOpen(false)} />}
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 60 }}>
         <Fade opacity={fade} />
       </div>

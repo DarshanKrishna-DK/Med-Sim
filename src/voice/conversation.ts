@@ -92,7 +92,19 @@ function detectEmotion(text: string): PatientEmotion {
 /** Sessions that are NOT a patient consultation. Their utterances must never
  *  reach the clinical agents (nurse orders, exam detection): a viva answer
  *  like "give atropine" is not an order for the patient in the clinic. */
-const NON_PATIENT_SESSIONS = new Set(['teacher', 'viva-examiner', 'radiologist', 'followup-call']);
+const NON_PATIENT_SESSIONS = new Set(['teacher', 'viva-examiner', 'radiologist', 'followup-call', 'receptionist']);
+
+/** Priya at Reception: her final transcripts and typed text go to the
+ *  front-desk action agent (/agent/reception/act) instead of the nurse. */
+const RECEPTIONIST_SESSION = 'receptionist';
+
+function runReceptionFromSession(utterance: string, source: 'voice' | 'typed') {
+  void import('../agents/receptionAgent')
+    .then((m) => {
+      if (m.looksLikeReceptionRequest(utterance)) void m.runReceptionAction(utterance, source);
+    })
+    .catch((err) => console.warn(LOG, 'reception agent load failed:', err));
+}
 
 export interface ConversationOptions {
   /** Run the nurse/exam agents on this session's utterances. Defaults to true
@@ -546,7 +558,9 @@ export class Conversation {
       this.nurseTimer = null;
       const utterance = this.nurseCandidate;
       this.nurseCandidate = '';
-      if (this.disposed || !utterance || !this.clinicalAgents) return;
+      if (this.disposed || !utterance) return;
+      if (this.caseId === RECEPTIONIST_SESSION) return void runReceptionFromSession(utterance, 'voice');
+      if (!this.clinicalAgents) return;
       // Dynamic import breaks the conversation ↔ nurseAgent ↔ store cycle.
       void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach')])
         .then(([ex, m, coach]) => {
@@ -797,6 +811,7 @@ export class Conversation {
     this.emitMessages();
     this.setStatus('thinking', 'Thinking…');
 
+    if (this.caseId === RECEPTIONIST_SESSION) runReceptionFromSession(clean, 'typed');
     if (this.clinicalAgents) {
       void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach')])
         .then(([ex, m, coach]) => {

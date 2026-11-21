@@ -45,3 +45,31 @@ async def book_event(title: str, description: str, start: datetime, minutes: int
     except Exception as e:  # noqa: BLE001
         log.warning("apps script booking failed: %s", type(e).__name__)
         return None
+
+
+async def send_email(to: str, subject: str, html: str, text: str) -> Optional[dict]:
+    """Send an email through the same Apps Script web app (scripts/apps-script/Email.gs).
+
+    Posts {"action": "email", secret, to, subject, html, text}. Returns the script's
+    JSON ({ok, remaining}) or None when unconfigured, on HTTP failure or when the
+    script answers ok false. Never raises.
+    """
+    url = (os.environ.get("GCAL_SCRIPT_URL") or "").strip()
+    secret = (os.environ.get("GCAL_SCRIPT_SECRET") or "").strip()
+    if not url or not secret or not to:
+        return None
+    payload = {"action": "email", "secret": secret, "to": to, "subject": subject[:200], "html": html, "text": text}
+    try:
+        async with _client_factory() as client:
+            r = await client.post(url, json=payload)
+            if r.status_code != 200:
+                log.warning("apps script email returned %s", r.status_code)
+                return None
+            data = r.json()
+            if not isinstance(data, dict) or not data.get("ok"):
+                log.warning("apps script email was not accepted")
+                return None
+            return data
+    except Exception as e:  # noqa: BLE001
+        log.warning("apps script email failed: %s", type(e).__name__)
+        return None

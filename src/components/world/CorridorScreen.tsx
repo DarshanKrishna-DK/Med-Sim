@@ -10,8 +10,32 @@ import { PostFX, WorldEnvironment, type FxQuality } from './WorldFX';
 import { ControlsCard, Fade, MenuButton, PauseMenu, PromptPill, Toast, UI, labelStyle, panel } from './worldUi';
 import { PORTAL, PORTAL_COLLIDERS, TeacherPortal, nearPortal } from './TeacherPortal';
 import { LangToggle } from '../ui/LangToggle';
+import { ReceptionPanel } from '../reception/ReceptionPanel';
+import { AssignmentHudChip } from '../assignments/AssignmentChip';
 
 const WORLD_COLLIDERS = [...CORRIDOR_COLLIDERS, ...PORTAL_COLLIDERS];
+
+/** Standing area in front of the lobby reception desk (desk at x -4.6, z 2.9..6.3, facing +x). */
+const DESK_ZONE = { minX: -4.35, maxX: -2.5, minZ: 2.8, maxZ: 6.4 };
+
+export function nearReceptionDesk(runtime: PlayerRuntime): boolean {
+  const { x, z } = runtime.pos;
+  if (x < DESK_ZONE.minX || x > DESK_ZONE.maxX || z < DESK_ZONE.minZ || z > DESK_ZONE.maxZ) return false;
+  // Close to the counter, or facing it (toward -x).
+  return x < -3.55 || Math.sin(runtime.yaw) < 0.1;
+}
+
+function ReceptionProbe({ runtime, onChange }: { runtime: PlayerRuntime; onChange: (near: boolean) => void }) {
+  const cur = useRef(false);
+  useFrame(() => {
+    const n = nearReceptionDesk(runtime);
+    if (n !== cur.current) {
+      cur.current = n;
+      onChange(n);
+    }
+  });
+  return null;
+}
 
 /** Tracks whether the doctor stands at the Teacher Portal. */
 function PortalProbe({ runtime, onChange }: { runtime: PlayerRuntime; onChange: (near: boolean) => void }) {
@@ -127,6 +151,8 @@ export function CorridorScreen() {
   const [toast, setToast] = useState<{ title: string; body: string; id: number } | null>(null);
   const [fade, setFade] = useState(1);
   const [menu, setMenu] = useState(false);
+  const [atDesk, setAtDesk] = useState(false);
+  const [deskOpen, setDeskOpen] = useState(false);
   const busy = useRef(false);
 
   // Fade in from black on arrival.
@@ -136,8 +162,20 @@ export function CorridorScreen() {
   }, []);
 
   useEffect(() => {
-    runtime.inputEnabled = !menu && !busy.current;
-  }, [menu, runtime]);
+    runtime.inputEnabled = !menu && !busy.current && !deskOpen;
+  }, [menu, deskOpen, runtime]);
+
+  const openDesk = useCallback(() => {
+    if (busy.current) return;
+    // Warm the AudioContext inside this gesture for Priya's voice.
+    try {
+      ensureAudioContext();
+    } catch {
+      /* no Web Audio, the reception panel will surface it */
+    }
+    if (document.pointerLockElement) document.exitPointerLock();
+    setDeskOpen(true);
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -214,7 +252,7 @@ export function CorridorScreen() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target) || e.repeat) return;
+      if (isTypingTarget(e.target) || e.repeat || deskOpen) return;
       if (e.code === 'Escape') {
         if (busy.current) return;
         setMenu((m) => !m);
@@ -226,11 +264,14 @@ export function CorridorScreen() {
       } else if (e.code === 'KeyE' && !menu && atPortal) {
         e.preventDefault();
         usePortal();
+      } else if (e.code === 'KeyE' && !menu && atDesk) {
+        e.preventDefault();
+        openDesk();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, atPortal, menu, useDoor, usePortal]);
+  }, [active, atPortal, atDesk, deskOpen, menu, useDoor, usePortal, openDesk]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#050b1a', overflow: 'hidden', userSelect: 'none' }}>
@@ -261,11 +302,13 @@ export function CorridorScreen() {
           <ThirdPersonPlayer runtime={runtime} colliders={WORLD_COLLIDERS} rig={CAMERA_RIG} />
           <DoorProbe runtime={runtime} onChange={setActive} />
           <PortalProbe runtime={runtime} onChange={setAtPortal} />
+          <ReceptionProbe runtime={runtime} onChange={setAtDesk} />
           <PostFX quality={quality} />
         </Suspense>
       </Canvas>
 
       <LocationChip runtime={runtime} />
+      <AssignmentHudChip style={{ top: 92, left: 16 }} />
       <div style={{ position: 'absolute', left: 16, bottom: 16 }}>
         <ControlsCard />
       </div>
@@ -289,6 +332,8 @@ export function CorridorScreen() {
         />
       )}
       {!active && atPortal && !menu && fade < 0.5 && <PromptPill title="Enter the Teacher Portal" sub="Lecture hall · शिक्षक पोर्टल" />}
+      {!active && !atPortal && atDesk && !menu && !deskOpen && fade < 0.5 && <PromptPill title="Talk to reception" sub="Priya · front desk" />}
+      {deskOpen && <ReceptionPanel onClose={() => setDeskOpen(false)} />}
       {toast && <Toast key={toast.id} title={toast.title} body={toast.body} />}
 
       {menu && (

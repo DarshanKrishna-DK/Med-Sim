@@ -84,12 +84,19 @@ def voice_health() -> dict[str, Any]:
     }
 
 
+RECEPTIONIST_CASE_ID = "receptionist"
+RECEPTIONIST_VOICE = "en-IN-priya"
+
+
 def _voice_for(kind: str, case_id: str | None = None, lang: str | None = "en") -> str:
     """Murf voice id. English honours the MURF_* env overrides; hi/kn always pick
     from voices that list the locale (an override could lack hi-IN/kn-IN support)."""
     lg = langmod.norm_lang(lang)
     if case_id == viva.VIVA_CASE_ID:
         return viva.examiner_voice(lg)
+    if case_id == RECEPTIONIST_CASE_ID:
+        # Priya at Reception: a female Indian Murf voice (en-IN-priya lists hi-IN too).
+        return RECEPTIONIST_VOICE if lg in ("en", "hi") else langmod.nurse_voice(lg)
     if lg == "en":
         env = {"M": "MURF_VOICE_MALE", "F": "MURF_VOICE_FEMALE", "nurse": "MURF_NURSE_VOICE"}[kind]
         override = os.environ.get(env, "").strip()

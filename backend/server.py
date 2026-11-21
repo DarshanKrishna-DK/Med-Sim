@@ -1453,6 +1453,11 @@ app.include_router(_calendar_invite.router)
 # rate limited per link; the doctor's summaries route sits under /agent/.
 from followup_call import router as followup_call_router  # noqa: E402
 app.include_router(followup_call_router)
+# Teacher assignments + the front-desk receptionist agent (emails reports to the teacher).
+from assignments import router as assignments_router  # noqa: E402
+from reception import router as reception_router  # noqa: E402
+app.include_router(assignments_router)
+app.include_router(reception_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the
