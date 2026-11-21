@@ -119,9 +119,13 @@ async def _lifespan(_app):
     from integrations import call_reminders
 
     call_reminders.start()  # scheduled "Asha is ready for your check-in" messages
+    import telegram_bot
+
+    telegram_bot.start()  # @medsim_asha_bot case-authoring chat (long polling)
     try:
         yield
     finally:
+        telegram_bot.stop()
         call_reminders.stop()
         llm_proxy.stop_tunnel()
 
@@ -1464,6 +1468,9 @@ app.include_router(reception_router)
 # checked); the doctor's call start / status routes sit under /agent/.
 from observer_call import router as observer_call_router  # noqa: E402
 app.include_router(observer_call_router)
+# Cases created from Telegram (@medsim_asha_bot /newpatient), polled by the app.
+from custom_cases import router as custom_cases_router  # noqa: E402
+app.include_router(custom_cases_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the
