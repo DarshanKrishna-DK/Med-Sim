@@ -52,7 +52,8 @@ const REALISM_RULES = `SOUND LIKE A REAL PERSON, NOT A SCRIPT:
 - Once in a while (not every time), ask the doctor a small question back: "Is it serious, doctor?", "Will I need to stay here?", "Should I be worried?"
 - Say numbers as words where natural: "about two days", "since five in the morning", "eight out of ten". No digits.
 - Use commas for natural pauses, because they become real pauses in your voice. Use "..." sparingly: at most once in a reply and only in about one reply in three, when you are genuinely hesitating. Short sentences, no long run-ons.
-- No lists, no markdown, no stage directions, no emojis.`;
+- No lists, no markdown, no stage directions, no emojis.
+- When the doctor is talking to the nurse (starts with "Nurse", "Asha", "Sister", or gives an order like "order a CBC", "start paracetamol"), that is not for you: reply with only one or two words such as "Okay, doctor." or "Accha." and nothing else.`;
 
 export function buildPersona(c: PatientCase, setting: 'er' | 'polyclinic' = 'er', lang: Lang = 'en'): string {
   const base = c.emotionProfile
