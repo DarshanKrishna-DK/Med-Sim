@@ -177,7 +177,11 @@ class NurseState:
                 scored.append((score, id_, name, extra))
         scored.sort(key=lambda x: -x[0])
         matches = [{"id": i, "name": n, "info": e} for _, i, n, e in scored[:5]]
-        return {"ok": bool(matches), "kind": kind, "matches": matches}
+        if not matches:
+            where = "medication" if kind == "medication" else "test"
+            return {"ok": False, "kind": kind, "matches": [],
+                    "error": f"no {where} matching '{query.strip()}' is stocked in the catalogue"}
+        return {"ok": True, "kind": kind, "matches": matches}
 
     def order_test(self, testId: str) -> dict[str, Any]:
         if testId not in self.tests:

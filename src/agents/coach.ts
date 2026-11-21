@@ -7,13 +7,14 @@
 // failure just means "no alert". Nurse steps that were refused or flagged
 // become alerts immediately, without the LLM (see coachRules.ts).
 
-import { store, POLYCLINIC_BED_INDEX } from '../game/store';
+import { store, POLYCLINIC_BED_INDEX, isOsceLive } from '../game/store';
 import type { ActivePatient, CoachAlert, NurseRun } from '../game/types';
 import { TESTS } from '../data/tests';
 import { MEDICATIONS } from '../data/medications';
 import { POLYCLINIC_DIAGNOSIS_LABELS } from '../data/polyclinicPatients';
 import { getExistingConversation } from '../voice/conversationStore';
 import { alertsFromNurseRun } from './coachRules';
+import { TREATMENTS } from '../data/treatments';
 
 const LOG = '[medsim:coach]';
 const TIMEOUT_MS = 10000;
@@ -187,4 +188,77 @@ export async function explainAlert(alert: CoachAlert, question?: string): Promis
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+
+// ── "How am I doing, Asha?" ──────────────────────────────────────────
+
+const HINT_TITLE: Record<string, string> = {
+  on_track: 'On track',
+  partly: 'Getting there',
+  off_track: 'Rethink the plan',
+};
+
+let hintBusy = false;
+
+/** Socratic check-in from Asha: one thing done well plus a nudge, never the
+ *  answer. Shown as a note in her panel and spoken in her Murf voice. */
+export async function requestHint(): Promise<void> {
+  const s = store.getState();
+  const p = s.polyclinic.patient;
+  if (!p || hintBusy || isOsceLive(s)) return;
+  hintBusy = true;
+  const caseId = p.case.id;
+  const ctl = new AbortController();
+  const timer = window.setTimeout(() => ctl.abort(), TIMEOUT_MS + 4000);
+  const { speakAsNurse } = await import('./nurseAgent');
+  void speakAsNurse('Let me have a look, doctor.');
+  try {
+    const r = await fetch('/agent/coach/hint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctl.signal,
+      body: JSON.stringify({
+        caseId,
+        lang: s.lang,
+        patient: patientPayload(p),
+        correctDiagnosis: p.case.correctDiagnosisId ? dxLabel(p.case.correctDiagnosisId) : undefined,
+        keyTests: p.case.testResults.filter((t) => t.abnormal).map((t) => testName(t.testId)),
+        goodTreatments: [...p.case.criticalTreatmentIds, ...p.case.acceptableTreatmentIds].map(
+          (id) => TREATMENTS.find((t) => t.id === id)?.name ?? medName(id),
+        ),
+        encounterSoFar: encounterSoFar(p),
+      }),
+    });
+    if (!r.ok) throw new Error(`/agent/coach/hint ${r.status}`);
+    const data = (await r.json()) as { verdict?: string; hint?: string };
+    const cur = store.getState().polyclinic.patient;
+    if (!data.hint || !cur || cur.case.id !== caseId) return;
+    const verdict = data.verdict ?? 'partly';
+    store.pushCoachAlert({
+      id: `hint-${Date.now().toString(36)}`,
+      caseId,
+      severity: verdict === 'off_track' ? 'warning' : 'info',
+      title: HINT_TITLE[verdict] ?? 'Check-in',
+      short: data.hint,
+      explanation: data.hint,
+      suggestion: '',
+      source: 'hint',
+      createdAt: Date.now(),
+    });
+    void speakAsNurse(data.hint);
+  } catch (err) {
+    console.debug(LOG, 'hint skipped:', err instanceof Error ? err.message : err);
+    void speakAsNurse("Sorry doctor, I couldn't check just now. Ask me again in a moment.");
+  } finally {
+    window.clearTimeout(timer);
+    hintBusy = false;
+  }
+}
+
+/** Check-in phrases: "how am I doing", "am I on the right track", "any hints". */
+export function isHintRequest(text: string): boolean {
+  return /\b(how am i doing|how'?m i doing|am i on (the )?(right )?track|am i doing (this |it )?right|any (hints?|tips|suggestions)|give me a hint|what am i missing|kya main sahi)\b/i.test(
+    text,
+  );
 }

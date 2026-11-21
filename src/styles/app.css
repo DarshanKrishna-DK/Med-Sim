@@ -4673,3 +4673,28 @@ button.hud-case[aria-expanded='true'] .hud-case-toggle {
   align-items: center;
   gap: 10px;
 }
+
+/* "How am I doing?" check-in with Asha */
+.asha-checkin {
+  flex: none;
+  align-self: center;
+  padding: 6px 9px;
+  border: 0;
+  background: var(--amber);
+  color: var(--on-amber);
+  box-shadow: 0 0 0 2px var(--line), 2px 2px 0 0 var(--bg-deep);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  max-width: 84px;
+  cursor: pointer;
+}
+.asha-checkin:hover {
+  background: var(--amber-strong);
+}
+.asha-checkin:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}

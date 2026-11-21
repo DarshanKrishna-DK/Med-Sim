@@ -325,7 +325,7 @@ export interface CoachAlert {
   explanation: string;
   suggestion: string;
   /** 'nurse' = raised locally from a nurse tool step; 'coach' = LLM check. */
-  source: 'nurse' | 'coach';
+  source: 'nurse' | 'coach' | 'hint';
   createdAt: number;
   /** Toast closed by the doctor (stays in the alert history). */
   dismissed?: boolean;

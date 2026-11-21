@@ -16,6 +16,7 @@ that gives Agora's cloud an HTTPS URL to reach this backend.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import os
 import re
@@ -144,6 +145,46 @@ def build_upstream_body(payload: dict[str, Any], cfg: dict[str, str]) -> dict[st
     return body
 
 
+# ---------------------------------------------------------------- nurse-addressed turns
+
+# The doctor talking to Nurse Asha ("Nurse, order a CBC", "Asha, how am I doing?")
+# is handled by the nurse agent in the browser. The patient must stay silent, so
+# those turns get an empty reply here instead of going to the LLM.
+_NURSE_ADDRESS = re.compile(
+    r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha)\W+){0,2}"
+    r"(?:nurse|sister|staff nurse|a{1,2}sha|usha|नर्स|आशा)(?![a-z])",
+    re.IGNORECASE,
+)
+_NURSE_ANYWHERE = re.compile(r"\b(?:nurse a{1,2}sha|sister a{1,2}sha|how am i doing,? a{1,2}sha)\b", re.IGNORECASE)
+
+
+def addressed_to_nurse(messages: list[dict[str, Any]]) -> bool:
+    """True when the newest message is the doctor speaking to the nurse."""
+    if not messages or messages[-1].get("role") != "user":
+        return False
+    text = str(messages[-1].get("content") or "").strip()
+    return bool(text and (_NURSE_ADDRESS.search(text) or _NURSE_ANYWHERE.search(text)))
+
+
+def _silent_reply(stream: bool, model: str) -> Response:
+    """An OpenAI-shaped empty assistant turn: Agora speaks nothing."""
+    cid = "chatcmpl-nurse-" + secrets.token_hex(6)
+    now = int(time.time())
+    if not stream:
+        return JSONResponse({
+            "id": cid, "object": "chat.completion", "created": now, "model": model,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": ""}, "finish_reason": "stop"}],
+        })
+    chunks = [
+        {"id": cid, "object": "chat.completion.chunk", "created": now, "model": model,
+         "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}]},
+        {"id": cid, "object": "chat.completion.chunk", "created": now, "model": model,
+         "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+    ]
+    body = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+    return Response(content=body, media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
 # ---------------------------------------------------------------- endpoint
 
 
@@ -176,6 +217,9 @@ async def patient_chat_completions(request: Request):
     cfgs = configured_providers()
     if not cfgs:
         return _err(503, "no LLM provider configured", "server_error")
+    if addressed_to_nurse(sanitize_messages(payload.get("messages"))):
+        log.info("doctor addressed the nurse; patient stays silent")
+        return _silent_reply(payload.get("stream", True) is not False, cfgs[0]["model"])
 
     client = _client_factory()
     last: Optional[JSONResponse] = None

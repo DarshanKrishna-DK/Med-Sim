@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEv
 import { store, useAgentRuns, useCoachAlerts, useOsceLive } from '../../game/store';
 import type { CoachAlert } from '../../game/types';
 import { isNurseSpeaking, speakAsNurse, subscribeNurseSpeaking } from '../../agents/nurseAgent';
-import { explainAlert } from '../../agents/coach';
+import { explainAlert, requestHint } from '../../agents/coach';
 import { activeAlert } from '../../agents/coachRules';
 import { visibleRuns } from './NurseFeed';
 import { Icon, IconButton } from './HudControls';
@@ -292,7 +292,7 @@ export function NurseAshaHeader({
 
   // Info notes fade on their own; warnings and dangers wait for the doctor.
   useEffect(() => {
-    if (!toast || toast.severity !== 'info') return;
+    if (!toast || toast.severity !== 'info' || toast.source === 'hint') return;
     const t = window.setTimeout(() => store.dismissCoachAlert(toast.id), 12000);
     return () => window.clearTimeout(t);
   }, [toast]);
@@ -332,6 +332,11 @@ export function NurseAshaHeader({
             {bubble}
           </p>
         </div>
+        {!osceLive && (
+          <button type="button" className="asha-checkin" onClick={() => void requestHint()} title='Or say: "Asha, how am I doing?"'>
+            How am I doing?
+          </button>
+        )}
       </div>
 
       {/* Fixed-height alert bar: the active alert takes this slot instead of
@@ -426,7 +431,8 @@ export function AshaExplain({ alert, onClose }: { alert: CoachAlert; onClose: ()
     if (spokenFor.current === alert.id) return;
     spokenFor.current = alert.id;
     setTurns([]);
-    void speakAsNurse([alert.explanation, alert.suggestion].filter(Boolean).join(' '));
+    // A check-in hint was already spoken when it arrived.
+    if (alert.source !== 'hint') void speakAsNurse([alert.explanation, alert.suggestion].filter(Boolean).join(' '));
   }, [alert]);
 
   useEffect(() => {

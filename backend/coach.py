@@ -456,3 +456,87 @@ async def coach_explain(req: CoachExplainRequest) -> CoachExplainResponse:
     )
     answer = _words(strip_think(content or ""), 80) if content else ""
     return CoachExplainResponse(answer=answer or _fallback_answer(a))
+
+
+# ── "How am I doing, Asha?" check-in ───────────────────────────────────────
+
+
+class CoachHintRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    caseId: str = ""
+    patient: CoachPatient = Field(default_factory=CoachPatient)
+    correctDiagnosis: Optional[str] = None
+    keyTests: list[str] = Field(default_factory=list)
+    goodTreatments: list[str] = Field(default_factory=list)
+    encounterSoFar: EncounterSoFar = Field(default_factory=EncounterSoFar)
+    lang: Optional[str] = None
+
+
+class CoachHintResponse(BaseModel):
+    verdict: Literal["on_track", "partly", "off_track"]
+    hint: str
+
+
+HINT_SYSTEM = (
+    "You are Nurse Asha, a warm senior nurse educator in a SYNTHETIC clinical training simulation. The trainee "
+    "doctor just asked you 'How am I doing?'. You can see the hidden answer key (diagnosis, key tests, good "
+    "treatments) and what the doctor has done so far. Give honest, Socratic feedback WITHOUT revealing the "
+    "diagnosis name, the exact test names they are missing, or the drug names they should give. Say one specific "
+    "thing they did well (if any), then one guiding question or nudge toward the most important next step "
+    "(for example: more history about a symptom area, an examination, a category of test, reconsidering an "
+    "order that does not fit). If an order or drug they gave does not fit the case, say so gently and why. "
+    "Spoken style, at most 45 words, no lists, no markdown, no em dashes. "
+    'Return JSON only: {"verdict": "on_track" | "partly" | "off_track", "hint": "<what you say>"}'
+)
+
+
+def fallback_hint(req: CoachHintRequest) -> CoachHintResponse:
+    e = req.encounterSoFar
+    if not e.askedHistory:
+        return CoachHintResponse(verdict="partly", hint="We've only just started, doctor. Take a fuller history first: when it began, what makes it better or worse, and anything else going on.")
+    if not e.examsPerformed:
+        return CoachHintResponse(verdict="partly", hint="Good history so far. Have you examined the patient yet? Pick the body system that fits the complaint.")
+    if not e.orderedTests:
+        return CoachHintResponse(verdict="partly", hint="You've taken a history and examined. Which investigations would confirm or rule out your leading idea?")
+    return CoachHintResponse(verdict="partly", hint="You have history, an exam and some results. Look at which results are abnormal and ask yourself what single diagnosis explains them.")
+
+
+@router.post("/agent/coach/hint", response_model=CoachHintResponse)
+async def coach_hint(req: CoachHintRequest) -> CoachHintResponse:
+    p = req.patient
+    e = req.encounterSoFar
+    user = json.dumps(
+        {
+            "answerKey": {
+                "diagnosis": _clean(req.correctDiagnosis) or "not given",
+                "keyTests": [_words(t, 12) for t in req.keyTests[:10]],
+                "goodTreatments": [_words(t, 12) for t in req.goodTreatments[:10]],
+            },
+            "patient": {"age": p.age, "gender": p.gender, "chiefComplaint": p.chiefComplaint,
+                        "allergies": p.allergies or "not recorded", "vitals": p.vitals},
+            "doneSoFar": {
+                "orderedTests": e.orderedTests[:20],
+                "prescriptions": e.prescriptions[:10],
+                "examsPerformed": e.examsPerformed[:10],
+                "transcriptTail": [_words(t, 60) for t in e.transcriptTail[-12:]],
+            },
+        },
+        default=str,
+    )[:12000]
+    content = await _llm(
+        [{"role": "system", "content": langmod.with_language(HINT_SYSTEM, req.lang, female=True, role="coach")},
+         {"role": "user", "content": user}],
+        json_mode=True,
+        max_tokens=400,
+    )
+    data = parse_model_json(content or "") if content else None
+    if not data or not _clean(data.get("hint")):
+        return fallback_hint(req)
+    verdict = data.get("verdict") if data.get("verdict") in ("on_track", "partly", "off_track") else "partly"
+    hint = _words(_clean(data.get("hint")).replace(EM_DASH, ", "), 60)
+    # Never leak the answer: drop the hint if it names the diagnosis outright.
+    dx = _clean(req.correctDiagnosis).lower()
+    if dx and len(dx) > 4 and dx in hint.lower():
+        return fallback_hint(req)
+    return CoachHintResponse(verdict=verdict, hint=hint)

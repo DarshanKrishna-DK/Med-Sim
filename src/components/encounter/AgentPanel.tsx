@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type FormEvent, type ReactNode } from 'react';
+import { isHintRequest, requestHint } from '../../agents/coach';
 import { store, useAgentRuns } from '../../game/store';
 import type { ActivePatient } from '../../game/types';
 import { runNurseAction } from '../../agents/nurseAgent';
@@ -129,7 +130,8 @@ function NurseCommand() {
     setBusy(true);
     setText('');
     try {
-      await runNurseAction(t, 'typed');
+      if (isHintRequest(t)) await requestHint();
+      else await runNurseAction(t, 'typed');
     } finally {
       setBusy(false);
     }
