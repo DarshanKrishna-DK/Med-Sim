@@ -604,6 +604,8 @@ export class Conversation {
           // "Invite Darshan to observe": Asha phones the observer, not a nurse order.
           if (obs.maybeHandleObserverCommand(utterance)) return;
           if (coach.isHintRequest(utterance)) return void coach.requestHint();
+          // Anything said to the nurse goes to her LLM, which decides the intent.
+          if (m.isAddressedToNurse(utterance)) return void m.runNurseAction(utterance, 'voice');
           // An exam request ("let me check your abdomen") is not a nurse order.
           if (ex.maybeRunExamFromSpeech(utterance)) return;
           if (m.looksLikeOrder(utterance)) void m.runNurseAction(utterance, 'voice');
@@ -878,6 +880,7 @@ export class Conversation {
         .then(([ex, m, coach, obs]) => {
           if (obs.maybeHandleObserverCommand(clean)) return;
           if (coach.isHintRequest(clean)) return void coach.requestHint();
+          if (m.isAddressedToNurse(clean)) return void m.runNurseAction(clean, 'typed');
           if (ex.maybeRunExamFromSpeech(clean)) return;
           if (m.looksLikeOrder(clean)) void m.runNurseAction(clean, 'typed');
         })

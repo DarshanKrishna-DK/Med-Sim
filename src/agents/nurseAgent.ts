@@ -33,27 +33,8 @@ const LOG = '[medsim:nurse]';
 
 // ── prefilter ───────────────────────────────────────────────────
 
-const ORDER_VERB =
-  /\b(order(?:ing)?|prescrib(?:e|ing)|start (?:him|her|them|you|the patient)?\s*on|put (?:him|her|them|you) on|give (?:him|her|them|you|the patient)?|send (?:off|for|a|an|the|him|her|them)|run (?:a|an|the|some)|get (?:a|an|me|us|some|the)|check (?:a|an|the|her|his|their|your)|book|schedule|refer(?:ral)?|log (?:this|the) case|add (?:this|the) case to|logbook|follow[- ]?up|nurse|draw (?:some|a|the)?\s*bloods?|let'?s (?:do|get|run|send|start|check|book)|i'?d like (?:a|an|to order)|we(?:'ll| will) need (?:a|an|some))\b/i;
-
-const CLINICAL_NOUN =
-  /\b(cbc|fbc|bmp|cmp|lfts?|tsh|hba1c|a1c|ecg|ekg|x-?ray|cxr|ultrasound|scan|mri|ct|labs?|bloods?|urinalysis|urine|swab|culture|troponin|lipid|panel|mg|milligrams?|tablets?|twice a day|three times|once daily|bd|tds|od|prn)\b/i;
-
-const POLITE_REQUEST = /\b(please|can we|could we|let'?s|i want|i need|we need|go ahead)\b/i;
-
-/** Cheap client-side check: does this utterance look like a clinical
- *  instruction worth sending to the nurse agent? False positives just cost
- *  one backend call that returns intent 'none'. */
-export function looksLikeOrder(text: string): boolean {
-  const t = text.trim();
-  if (t.length < 4) return false;
-  // Questions to the patient ("do you take any medication?") aren't orders.
-  if (/^(do|does|did|have|has|are|is|were|was|when|how|what|where|why|any)\b[^.!]*\?\s*$/i.test(t)) {
-    return false;
-  }
-  if (ORDER_VERB.test(t)) return true;
-  return CLINICAL_NOUN.test(t) && POLITE_REQUEST.test(t);
-}
+// Lives in a pure module so the Node test runner can load it.
+export { looksLikeOrder, isAddressedToNurse } from './nurseIntent';
 
 // ── backend contract ────────────────────────────────────────────
 

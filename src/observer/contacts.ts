@@ -92,6 +92,11 @@ const norm = (s: string) =>
 export function findContact(name: string, contacts: ObserverContact[]): ObserverContact | null {
   const q = norm(name);
   if (!q) return null;
+  const rel = relationOf(name);
+  if (rel) {
+    const hits = contacts.filter((c) => c.relation === rel);
+    return hits.length === 1 ? hits[0] : null;
+  }
   const qFirst = q.split(' ')[0];
   const tiers: ((c: ObserverContact) => boolean)[] = [
     (c) => norm(c.name) === q,
@@ -124,21 +129,55 @@ const STOP_NAMES = new Set([
   'it', 'this', 'that', 'lab', 'security', 'code', 'ambulance', 'doctor', 'surgeon', 'surgery', 'radiology',
 ]);
 
+/** "my teacher", "sir", "my senior": a relation word instead of a name. */
+const RELATION_WORDS: Record<string, Relation> = {
+  teacher: 'teacher', sir: 'teacher', madam: 'teacher', professor: 'teacher', mentor: 'teacher', guru: 'teacher',
+  senior: 'senior', classmate: 'classmate', batchmate: 'classmate', friend: 'friend', dost: 'friend',
+  sister: 'family', brother: 'family', mom: 'family', mother: 'family', dad: 'family', father: 'family',
+};
+
+/** Relation for a bare relation phrase ("my teacher", "sir"), else null. */
+export function relationOf(phrase: string): Relation | null {
+  const w = phrase.toLowerCase().replace(/[^a-z\s]/g, '').trim().replace(/^(my|our|the)\s+/, '');
+  return RELATION_WORDS[w] ?? null;
+}
+
 const LEAD = /^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha|please|can you|could you|would you)\W+)*(?:(?:nurse|sister|a{1,2}sha)\W+)?(?:(?:please|can you|could you|would you)\W+)*/i;
-const VERB = /^(invite|ask|call|ring|phone|add|get|bring|loop in|have)\s+(.+)$/i;
+const VERB = /^(invite|ask|call|ring|phone|add|get|bring|loop in|have|i want|i'?d like|i would like|let'?s get|let'?s have)\s+(.+)$/i;
+/** Name first: "Darshan should watch this", "Darshan can sit in". */
+const NAME_FIRST = /^([a-z][a-z'.-]*(?:\s+[a-z][a-z'.-]*)?)\s+(?:should|can|could|must|needs? to|has to|will)\s+(.+)$/i;
+const NOT_NAMES = new Set(['i', 'we', 'she', 'he', 'they', 'nurse', 'sister', 'asha', 'patient', 'what', 'who', 'how', 'where', 'when', 'why']);
 /** Words that end the name and start the purpose: "Darshan as an observer". */
 const TAIL_START = new Set(['as', 'to', 'for', 'in', 'into', 'please', 'now', 'too', 'also', 'over', 'up', 'on', 'so', 'and', 'join', 'observe', 'watch']);
-const PURPOSE = /\b(observ\w*|watch\w*|join\w*|sit\s+in|listen\w*|session|consult\w*|this call|the call)\b/i;
+const PURPOSE = /\b(observ\w*|watch\w*|join\w*|sit\s+in|listen\w*|session|consult\w*|this call|the call|on the line|on (?:the )?call|see (?:this|it|me|how)|have a look|look at this|dial in|hop on)\b/i;
 
 /** Intent, not one fixed phrase: "invite Darshan", "invite Darshan as an observer",
  *  "Asha, can you get Darshan to join", "add Darshan as observer",
  *  "call Darshan to watch", "loop in Darshan for this session". Null otherwise. */
 export function parseInviteCommand(text: string): InviteCommand | null {
   const t = (text ?? '').trim().replace(LEAD, '').trim().replace(/[.!?]+$/, '');
+  const nf = NAME_FIRST.exec(t);
+  if (nf && !VERB.test(t) && PURPOSE.test(nf[2])) {
+    const name = nf[1].trim();
+    const first = name.split(/\s+/)[0].toLowerCase();
+    if (!STOP_NAMES.has(first) && !NOT_NAMES.has(first)) return { name, explicit: true };
+  }
   const m = VERB.exec(t);
   if (!m) return null;
-  const verb = m[1].toLowerCase();
-  const words = m[2].trim().split(/\s+/);
+  let verb = m[1].toLowerCase().replace(/'/g, '');
+  if (/^(i want|id like|i would like|lets get|lets have)$/.test(verb)) verb = 'have';
+  let words = m[2].trim().split(/\s+/);
+  // "my teacher Darshan" -> Darshan; "my teacher" alone -> relation lookup.
+  let relationPhrase = '';
+  const w0 = (words[0] ?? '').toLowerCase().replace(/[.,!?]+$/, '');
+  const w1 = (words[1] ?? '').toLowerCase().replace(/[.,!?]+$/, '');
+  if ((w0 === 'my' || w0 === 'our') && relationOf(w1)) {
+    relationPhrase = `my ${w1}`;
+    words = words.slice(2);
+  } else if (w0 === 'sir' || w0 === 'madam') {
+    relationPhrase = w0;
+    words = words.slice(1);
+  }
   const nameWords: string[] = [];
   for (const w of words) {
     const bare = w.replace(/[.,'!?]+$/, '');
@@ -146,9 +185,13 @@ export function parseInviteCommand(text: string): InviteCommand | null {
     if (!/^[a-z][a-z'.-]*$/i.test(bare)) break;
     nameWords.push(bare);
   }
+  if (!nameWords.length && relationPhrase) {
+    if ((verb === 'ask' || verb === 'get' || verb === 'have') && !PURPOSE.test(words.join(' '))) return null;
+    return { name: relationPhrase, explicit: true };
+  }
   if (!nameWords.length || STOP_NAMES.has(nameWords[0].toLowerCase())) return null;
   const tail = words.slice(nameWords.length).join(' ');
-  const hasPurpose = PURPOSE.test(tail);
+  const hasPurpose = PURPOSE.test(tail) || (!!relationPhrase && ['call', 'ring', 'phone'].includes(verb));
   const inviteVerb = ['invite', 'add', 'bring', 'loop in'].includes(verb);
   if (verb === 'ask' && !hasPurpose) return null;
   if ((verb === 'get' || verb === 'have') && !hasPurpose) return null;
