@@ -77,3 +77,17 @@ async def append_logbook(row: dict) -> Optional[dict]:
 async def create_referral(fields: dict) -> Optional[dict]:
     """Create the referral Google Doc and its PDF. Returns {ok, docUrl, pdfUrl} or None."""
     return await _post_action("referral", dict(fields))
+
+
+async def send_email(to: str, subject: str, html: str, text: str) -> Optional[dict]:
+    """Send an email through the same Apps Script web app (scripts/apps-script/Email.gs,
+    Gmail MailApp as the script owner). Returns {ok, remaining} or None when
+    unconfigured, failed, or not accepted. Never raises."""
+    if not to:
+        return None
+    data = await _post_action("email", {"to": to, "subject": subject[:200], "html": html, "text": text})
+    if not data or not data.get("ok"):
+        if data is not None:
+            log.warning("apps script email was not accepted")
+        return None
+    return data

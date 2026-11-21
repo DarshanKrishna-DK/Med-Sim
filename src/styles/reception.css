@@ -1,0 +1,61 @@
+/* Priya at Reception sprite, the assignment chip and assigned-case highlight. */
+
+.priya .priya-mouth-open { display: none; }
+.priya--talking .priya-mouth-open { display: inline; animation: priya-talk 0.36s steps(2) infinite; }
+.priya--talking .priya-mouth-rest { animation: priya-talk 0.36s steps(2) infinite reverse; }
+.priya .priya-eyes { animation: priya-blink 4.2s steps(1) infinite; }
+.priya--talking .priya-figure { animation: priya-bob 0.9s steps(2) infinite; }
+.priya .priya-dot { animation: priya-dot 1.2s steps(2) infinite; }
+.priya .priya-dot--2 { animation-delay: 0.2s; }
+.priya .priya-dot--3 { animation-delay: 0.4s; }
+
+@keyframes priya-talk { 0% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes priya-blink { 0%, 94% { opacity: 1; } 95%, 100% { opacity: 0; } }
+@keyframes priya-bob { 0% { transform: translateY(0); } 50% { transform: translateY(-0.5px); } }
+@keyframes priya-dot { 0% { opacity: 0.25; } 50% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .priya *, .priya .priya-figure { animation: none !important; }
+  .priya--talking .priya-mouth-open { display: inline; }
+  .priya--talking .priya-mouth-rest { display: none; }
+}
+
+/* Header chip (AppHeader nav-end) */
+.assignment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 340px;
+  height: 30px;
+  padding: 0 10px;
+  font: 600 11px/1 var(--font-label, "amarna", system-ui, sans-serif);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text, #f3f1e2);
+  background: var(--surface, #112a60);
+  border: 2px solid var(--primary, #a8e27c);
+  box-shadow: 2px 2px 0 0 #061431;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.assignment-chip:hover { background: var(--bg, #0b1f4b); }
+.assignment-chip:focus-visible { outline: 2px solid var(--primary, #a8e27c); outline-offset: 2px; }
+.assignment-chip-text { overflow: hidden; text-overflow: ellipsis; }
+.assignment-chip--overdue { border-color: #ffc46b; }
+.assignment-chip--done { border-color: var(--primary, #a8e27c); background: #1d3f2a; }
+@media (max-width: 900px) {
+  .assignment-chip { max-width: 160px; }
+}
+
+/* Case library: assigned cases */
+.case-card.case-card--assigned {
+  box-shadow: inset 0 0 0 2px var(--primary, #a8e27c), 3px 3px 0 0 #061431;
+}
+.chip--assigned {
+  color: #0b1f4b;
+  background: var(--primary, #a8e27c);
+}
+.chip--assigned-done {
+  color: var(--green, #1f7a3d);
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}

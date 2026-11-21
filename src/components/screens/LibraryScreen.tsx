@@ -6,6 +6,9 @@ import { CLINIC_IDS, CLINIC_LABELS, type ClinicId } from '../../game/clinic';
 import type { PatientCase, Severity } from '../../game/types';
 import { AppHeader } from '../ui/chrome';
 import { VitalsRow } from '../ui/Vitals';
+import { useAssignment } from '../../assignments/client';
+import { assignedCaseIds } from '../../assignments/core';
+import '../../styles/reception.css';
 
 const SEVERITY_LABEL: Record<Severity, string | null> = {
   critical: 'Red flag',
@@ -155,8 +158,11 @@ function CaseCard({ c, showClinic }: { c: Case; showClinic: boolean }) {
   const p = getPatientCase(c.id);
   const severity = p?.severity ?? 'stable';
   const sevLabel = SEVERITY_LABEL[severity];
+  const assignment = useAssignment();
+  const assigned = assignedCaseIds(assignment.assignment).has(c.id);
+  const assignedDone = assigned && !!assignment.progress?.doneIds.some((id) => id.endsWith(`:${c.id}`));
   return (
-    <button type="button" className="case-card" onClick={() => store.selectCase(c.id)}>
+    <button type="button" className={`case-card ${assigned ? 'case-card--assigned' : ''}`} onClick={() => store.selectCase(c.id)}>
       <span className="case-card-top">
         <span className="case-name">{c.name}</span>
         <span className="case-demo">
@@ -165,6 +171,11 @@ function CaseCard({ c, showClinic }: { c: Case; showClinic: boolean }) {
       </span>
       <span className="case-complaint">{c.complaint}</span>
       <span className="case-meta">
+        {assigned && (
+          <span className={`chip ${assignedDone ? 'chip--assigned-done' : 'chip--assigned'}`} title={`Set by your teacher: ${assignment.assignment?.title ?? ''}`}>
+            {assignedDone ? 'Assigned · done' : 'Assigned'}
+          </span>
+        )}
         {showClinic && <span className="case-clinic">{CLINIC_LABELS[c.clinic]}</span>}
         {sevLabel && <span className={`tag tag--${severity}`}>{sevLabel}</span>}
         {p?.source && <span className="chip" title="Adapted from an open-access case report">Based on a published case</span>}

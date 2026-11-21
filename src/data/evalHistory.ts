@@ -96,6 +96,10 @@ export function saveEvalHistory(
   };
   const list = [entry, ...read()];
   write(list);
+  // Teacher assignment: every saved debrief / OSCE / viva counts as an attempt.
+  if (typeof window !== 'undefined') {
+    void import('../assignments/client').then((m) => m.reportAttempt(entry)).catch(() => undefined);
+  }
   return entry;
 }
 

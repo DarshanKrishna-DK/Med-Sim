@@ -3,6 +3,7 @@ import { store, useScreen } from '../../game/store';
 import { HAS_CORRIDOR } from '../corridorRoute';
 import { getProfile, openProfileDialog } from '../../game/profile';
 import { ProfileChip } from './ProfileBadge';
+import { AssignmentChip } from '../assignments/AssignmentChip';
 
 // ── Navigation helpers ───────────────────────────────────────────────
 
@@ -113,6 +114,7 @@ export function AppHeader({ overlay = false }: { overlay?: boolean }) {
           ))}
         </nav>
         <div className="nav-end">
+          <AssignmentChip />
           <ProfileChip />
           <button type="button" className="btn btn-primary btn-sm nav-cta" onClick={enterHospital}>
             Enter the hospital
