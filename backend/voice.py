@@ -153,12 +153,17 @@ def filler_block(lang: str | None = "en", case_id: str | None = None) -> dict[st
     }
 
 
-def _llm_block(system_prompt: str, greeting: str, *, probe: bool = False, lang: str | None = "en") -> dict[str, Any]:
+def _llm_block(
+    system_prompt: str, greeting: str, *, probe: bool = False, lang: str | None = "en",
+    token_meta: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """PATIENT_LLM_PROVIDER = sarvam (default) | groq | managed (Agora-managed
     OpenAI, no key needed). sarvam/groq fall back to the other if unconfigured.
 
     When a verified public URL exists, Agora calls our /llm proxy (which cleans
-    blank noise turns and holds the real key) with a per-agent bearer token."""
+    blank noise turns and holds the real key) with a per-agent bearer token.
+    token_meta tags that token (e.g. {"kind": "followup", ...}) so the proxy
+    can run Asha's tools for follow-up calls."""
     if (os.environ.get("PATIENT_LLM_PROVIDER") or "").strip().lower() == "managed":
         return {
             "credential_mode": "managed",
@@ -185,7 +190,7 @@ def _llm_block(system_prompt: str, greeting: str, *, probe: bool = False, lang: 
         return {
             "vendor": "custom",
             "url": pub + llm_proxy.PROXY_PATH,
-            "api_key": "probe" if probe else llm_proxy.mint_token(),
+            "api_key": "probe" if probe else llm_proxy.mint_token(token_meta),
             **common,
         }
     return {"url": prov["url"], "api_key": prov["api_key"], **common}
@@ -280,6 +285,7 @@ def build_join_body(
     *,
     voice_kind: Optional[str] = None,
     idle_timeout: int = AGENT_IDLE_TIMEOUT_S,
+    llm_token_meta: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Agora /join body. voice_kind overrides req.gender for the Murf voice
     ('nurse' for Asha's follow-up call); idle_timeout is the post-leave linger."""
@@ -305,7 +311,7 @@ def build_join_body(
             "advanced_features": {"enable_rtm": True},
             "parameters": {"data_channel": "rtm", "enable_error_message": True, "enable_metrics": True},
             "asr": asr,
-            "llm": _llm_block(req.systemPrompt, req.initialLine, lang=lang),
+            "llm": _llm_block(req.systemPrompt, req.initialLine, lang=lang, token_meta=llm_token_meta),
             "turn_detection": copy.deepcopy(TURN_DETECTION),
             "filler_words": filler_block(lang, req.caseId),
             "tts": {
@@ -335,6 +341,7 @@ async def start_agent_session(
     channel_prefix: str = "medsim",
     idle_timeout: int = AGENT_IDLE_TIMEOUT_S,
     translate_greeting: bool = True,
+    llm_token_meta: Optional[dict[str, Any]] = None,
 ) -> VoiceStartResponse:
     """Mint RTC+RTM tokens, start one ConvoAI agent and return the session.
     Shared by /voice/start (patient persona) and the follow-up call (Asha)."""
@@ -354,7 +361,8 @@ async def start_agent_session(
         req = req.model_copy(update={"initialLine": await langmod.translate_line(req.initialLine, req.locale)})
     avatar_token = _rtc_rtm_token(app_id, cert, channel, AVATAR_UID) if want_avatar(req) else None
     body = build_join_body(
-        req, channel, user_uid, agent_token, env["MURF_API_KEY"], avatar_token, voice_kind=voice_kind, idle_timeout=idle_timeout
+        req, channel, user_uid, agent_token, env["MURF_API_KEY"], avatar_token, voice_kind=voice_kind, idle_timeout=idle_timeout,
+        llm_token_meta=llm_token_meta,
     )
     r = await _agora_call("POST", "/join", body)
     avatar_error: Optional[str] = None
@@ -363,7 +371,8 @@ async def start_agent_session(
         avatar_error = f"Agora rejected the avatar ({r.status_code}): {r.text[:200]}"
         log.warning(avatar_error)
         body = build_join_body(
-            req, channel, user_uid, agent_token, env["MURF_API_KEY"], None, voice_kind=voice_kind, idle_timeout=idle_timeout
+            req, channel, user_uid, agent_token, env["MURF_API_KEY"], None, voice_kind=voice_kind, idle_timeout=idle_timeout,
+            llm_token_meta=llm_token_meta,
         )
         r = await _agora_call("POST", "/join", body)
     if 400 <= r.status_code < 500 and "filler" in r.text.lower():

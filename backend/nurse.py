@@ -371,7 +371,8 @@ class NurseState:
                 token = followup_calls.register_call({
                     "caseId": self.req.caseId, "patientName": p.name, "age": p.age, "gender": p.gender,
                     "chiefComplaint": p.chiefComplaint, "prescriptions": rx,
-                    "reason": res.get("reason", ""), "lang": langmod.norm_lang(self.req.lang)})
+                    "reason": res.get("reason", ""), "lang": langmod.norm_lang(self.req.lang),
+                    "contact": (self.req.contact or "").strip()})
                 self.call_tokens.append(token)
                 path = f"/call/{token}"
                 call_url = notify.absolute_url(path) or path
@@ -534,7 +535,7 @@ class NurseState:
             token = followup_calls.register_call({
                 "caseId": self.req.caseId, "patientName": p.name, "age": p.age, "gender": p.gender,
                 "chiefComplaint": p.chiefComplaint, "prescriptions": meds,
-                "reason": str(fu.get("reason") or ""), "lang": lang})
+                "reason": str(fu.get("reason") or ""), "lang": lang, "contact": to})
             call_url = notify.absolute_url(f"/call/{token}") or f"/call/{token}"
         if call_url and call_url.startswith("http"):
             message = message.replace(notify.DISCLAIMER, f"Join your Asha follow-up call: {call_url}. {notify.DISCLAIMER}", 1)

@@ -31,11 +31,19 @@ export interface CallSummary {
   error?: string;
 }
 
+/** What Asha did live during the call (tools run in the backend LLM proxy). */
+export interface CallActions {
+  redFlags: Array<{ symptom: string; severity: 'urgent' | 'emergency'; at: number; doctorNotified: boolean | null }>;
+  reschedules: Array<{ whenText: string; startText: string | null; at: number; booked: boolean; reminders: number }>;
+  symptoms: Array<{ symptom: string; adherence: 'good' | 'partial' | 'poor' | null; at: number }>;
+}
+
 export interface CallRecord {
   callId: string;
   startedAt: number;
   endedAt: number | null;
   summary: CallSummary | null;
+  actions?: CallActions;
   transcript: Array<{ role: 'user' | 'assistant'; content: string }> | null;
 }
 
@@ -138,3 +146,31 @@ export const callApi = {
   summaries: (token: string) =>
     fetch(`/agent/followup-call/${token}/summaries`).then((r) => jsonOrThrow<CallSummariesResponse>(r)),
 };
+
+export type ActionChipKind = 'flag' | 'reschedule' | 'symptom';
+export interface ActionChip { kind: ActionChipKind; label: string; title: string }
+
+/** Chips for what Asha did live in a call: red flags first, then reschedules, then symptoms. */
+export function callActionChips(actions: CallActions | null | undefined): ActionChip[] {
+  if (!actions) return [];
+  const flags = (actions.redFlags ?? []).map((f) => ({
+    kind: 'flag' as const,
+    label: `Red flag: ${f.symptom}`,
+    title: `${f.severity === 'urgent' ? 'Urgent' : 'Emergency'}. ${
+      f.doctorNotified === true ? 'Doctor alerted.' : f.doctorNotified === false ? 'Alert not delivered.' : 'Alert sending.'
+    }`,
+  }));
+  const moves = (actions.reschedules ?? []).map((r) => ({
+    kind: 'reschedule' as const,
+    label: `Moved to ${r.startText || r.whenText}`,
+    title: `${r.whenText ? `Patient asked: ${r.whenText}. ` : ''}${r.booked ? 'Booked in Google Calendar.' : 'Calendar invite only.'}${
+      r.reminders ? ' Reminder scheduled.' : ''
+    }`,
+  }));
+  const notes = (actions.symptoms ?? []).map((s) => ({
+    kind: 'symptom' as const,
+    label: s.symptom,
+    title: s.adherence ? `Adherence: ${s.adherence}` : 'Logged symptom',
+  }));
+  return [...flags, ...moves, ...notes];
+}

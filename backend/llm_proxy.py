@@ -49,17 +49,32 @@ _ALLOWED_FIELDS = (
 # ---------------------------------------------------------------- tokens
 
 _tokens: dict[str, float] = {}
+# token -> what the agent is, e.g. {"kind": "followup", "callToken": ..., "callId": ...}.
+# Tokens without meta are patient sessions (plain pass-through).
+_token_meta: dict[str, dict[str, Any]] = {}
 _tokens_lock = threading.Lock()
 
 
-def mint_token() -> str:
+def mint_token(meta: Optional[dict[str, Any]] = None) -> str:
     tok = secrets.token_urlsafe(32)
     now = time.time()
     with _tokens_lock:
         for t in [t for t, exp in _tokens.items() if exp < now]:
             del _tokens[t]
+            _token_meta.pop(t, None)
         _tokens[tok] = now + TOKEN_TTL_S
+        if meta:
+            _token_meta[tok] = dict(meta)
     return tok
+
+
+def token_meta(candidate: str) -> Optional[dict[str, Any]]:
+    """Meta registered for a valid token, else None (patient session or unknown)."""
+    if not valid_token(candidate):
+        return None
+    with _tokens_lock:
+        meta = _token_meta.get(candidate)
+    return dict(meta) if meta else None
 
 
 def valid_token(candidate: str) -> bool:
@@ -166,6 +181,21 @@ def addressed_to_nurse(messages: list[dict[str, Any]]) -> bool:
     return bool(text and (_NURSE_ADDRESS.search(text) or _NURSE_ANYWHERE.search(text)))
 
 
+def sse_chunk(cid: str, model: str, delta: dict[str, Any], finish: Optional[str] = None) -> str:
+    """One OpenAI chat.completion.chunk SSE event (same shape as _silent_reply's)."""
+    c = {"id": cid, "object": "chat.completion.chunk", "created": int(time.time()), "model": model,
+         "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+    return f"data: {json.dumps(c, ensure_ascii=False)}\n\n"
+
+
+def completion_json(cid: str, model: str, text: str) -> JSONResponse:
+    """Non-streaming OpenAI chat.completion with one assistant message."""
+    return JSONResponse({
+        "id": cid, "object": "chat.completion", "created": int(time.time()), "model": model,
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+    })
+
+
 def _silent_reply(stream: bool, model: str) -> Response:
     """An OpenAI-shaped empty assistant turn: Agora speaks nothing."""
     cid = "chatcmpl-nurse-" + secrets.token_hex(6)
@@ -206,7 +236,8 @@ def _bearer(request: Request) -> str:
 
 @router.post(PROXY_PATH)
 async def patient_chat_completions(request: Request):
-    if not valid_token(_bearer(request)):
+    bearer = _bearer(request)
+    if not valid_token(bearer):
         return _err(401, "invalid or missing bearer token", "invalid_request_error")
     try:
         payload = await request.json()
@@ -217,6 +248,12 @@ async def patient_chat_completions(request: Request):
     cfgs = configured_providers()
     if not cfgs:
         return _err(503, "no LLM provider configured", "server_error")
+    meta = token_meta(bearer)
+    if meta and meta.get("kind") == "followup":
+        # Asha's follow-up call: tools run here, server-side (Agora custom-LLM tool pattern).
+        import followup_tools
+
+        return await followup_tools.handle(payload, meta, cfgs[0]["model"])
     if addressed_to_nurse(sanitize_messages(payload.get("messages"))):
         log.info("doctor addressed the nurse; patient stays silent")
         return _silent_reply(payload.get("stream", True) is not False, cfgs[0]["model"])

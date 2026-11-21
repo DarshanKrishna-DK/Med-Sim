@@ -4,7 +4,9 @@ The calendar event links to /call/<token>; the patient's phone opens it and
 talks to Nurse Asha. In-memory only (single process), TTL 30 days, max 500.
 
 Snapshot keys: caseId, patientName, age, gender, chiefComplaint,
-prescriptions [{name, dose, duration}], reason, lang.
+prescriptions [{name, dose, duration}], reason, lang, contact (server-side
+only: Asha's red-flag alert fallback and reschedule reminders; never sent to
+the patient's page).
 """
 from __future__ import annotations
 
