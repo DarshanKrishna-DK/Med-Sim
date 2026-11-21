@@ -91,5 +91,19 @@ class EhrStep(unittest.TestCase):
         self.assertEqual(steps, [])
 
 
+class CallSnapshotRefresh(unittest.TestCase):
+    def test_medicines_prescribed_after_booking_reach_the_call_page(self):
+        from integrations import followup_calls, gcal_script
+
+        st = nurse.NurseState(req())
+        with mock.patch.object(gcal_script, "book_event", mock.AsyncMock(return_value=None)):
+            asyncio.run(st.aexecute("schedule_follow_up", {"inDays": 2, "reason": "check-in", "mode": "call"}))
+        st.execute("prescribe", {"medicationId": "warfarin-5", "dose": "5 mg OD", "duration": "1 month"})
+        nurse._refresh_call_snapshots(st)
+        snap = followup_calls.get_call(st.call_tokens[0])
+        self.assertEqual([m["name"] for m in snap["prescriptions"]], ["Warfarin 5mg"])
+        self.assertFalse(followup_calls.update_call("missing", x=1))
+
+
 if __name__ == "__main__":
     unittest.main()

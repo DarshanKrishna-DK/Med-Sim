@@ -142,6 +142,8 @@ class NurseState:
         self.follow_up: Optional[dict[str, Any]] = None
         # Hard conflicts found by the real drug databases (NIH RxClass, openFDA).
         self.ext_hard: dict[str, list[str]] = {}
+        # Asha follow-up call tokens created in this run (snapshots refreshed at the end).
+        self.call_tokens: list[str] = []
 
     # --- helpers
     def _allergy_text(self) -> str:
@@ -354,6 +356,7 @@ class NurseState:
                     "caseId": self.req.caseId, "patientName": p.name, "age": p.age, "gender": p.gender,
                     "chiefComplaint": p.chiefComplaint, "prescriptions": rx,
                     "reason": res.get("reason", ""), "lang": langmod.norm_lang(self.req.lang)})
+                self.call_tokens.append(token)
                 path = f"/call/{token}"
                 call_url = notify.absolute_url(path) or path
             except Exception as e:  # noqa: BLE001
@@ -704,6 +707,24 @@ def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]], lang: Op
     return ("Okay doctor, " + ", ".join(bits) + ". Anything else?") if bits else "I couldn't complete that order."
 
 
+def _refresh_call_snapshots(st: NurseState) -> None:
+    """A follow-up booked before the prescription in the same order still shows
+    the final medicines on Asha's call page."""
+    if not st.call_tokens:
+        return
+    from integrations import followup_calls
+
+    rx = [{"name": st.meds[r["medicationId"]].name if r["medicationId"] in st.meds else r["medicationId"],
+           "dose": r.get("dose", ""), "duration": r.get("duration", "")} for r in st.new_rx]
+    for r in st.req.prescriptionsSoFar:
+        mid = str(r.get("medicationId", ""))
+        name = st.meds[mid].name if mid in st.meds else str(r.get("name") or mid)
+        if name and all(x["name"] != name for x in rx):
+            rx.append({"name": name, "dose": str(r.get("dose", "")), "duration": str(r.get("duration", ""))})
+    for tok in st.call_tokens:
+        followup_calls.update_call(tok, prescriptions=rx)
+
+
 async def _record_to_ehr(req: NurseActRequest, st: NurseState, steps: list[dict[str, Any]]) -> None:
     """Write this run's orders to a real FHIR R4 server (public HAPI test server by default)."""
     if not (st.new_tests or st.new_rx or st.follow_up):
@@ -752,6 +773,7 @@ async def nurse_act(req: NurseActRequest):
     if not steps:
         return {"runId": run_id, "intent": "none", "plan": "", "steps": [],
                 "applied": {"orderedTestIds": [], "prescriptions": []}, "spokenConfirmation": ""}
+    _refresh_call_snapshots(st)
     await _record_to_ehr(req, st, steps)
     spoken = final if final and "NO_ORDER" not in final else _fallback_confirmation(st, steps, req.lang)
     applied: dict[str, Any] = {"orderedTestIds": st.new_tests, "prescriptions": st.new_rx}

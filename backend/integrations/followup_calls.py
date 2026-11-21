@@ -47,3 +47,14 @@ def get_call(token: str) -> Optional[dict[str, Any]]:
         _store.pop(token, None)
         return None
     return copy.deepcopy(snap)
+
+
+def update_call(token: str, **fields: Any) -> bool:
+    """Merge fields into a registered snapshot. False if unknown or expired."""
+    item = _store.get(token)
+    if not item or item[0] <= time.time():
+        return False
+    snap = dict(item[1])
+    snap.update(copy.deepcopy(fields))
+    _store[token] = (item[0], snap)
+    return True
