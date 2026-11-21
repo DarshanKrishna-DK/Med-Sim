@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import secrets
 import time
@@ -51,6 +52,8 @@ TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 # (not inside it) so the registry module stays a plain snapshot store.
 _history: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
 _guards: dict[str, asyncio.Task] = {}
+_locks: dict[str, asyncio.Lock] = {}
+_joining = {"n": 0}  # global joins in flight (count toward FOLLOWUP_MAX_CONCURRENT)
 
 GREETINGS = {
     "en": "Namaste {name}, this is Nurse Asha calling from the MedSim clinic for your follow-up check. Is this a good time to talk for two or three minutes?",
@@ -366,14 +369,49 @@ def call_info(token: str):
     }
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(0, int(os.environ.get(name, "").strip() or default))
+    except ValueError:
+        return default
+
+
+def _global_load(now: float) -> tuple[int, int]:
+    """(live Asha calls plus joins in flight, starts in the last 24 h) across every link."""
+    live = sum(1 for h in _history.values() for c in h["calls"] if not c.get("endedAt")) + _joining["n"]
+    day = sum(1 for h in _history.values() for t in h["starts"] if now - t < DAY_S)
+    return live, day
+
+
+def _token_lock(token: str) -> asyncio.Lock:
+    lock = _locks.get(token)
+    if lock is None:
+        if len(_locks) > HISTORY_MAX_TOKENS:
+            for k in [k for k, v in _locks.items() if not v.locked()]:
+                _locks.pop(k, None)
+        lock = _locks[token] = asyncio.Lock()
+    return lock
+
+
 @router.post("/call-api/{token}/start")
 async def call_start(token: str):
     snap = _snapshot_or_404(token)
+    # Check-and-start is one critical section per link: two taps cannot both pass the cap.
+    async with _token_lock(token):
+        return await _call_start_locked(token, snap)
+
+
+async def _call_start_locked(token: str, snap: dict[str, Any]):
     if calls_left(token) <= 0:
         raise HTTPException(status_code=429, detail="This link has been used 3 times today. Please try again tomorrow.")
     # One live Asha per link: a reload or double tap must not leave a second agent running.
     for c in _live_calls(token):
         await _end_call(c)
+    live, day = _global_load(time.time())
+    if live >= _env_int("FOLLOWUP_MAX_CONCURRENT", 2):
+        raise HTTPException(status_code=429, detail="Nurse Asha is on other calls right now. Please try again in a few minutes.")
+    if day >= _env_int("FOLLOWUP_MAX_PER_DAY", 20):
+        raise HTTPException(status_code=429, detail="Nurse Asha has no more call slots today. Please try again tomorrow.")
     h = _hist(token)
     started = time.time()
     h["starts"].append(started)  # counted before the join so parallel taps cannot exceed the cap
@@ -385,14 +423,23 @@ async def call_start(token: str):
         gender="F",
         locale=lang,
     )
+    _joining["n"] += 1
     try:
         session = await voice.start_agent_session(
             req, voice_kind="nurse", channel_prefix="asha", idle_timeout=IDLE_TIMEOUT_S, translate_greeting=False
         )
-    except Exception:
+    except Exception as e:  # noqa: BLE001
         if started in h["starts"]:
             h["starts"].remove(started)  # a failed join costs no Agora minutes
-        raise
+        # The patient's phone never sees upstream (Agora) error bodies.
+        detail = e.detail if isinstance(e, HTTPException) else type(e).__name__
+        log.warning("follow-up call start failed: %s", str(detail)[:300])
+        status = e.status_code if isinstance(e, HTTPException) and e.status_code == 503 else 502
+        raise HTTPException(status_code=status, detail="Could not connect to Nurse Asha right now. Please try again in a minute.")
+    finally:
+        _joining["n"] -= 1
+    if session.avatarError:
+        log.warning("follow-up call avatar: %s", session.avatarError[:300])
     call = {
         "callId": secrets.token_hex(6),
         "agentId": session.agentId,
@@ -405,7 +452,7 @@ async def call_start(token: str):
     del h["calls"][:-20]
     _schedule_guard(call, lang)
     return {
-        **session.model_dump(),
+        **session.model_dump(exclude={"avatarError"}),
         "callId": call["callId"],
         "maxSeconds": MAX_SESSION_S,
         "callsLeftToday": calls_left(token),
