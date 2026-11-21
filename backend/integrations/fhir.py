@@ -125,9 +125,20 @@ async def record_medication_request(patient_id: str, med_name: str, dose: str, d
     return await _post("MedicationRequest", body)
 
 
-async def record_appointment(patient_id: str, in_days: int, reason: str) -> Optional[dict]:
-    day = datetime.now(_IST) + timedelta(days=int(in_days))
-    start = day.replace(hour=10, minute=0, second=0, microsecond=0)
+async def record_appointment(patient_id: str, in_days: int, reason: str, start_iso: Optional[str] = None) -> Optional[dict]:
+    """start_iso: the exact start the calendar booked (so the EHR and calendar agree)."""
+    start = None
+    if start_iso:
+        try:
+            start = datetime.fromisoformat(str(start_iso))
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=_IST)
+            start = start.replace(microsecond=0)
+        except ValueError:
+            start = None
+    if start is None:
+        day = datetime.now(_IST) + timedelta(days=int(in_days))
+        start = day.replace(hour=10, minute=0, second=0, microsecond=0)
     body = {
         "resourceType": "Appointment",
         "meta": {"tag": [_TAG]},
@@ -196,7 +207,8 @@ async def record_batch(case: dict, tests: list, meds: list, follow_up: Optional[
         jobs += [record_medication_request(pid, m.get("name", ""), m.get("dose", ""), m.get("duration", ""))
                  for m in meds]
         if follow_up:
-            jobs.append(record_appointment(pid, follow_up.get("inDays", 7), follow_up.get("reason", "Follow-up")))
+            jobs.append(record_appointment(pid, follow_up.get("inDays", 7), follow_up.get("reason", "Follow-up"),
+                                           follow_up.get("start")))
         results = await asyncio.gather(*jobs, return_exceptions=True)
         return [r for r in results if isinstance(r, dict) and r.get("ok")]
 

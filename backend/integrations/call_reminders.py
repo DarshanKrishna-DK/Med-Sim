@@ -61,6 +61,17 @@ def schedule(contact: str, patient_name: str, call_url: str, start: datetime,
     return [t.isoformat() for t in times]
 
 
+def retarget(call_url: str, contact: str) -> int:
+    """Point the pending reminders of one call link at a resolved contact (tg:<chat id>)."""
+    n = 0
+    with _lock:
+        for r in _pending:
+            if r["url"] == call_url:
+                r["contact"] = contact
+                n += 1
+    return n
+
+
 def message(r: dict[str, Any]) -> str:
     from integrations import notify
 

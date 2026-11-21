@@ -132,6 +132,42 @@ def _clean_recurrence(rec: Any) -> Optional[dict[str, Any]]:
     return {"freq": freq, "count": count, "interval": interval}
 
 
+def _safe_follow_up(fu: Any) -> Optional[dict[str, Any]]:
+    """The client's followUpSoFar, reduced to what the server can rebuild links from.
+    callUrl, googleCalendarUrl, startText, icsPath and booked are never trusted."""
+    if not isinstance(fu, dict) or fu.get("inDays") is None:
+        return None
+    try:
+        days = max(0, min(365, int(fu["inDays"])))
+    except (TypeError, ValueError):
+        return None
+    out: dict[str, Any] = {"inDays": days, "reason": re.sub(r"\s+", " ", str(fu.get("reason") or "follow-up")).strip()[:160]}
+    rec = _clean_recurrence(fu.get("recurrence"))
+    if rec:
+        out["recurrence"] = rec
+    mode = str(fu.get("mode") or "").lower()
+    if mode in ("visit", "call"):
+        out["mode"] = mode
+    return out
+
+
+def _clip(value: Any, n: int) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()[:n]
+
+
+def _clip_rx(rx: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [{"name": _clip(r.get("name"), 80), "dose": _clip(r.get("dose"), 80), "duration": _clip(r.get("duration"), 80)}
+            for r in rx if isinstance(r, dict)][:12]
+
+
+def _call_snapshot(req: "NurseActRequest", rx: list[dict[str, Any]], reason: Any, lang: str) -> dict[str, Any]:
+    """Snapshot for the Asha call registry, with every client-supplied field clipped."""
+    p = req.patient
+    return {"caseId": _clip(req.caseId, 80), "patientName": _clip(p.name, 80), "age": p.age, "gender": _clip(p.gender, 16),
+            "chiefComplaint": _clip(p.chiefComplaint, 200), "prescriptions": _clip_rx(rx),
+            "reason": _clip(reason, 160), "lang": lang}
+
+
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
@@ -151,6 +187,10 @@ class NurseState:
         self.ext_hard: dict[str, list[str]] = {}
         # Asha follow-up call tokens created in this run (snapshots refreshed at the end).
         self.call_tokens: list[str] = []
+        # A Telegram contact ('telegram' / '@user') resolved to a stable 'tg:<chat id>'.
+        self.resolved_contact: Optional[str] = None
+        # Call links whose reminders went out to an unresolved Telegram contact.
+        self.unresolved_reminder_urls: list[str] = []
 
     # --- helpers
     def _allergy_text(self) -> str:
@@ -307,11 +347,17 @@ class NurseState:
                 return await getattr(self, tool)(**args)
             except TypeError as e:
                 return {"ok": False, "error": f"bad arguments: {e}"}
+            except Exception as e:  # noqa: BLE001 - one bad tool never fails the whole run
+                log.warning("send_to_patient failed: %s", type(e).__name__)
+                return {"ok": False, "error": f"sending failed ({type(e).__name__})"}
         res = self.execute(tool, args)
-        if tool == "check_allergies_and_interactions" and res.get("ok"):
-            await self._real_drug_check(str(args.get("medicationId", "")), res)
-        elif tool == "schedule_follow_up" and res.get("ok"):
-            await self._calendar(res)
+        try:
+            if tool == "check_allergies_and_interactions" and res.get("ok"):
+                await self._real_drug_check(str(args.get("medicationId", "")), res)
+            elif tool == "schedule_follow_up" and res.get("ok"):
+                await self._calendar(res)
+        except Exception as e:  # noqa: BLE001 - keep the local result
+            log.warning("%s real-world step failed: %s", tool, type(e).__name__)
         return res
 
     async def _real_drug_check(self, med_id: str, res: dict[str, Any]) -> None:
@@ -332,7 +378,7 @@ class NurseState:
         if not ext or not ext.get("ok"):
             res["realCheck"] = {"ok": False, "note": "public drug databases unreachable; checked the clinic catalogue only"}
             return
-        conflict = ext.get("allergyConflict")
+        conflict = None if drugsafety.is_negated_allergy(allergies) else ext.get("allergyConflict")
         if conflict:
             msg = f"NIH RxClass: {conflict}"
             self.ext_hard.setdefault(med_id, []).append(msg)
@@ -361,7 +407,6 @@ class NurseState:
         call_url: Optional[str] = None
         if is_call:
             try:
-                p = self.req.patient
                 rx = [{"medicationId": r["medicationId"],
                        "name": self.meds[r["medicationId"]].name if r["medicationId"] in self.meds else r["medicationId"],
                        "dose": r.get("dose", ""), "duration": r.get("duration", "")} for r in self.new_rx]
@@ -369,10 +414,8 @@ class NurseState:
                     if isinstance(r, dict):
                         rx.append({k: str(r.get(k, "")) for k in ("medicationId", "name", "dose", "duration")})
                 token = followup_calls.register_call({
-                    "caseId": self.req.caseId, "patientName": p.name, "age": p.age, "gender": p.gender,
-                    "chiefComplaint": p.chiefComplaint, "prescriptions": rx,
-                    "reason": res.get("reason", ""), "lang": langmod.norm_lang(self.req.lang),
-                    "contact": (self.req.contact or "").strip()})
+                    **_call_snapshot(self.req, rx, res.get("reason", ""), langmod.norm_lang(self.req.lang)),
+                    "contact": _clip((self.req.contact or "").strip(), 80)})
                 self.call_tokens.append(token)
                 path = f"/call/{token}"
                 call_url = notify.absolute_url(path) or path
@@ -397,10 +440,18 @@ class NurseState:
         if call_url:
             res["calendar"]["callUrl"] = call_url
         if self.follow_up is not None:
-            self.follow_up.update(startText=cal.get("startText"), googleCalendarUrl=cal.get("googleCalendarUrl"), icsPath=cal["icsPath"])
+            self.follow_up.update(startText=cal.get("startText"), googleCalendarUrl=cal.get("googleCalendarUrl"),
+                                  icsPath=cal["icsPath"], start=cal.get("start"))
             if call_url:
                 self.follow_up["callUrl"] = call_url
         contact = (self.req.contact or "").strip()
+        reminder_to = contact
+        if contact and notify.is_telegram(contact):
+            # 'telegram' / '@user' resolve to the chat id now, so a later Start from
+            # someone else never redirects this patient's reminders.
+            reminder_to = self.resolved_contact or await notify.resolve_telegram(contact) or contact
+            if reminder_to.startswith("tg:"):
+                self.resolved_contact = reminder_to
         try:
             booked = await asyncio.wait_for(gcal_script.book_event(
                 cal["title"], cal.get("description", ""), datetime.fromisoformat(cal["start"]),
@@ -419,10 +470,12 @@ class NurseState:
         if call_url and contact:
             from integrations import call_reminders
 
-            times = call_reminders.schedule(contact, self.req.patient.name, call_url,
+            times = call_reminders.schedule(reminder_to, self.req.patient.name, call_url,
                                             datetime.fromisoformat(cal["start"]), rec, res.get("reason", ""))
             if times:
                 res["calendar"]["reminders"] = len(times)
+                if not reminder_to.lower().startswith("tg:") and notify.is_telegram(reminder_to):
+                    self.unresolved_reminder_urls.append(call_url)
 
     def _med_names(self, ids: list[str]) -> list[str]:
         return [self.meds[i].name if i in self.meds else i for i in ids]
@@ -491,10 +544,13 @@ class NurseState:
                 meds.append({"name": name, "dose": str(rx.get("dose", "")), "duration": str(rx.get("duration", ""))})
         if not meds:
             return {"ok": False, "error": "nothing prescribed yet, so there is nothing to send"}
-        fu = dict(self.follow_up or self.req.followUpSoFar or {}) or None
+        # This run's follow-up was built server-side; one from the chart is rebuilt
+        # from inDays/reason so no client-supplied link reaches the patient.
+        fu = dict(self.follow_up) if self.follow_up else _safe_follow_up(self.req.followUpSoFar)
         if fu and not fu.get("icsPath") and fu.get("inDays") is not None:
             try:
-                cal = calendar_invite.make_follow_up(self.req.caseId, self.req.patient.name, int(fu["inDays"]), str(fu.get("reason") or "follow-up"))
+                cal = calendar_invite.make_follow_up(self.req.caseId, self.req.patient.name, int(fu["inDays"]),
+                                                     str(fu.get("reason") or "follow-up"), recurrence=fu.get("recurrence"))
                 fu.update(startText=cal.get("startText"), googleCalendarUrl=cal.get("googleCalendarUrl"), icsPath=cal["icsPath"])
             except Exception:  # noqa: BLE001
                 pass
@@ -531,11 +587,8 @@ class NurseState:
         if fu and not call_url:
             from integrations import followup_calls
 
-            p = self.req.patient
-            token = followup_calls.register_call({
-                "caseId": self.req.caseId, "patientName": p.name, "age": p.age, "gender": p.gender,
-                "chiefComplaint": p.chiefComplaint, "prescriptions": meds,
-                "reason": str(fu.get("reason") or ""), "lang": lang, "contact": to})
+            token = followup_calls.register_call({**_call_snapshot(self.req, meds, fu.get("reason"), lang),
+                                                  "contact": _clip(to, 80)})
             call_url = notify.absolute_url(f"/call/{token}") or f"/call/{token}"
         if call_url and call_url.startswith("http"):
             message = message.replace(notify.DISCLAIMER, f"Join your Asha follow-up call: {call_url}. {notify.DISCLAIMER}", 1)
@@ -546,6 +599,16 @@ class NurseState:
         if channel == "auto" and notify.is_telegram(to):
             channel = "telegram"
         out = await notify.send_to_patient(channel, to, message, audio_url, mp3, ics)
+        resolved = out.get("resolvedTo")
+        if out.get("ok") and isinstance(resolved, str) and resolved.startswith("tg:"):
+            # Later reminders go to this exact chat, not "the latest chat that pressed Start".
+            self.resolved_contact = resolved
+            if self.unresolved_reminder_urls:
+                from integrations import call_reminders
+
+                for url in self.unresolved_reminder_urls:
+                    call_reminders.retarget(url, resolved)
+                self.unresolved_reminder_urls.clear()
         out["audioUrl"] = audio_url
         out["medications"] = [m["name"] for m in meds]
         out["message"] = message
@@ -788,11 +851,14 @@ async def _run_json_plan(st: NurseState, req: NurseActRequest, steps: list[dict[
         json_mode=True, max_tokens=500, temperature=0.1,
     )
     plan_obj = _parse_json(msg.get("content") or "") or {}
-    if plan_obj.get("intent") == "none" or not plan_obj.get("calls"):
+    calls = plan_obj.get("calls")
+    calls = [c for c in calls if isinstance(c, dict)] if isinstance(calls, list) else []
+    if plan_obj.get("intent") == "none" or not calls:
         return "", "NO_ORDER"
-    for c in plan_obj["calls"][:8]:
-        name, args = c.get("tool", ""), c.get("args") or {}
-        res = await st.aexecute(name, args if isinstance(args, dict) else {})
+    for c in calls[:8]:
+        name, args = str(c.get("tool") or ""), c.get("args")
+        args = args if isinstance(args, dict) else {}
+        res = await st.aexecute(name, args)
         steps.append({"tool": name, "args": args, "ok": bool(res.get("ok")), "summary": summarize(name, args, res), "result": res})
     msg2, _ = await chat(
         [{"role": "system", "content": langmod.with_language("Write a short spoken confirmation (max 30 words, no markdown, no 'Done -' prefix) as a warm Indian charge nurse talking to the doctor: contractions, numbers as words, commas and '...' for pauses, e.g. 'Okay doctor, I've sent the troponin and ECG... anything else?'. Mention anything refused or abnormal. Use only the facts given.", req.lang, female=True, role="nurse")},
@@ -842,12 +908,14 @@ def _refresh_call_snapshots(st: NurseState) -> None:
     rx = [{"name": st.meds[r["medicationId"]].name if r["medicationId"] in st.meds else r["medicationId"],
            "dose": r.get("dose", ""), "duration": r.get("duration", "")} for r in st.new_rx]
     for r in st.req.prescriptionsSoFar:
+        if not isinstance(r, dict):
+            continue
         mid = str(r.get("medicationId", ""))
         name = st.meds[mid].name if mid in st.meds else str(r.get("name") or mid)
         if name and all(x["name"] != name for x in rx):
             rx.append({"name": name, "dose": str(r.get("dose", "")), "duration": str(r.get("duration", ""))})
     for tok in st.call_tokens:
-        followup_calls.update_call(tok, prescriptions=rx)
+        followup_calls.update_call(tok, prescriptions=_clip_rx(rx))
 
 
 async def _record_to_ehr(req: NurseActRequest, st: NurseState, steps: list[dict[str, Any]]) -> None:
@@ -890,10 +958,27 @@ async def nurse_act(req: NurseActRequest):
     except HTTPException as e:
         if e.status_code == 503:
             raise
-        log.warning("native tool calling failed (%s); using JSON-plan fallback", e.detail[:120])
-        steps.clear()
-        st = NurseState(req)
-        plan, final = await _run_json_plan(st, req, steps)
+        if steps:
+            # Tools already ran (orders, sends): never replay them through the JSON plan.
+            log.warning("native tool calling failed mid-run (%s); keeping %d steps", str(e.detail)[:120], len(steps))
+            plan, final = "", ""
+        else:
+            log.warning("native tool calling failed (%s); using JSON-plan fallback", str(e.detail)[:120])
+            st = NurseState(req)
+            try:
+                plan, final = await _run_json_plan(st, req, steps)
+            except HTTPException as e2:
+                if e2.status_code == 503:
+                    raise
+                log.warning("JSON-plan fallback failed too (%s)", str(e2.detail)[:120])
+                plan, final = "", ""
+            except Exception as e2:  # noqa: BLE001
+                log.warning("JSON-plan fallback failed too (%s)", type(e2).__name__)
+                plan, final = "", ""
+            if not steps and not final:
+                return {"runId": run_id, "intent": "none", "plan": "", "steps": [],
+                        "applied": {"orderedTestIds": [], "prescriptions": []},
+                        "spokenConfirmation": _fallback_confirmation(st, [], req.lang), "error": "nurse unavailable"}
 
     if not steps:
         return {"runId": run_id, "intent": "none", "plan": "", "steps": [],

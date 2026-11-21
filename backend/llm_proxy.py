@@ -167,10 +167,25 @@ def build_upstream_body(payload: dict[str, Any], cfg: dict[str, str]) -> dict[st
 # those turns get an empty reply here instead of going to the LLM.
 _NURSE_ADDRESS = re.compile(
     r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha)\W+){0,2}"
-    r"(?:nurse|sister|staff nurse|a{1,2}sha|usha|नर्स|आशा)(?![a-z])",
+    r"(?:nurse|sister|staff nurse|a{1,2}sha|नर्स|आशा)(?![a-z])",
+    re.IGNORECASE,
+)
+# Same lead-in, but only the unambiguous titles (used when the patient is named Asha).
+_NURSE_TITLE = re.compile(
+    r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha)\W+){0,2}"
+    r"(?:nurse|sister|staff nurse|नर्स)(?![a-z])",
     re.IGNORECASE,
 )
 _NURSE_ANYWHERE = re.compile(r"\b(?:nurse a{1,2}sha|sister a{1,2}sha|how am i doing,? a{1,2}sha)\b", re.IGNORECASE)
+# How src/voice/patientPersona.ts names the patient: "You are Asha, a 34-year-old ...",
+# "You are a human patient named Asha, ..." or "You are the mother of Asha, a 6-year-old ...".
+_PATIENT_IS_ASHA = re.compile(
+    r"\byou are (?:a human patient named |the \w+ of )?a{1,2}sha\b|\byour name is a{1,2}sha\b", re.IGNORECASE)
+
+
+def _patient_named_asha(messages: list[dict[str, Any]]) -> bool:
+    first = next((m for m in messages if m.get("role") in ("system", "developer")), None)
+    return bool(first and _PATIENT_IS_ASHA.search(str(first.get("content") or "")))
 
 
 def addressed_to_nurse(messages: list[dict[str, Any]]) -> bool:
@@ -178,7 +193,13 @@ def addressed_to_nurse(messages: list[dict[str, Any]]) -> bool:
     if not messages or messages[-1].get("role") != "user":
         return False
     text = str(messages[-1].get("content") or "").strip()
-    return bool(text and (_NURSE_ADDRESS.search(text) or _NURSE_ANYWHERE.search(text)))
+    if not text:
+        return False
+    if _NURSE_ANYWHERE.search(text):
+        return True
+    # A patient (or child) called Asha: a bare leading "Asha" is the doctor talking to them.
+    lead = _NURSE_TITLE if _patient_named_asha(messages) else _NURSE_ADDRESS
+    return bool(lead.search(text))
 
 
 def sse_chunk(cid: str, model: str, delta: dict[str, Any], finish: Optional[str] = None) -> str:

@@ -40,8 +40,31 @@ def _stem(t: str) -> str:
     return _STEMS.get(t, _STEMS.get(t.rstrip("s"), t.rstrip("s")))
 
 
+_STOPWORDS = {"drug", "drugs", "allergy", "allergies", "allergic", "known", "medicine", "medicines",
+              "reaction", "reactions", "any", "to", "the"}
+_NEGATED_START = re.compile(r"^\W*(?:no|none|nil|nkda|nkfda|not|denies|denied)\b", re.IGNORECASE)
+_NEGATED_ANY = re.compile(r"\b(?:no known|not allergic|denies|denied)\b", re.IGNORECASE)
+
+
+def strip_negated(allergies: str) -> str:
+    """Drop clauses that deny an allergy ('No known drug allergies', 'denies any', 'nil')."""
+    keep = []
+    for clause in re.split(r"[.;,\n]+", allergies or ""):
+        c = clause.strip()
+        if c and not (_NEGATED_START.search(c) or _NEGATED_ANY.search(c)):
+            keep.append(c)
+    return ", ".join(keep)
+
+
+def is_negated_allergy(allergies: str) -> bool:
+    """True when the allergy text is empty or only says there is no allergy."""
+    return not _tokens(strip_negated(allergies)) - _STOPWORDS
+
+
 def _allergy_conflict(drug: str, classes: list[str], allergies: str) -> str | None:
-    toks = _tokens(allergies)
+    if is_negated_allergy(allergies):
+        return None
+    toks = _tokens(strip_negated(allergies)) - _STOPWORDS
     if not toks:
         return None
     for t in toks:
