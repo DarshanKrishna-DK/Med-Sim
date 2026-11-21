@@ -517,6 +517,16 @@ async def place_call(token: str, phone: str) -> dict[str, Any]:
         data = r.json()
     except Exception:  # noqa: BLE001
         data = {}
+    if r.status_code == 400 and "trial" in str(data.get("message", "")).lower():
+        # Trial accounts only accept To, From and Url: retry without the extras
+        # (Twilio then fetches the TwiML with POST by default).
+        try:
+            async with _client_factory() as c:
+                r = await c.post(TWILIO_CALLS_URL.format(sid=sid), auth=(sid, auth),
+                                 data={k: form[k] for k in ("From", "To", "Url")})
+            data = r.json()
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"Twilio request failed: {type(e).__name__}"}
     if r.status_code >= 300:
         msg = str(data.get("message") or "")[:200] if isinstance(data, dict) else ""
         return {"ok": False, "error": f"Twilio error {r.status_code}" + (f": {msg}" if msg else "")}
