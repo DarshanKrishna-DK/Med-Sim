@@ -15,6 +15,7 @@ that gives Agora's cloud an HTTPS URL to reach this backend.
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
@@ -32,6 +33,7 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+import lang as langmod
 from llm_provider import configured_providers
 
 log = logging.getLogger("medsim.llmproxy")
@@ -316,6 +318,44 @@ def _silent_reply(stream: bool, model: str) -> Response:
     return Response(content=body, media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
+# ---------------------------------------------------------------- natural fallback
+
+RETRY_BUDGET_S = 3.5  # one same-provider retry; pause + this stays under 4 s
+RETRY_PAUSE_S = 0.3
+
+_LANG_NAMES = {"Hindi": "hi", "Kannada": "kn", "Tamil": "ta", "Telugu": "te", "Marathi": "mr", "Bengali": "bn"}
+_SPOKEN_LANG = re.compile(r"everyday spoken (" + "|".join(_LANG_NAMES) + r")\b")
+
+
+def conversation_lang(messages: Any) -> str:
+    """Best guess at the language the patient should answer in: the script of the
+    doctor's newest turn, else the LANGUAGE block in the system prompt, else en."""
+    msgs = sanitize_messages(messages)
+    system = next((str(m.get("content") or "") for m in msgs if m["role"] in ("system", "developer")), "")
+    hit = _SPOKEN_LANG.search(system)
+    prompt_lang = _LANG_NAMES[hit.group(1)] if hit else "en"
+    last_user = next((str(m.get("content") or "") for m in reversed(msgs) if m["role"] == "user"), "")
+    for lg in ("kn", "ta", "te", "bn", "hi"):
+        if langmod.has_script(last_user, lg):
+            # Hindi and Marathi share Devanagari: trust the prompt to split them.
+            return "mr" if lg == "hi" and prompt_lang == "mr" else lg
+    return prompt_lang
+
+
+def natural_reply(stream: bool, model: str, text: str) -> Response:
+    """An OpenAI-shaped assistant turn carrying `text` (SSE or JSON)."""
+    cid = "chatcmpl-fallback-" + secrets.token_hex(6)
+    if not stream:
+        return completion_json(cid, model, text)
+    body = (sse_chunk(cid, model, {"role": "assistant", "content": text})
+            + sse_chunk(cid, model, {}, "stop") + "data: [DONE]\n\n")
+    return Response(content=body, media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+def _transient_exc(e: Exception) -> bool:
+    return isinstance(e, (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError))
+
+
 # ---------------------------------------------------------------- endpoint
 
 
@@ -361,50 +401,80 @@ async def patient_chat_completions(request: Request):
         log.info("doctor addressed the nurse; patient stays silent")
         return _silent_reply(payload.get("stream", True) is not False, cfgs[0]["model"])
 
+    stream = payload.get("stream", True) is not False
     client = _client_factory()
-    last: Optional[JSONResponse] = None
-    for i, cfg in enumerate(cfgs):
+    for cfg in cfgs:
         body = build_upstream_body(payload, cfg)
         headers = {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
-        try:
-            req = client.build_request("POST", cfg["url"], json=body, headers=headers)
-            resp = await client.send(req, stream=True)
-        except httpx.HTTPError as e:
-            log.warning("%s request failed: %s", cfg["name"], type(e).__name__)
-            last = _err(502, f"{cfg['name']} request failed: {type(e).__name__}")
-            continue
-        if resp.status_code >= 400:
-            raw = (await resp.aread()).decode("utf-8", "replace")
-            await resp.aclose()
-            log.warning("%s HTTP %s: %s", cfg["name"], resp.status_code, raw[:200])
-            last = _err(resp.status_code, raw.replace(cfg["api_key"], "***")[:500])
-            if i + 1 < len(cfgs):
-                continue
-            await client.aclose()
-            return last
-        ctype = resp.headers.get("content-type", "application/json")
-        if not body.get("stream"):
-            data = await resp.aread()
-            await resp.aclose()
-            await client.aclose()
-            return Response(content=data, status_code=resp.status_code, media_type=ctype.split(";")[0])
-
-        async def gen(resp=resp, client=client):
+        for attempt in range(2):
+            retry = attempt == 1
             try:
-                async for chunk in resp.aiter_raw():
-                    yield chunk
-            finally:
+                # The same-provider retry is a quick one: it may add at most RETRY_BUDGET_S.
+                req = client.build_request(
+                    "POST", cfg["url"], json=body, headers=headers,
+                    timeout=httpx.Timeout(RETRY_BUDGET_S) if retry else httpx.USE_CLIENT_DEFAULT,
+                )
+                resp = await client.send(req, stream=True)
+            except httpx.HTTPError as e:
+                log.warning("%s request failed%s: %s", cfg["name"], " (retry)" if retry else "", type(e).__name__)
+                if not retry and _transient_exc(e):
+                    await asyncio.sleep(RETRY_PAUSE_S)
+                    continue
+                break
+            if resp.status_code >= 400:
+                raw = (await resp.aread()).decode("utf-8", "replace")
+                await resp.aclose()
+                log.warning("%s HTTP %s%s: %s", cfg["name"], resp.status_code, " (retry)" if retry else "",
+                            raw.replace(cfg["api_key"], "***")[:200])
+                if not retry and resp.status_code >= 500:
+                    await asyncio.sleep(RETRY_PAUSE_S)
+                    continue
+                break
+            ctype = resp.headers.get("content-type", "application/json")
+            if not body.get("stream"):
+                data = await resp.aread()
                 await resp.aclose()
                 await client.aclose()
+                return Response(content=data, status_code=resp.status_code, media_type=ctype.split(";")[0])
 
-        return StreamingResponse(
-            gen(),
-            status_code=resp.status_code,
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
-        )
+            # Read the first bytes before committing to this provider: an error or
+            # empty stream here can still fall through to a retry or the next one.
+            it = resp.aiter_raw()
+            try:
+                first = await it.__anext__()
+            except (httpx.HTTPError, StopAsyncIteration) as e:
+                await resp.aclose()
+                log.warning("%s stream failed before the first token%s: %s", cfg["name"],
+                            " (retry)" if retry else "", type(e).__name__)
+                if not retry and not isinstance(e, StopAsyncIteration) and _transient_exc(e):
+                    await asyncio.sleep(RETRY_PAUSE_S)
+                    continue
+                break
+
+            async def gen(first=first, it=it, resp=resp, client=client, name=cfg["name"]):
+                try:
+                    yield first
+                    async for chunk in it:
+                        yield chunk
+                except httpx.HTTPError as e:
+                    log.warning("%s stream broke mid-reply: %s", name, type(e).__name__)
+                    yield b"data: [DONE]\n\n"
+                finally:
+                    await resp.aclose()
+                    await client.aclose()
+
+            return StreamingResponse(
+                gen(),
+                status_code=resp.status_code,
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+            )
     await client.aclose()
-    return last or _err(502, "no upstream available")
+    # Every provider failed. An HTTP error here makes Agora speak its canned
+    # failure_message; a short in-character line keeps the patient human.
+    line = langmod.natural_retry_line(conversation_lang(payload.get("messages")))
+    log.warning("all LLM providers failed; patient answers with a natural retry line")
+    return natural_reply(stream, cfgs[0]["model"], line)
 
 
 # ---------------------------------------------------------------- public URL / tunnel

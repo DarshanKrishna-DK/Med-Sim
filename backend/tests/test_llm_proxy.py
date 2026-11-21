@@ -102,15 +102,102 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(r.content, SSE)
         self.assertNotIn("sarvam-secret-zz", r.text)
 
-    def test_upstream_error_shape(self):
-        def bad(req):
-            return httpx.Response(400, json={"detail": "bad sarvam-secret-zz"})
-        llm_proxy._client_factory = lambda: httpx.AsyncClient(transport=httpx.MockTransport(bad))
+    def _fail_with(self, handler):
+        calls = []
+
+        def h(req):
+            calls.append(req)
+            return handler(req)
+        llm_proxy._client_factory = lambda: httpx.AsyncClient(transport=httpx.MockTransport(h))
+        old_pause = llm_proxy.RETRY_PAUSE_S
+        llm_proxy.RETRY_PAUSE_S = 0
+        self.addCleanup(setattr, llm_proxy, "RETRY_PAUSE_S", old_pause)
+        return calls
+
+    @staticmethod
+    def _sse_text(r) -> str:
+        out = []
+        for line in r.text.splitlines():
+            if line.startswith("data: ") and line != "data: [DONE]":
+                out.append(json.loads(line[6:])["choices"][0]["delta"].get("content") or "")
+        return "".join(out)
+
+    def test_upstream_error_becomes_natural_reply(self):
+        import lang
+        calls = self._fail_with(lambda req: httpx.Response(400, json={"detail": "bad sarvam-secret-zz"}))
         os.environ.pop("GROQ_API_KEY", None)
         r = self.post({"messages": [{"role": "user", "content": "x"}], "stream": True})
-        self.assertEqual(r.status_code, 400)
-        self.assertIn("error", r.json())
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.headers["content-type"].startswith("text/event-stream"))
+        self.assertTrue(r.text.rstrip().endswith("data: [DONE]"))
+        self.assertIn(self._sse_text(r), lang.NATURAL_RETRY_LINES["en"])
         self.assertNotIn("sarvam-secret-zz", r.text)
+        self.assertEqual(len(calls), 1)  # 4xx is not retried on the same provider
+
+    def test_all_providers_fail_natural_reply_after_retries(self):
+        import lang
+        os.environ["GROQ_API_KEY"] = "groq-zz"
+        self.addCleanup(os.environ.pop, "GROQ_API_KEY", None)
+
+        def boom(req):
+            if "groq" in req.url.host:
+                raise httpx.ConnectTimeout("slow", request=req)
+            return httpx.Response(503, text="overloaded")
+        calls = self._fail_with(boom)
+        r = self.post({"messages": [{"role": "user", "content": "since when?"}], "stream": True})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(self._sse_text(r), lang.NATURAL_RETRY_LINES["en"])
+        hosts = [c.url.host for c in calls]
+        self.assertEqual(sum("sarvam" in h for h in hosts), 2)  # one quick same-provider retry
+        self.assertEqual(sum("groq" in h for h in hosts), 2)
+
+        r = self.post({"messages": [{"role": "user", "content": "x"}], "stream": False})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(r.json()["choices"][0]["message"]["content"], lang.NATURAL_RETRY_LINES["en"])
+
+    def test_retry_same_provider_recovers(self):
+        n = {"i": 0}
+
+        def flaky(req):
+            n["i"] += 1
+            if n["i"] == 1:
+                return httpx.Response(502, text="bad gateway")
+            return httpx.Response(200, stream=_Chunks(SSE), headers={"content-type": "text/event-stream"})
+        calls = self._fail_with(flaky)
+        os.environ.pop("GROQ_API_KEY", None)
+        r = self.post({"messages": [{"role": "user", "content": "any pain?"}], "stream": True})
+        self.assertEqual(r.content, SSE)
+        self.assertEqual(len(calls), 2)
+
+    def test_stream_error_before_first_token_falls_back(self):
+        import lang
+
+        class _Broken(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                raise httpx.ReadTimeout("stalled")
+                yield b""  # pragma: no cover
+        self._fail_with(lambda req: httpx.Response(200, stream=_Broken(),
+                                                   headers={"content-type": "text/event-stream"}))
+        os.environ.pop("GROQ_API_KEY", None)
+        msgs = [{"role": "system", "content": "You are Ravi. LANGUAGE: Speak natural, everyday spoken Hindi."},
+                {"role": "user", "content": "क्या हुआ?"}]
+        r = self.post({"messages": msgs, "stream": True})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(self._sse_text(r), lang.NATURAL_RETRY_LINES["hi"])
+
+    def test_conversation_lang(self):
+        sysmsg = {"role": "system", "content": "LANGUAGE: Speak natural, everyday spoken Marathi, ..."}
+        self.assertEqual(llm_proxy.conversation_lang([sysmsg, {"role": "user", "content": "काय झालं?"}]), "mr")
+        self.assertEqual(llm_proxy.conversation_lang([{"role": "user", "content": "ಏನಾಯ್ತು?"}]), "kn")
+        self.assertEqual(llm_proxy.conversation_lang([{"role": "user", "content": "kya hua"}]), "en")
+        self.assertEqual(llm_proxy.conversation_lang([sysmsg, {"role": "user", "content": ""}]), "mr")
+
+    def test_nurse_turn_still_silent_when_providers_down(self):
+        calls = self._fail_with(lambda req: httpx.Response(500, text="down"))
+        r = self.post({"messages": [{"role": "user", "content": "Nurse, order a CBC"}], "stream": True})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self._sse_text(r), "")
+        self.assertFalse(calls)
 
     def test_voice_start_proxy_vs_direct(self):
         req = {"caseId": "c1", "systemPrompt": "sp", "initialLine": "hi", "gender": "M"}
@@ -130,8 +217,9 @@ class ProxyTests(unittest.TestCase):
             self.assertNotIn("vendor", llm)
             td = sent[-1]["properties"]["turn_detection"]["config"]
             self.assertEqual(td["speech_threshold"], 0.6)
-            self.assertEqual(td["start_of_speech"]["vad_config"]["interrupt_duration_ms"], 240)
-            self.assertIn("didn't catch", llm["failure_message"])
+            self.assertEqual(td["start_of_speech"]["vad_config"]["interrupt_duration_ms"], 200)
+            self.assertEqual(td["end_of_speech"]["vad_config"]["silence_duration_ms"], 560)
+            self.assertEqual(llm["failure_message"], "Hmm, sorry, say that once more?")
             self.assertNotIn("sarvam-secret-zz", r.text)
 
             os.environ["PUBLIC_URL"] = "https://t.example.com/"

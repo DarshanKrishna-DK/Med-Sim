@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 log = logging.getLogger("medsim.lang")
 
@@ -83,14 +83,44 @@ FILLERS: dict[str, list[str]] = {
            "এক সেকেন্ড ডাক্তারবাবু...", "হ্যাঁ... হ্যাঁ..."],
 }
 
+# Agora speaks llm.failure_message when the LLM call fails. One string only, so it
+# must sound like a person who half-heard, never like a system error, and must not
+# name the listener ("doctor"): every voice agent shares it.
 FAILURE_MESSAGES = {
-    "en": "Sorry, I didn't catch that. Could you say it again?",
-    "hi": "माफ़ कीजिए डॉक्टर, मैं सुन नहीं पाया। क्या आप दोबारा बोल सकते हैं?",
-    "kn": "ಕ್ಷಮಿಸಿ ಡಾಕ್ಟರ್, ನನಗೆ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಇನ್ನೊಮ್ಮೆ ಹೇಳಿ.",
-    "ta": "மன்னிக்கவும் டாக்டர், எனக்குக் கேட்கவில்லை. தயவுசெய்து மீண்டும் சொல்லுங்கள்.",
-    "te": "క్షమించండి డాక్టర్, నాకు వినిపించలేదు. దయచేసి మళ్లీ చెప్పండి.",
-    "mr": "माफ करा डॉक्टर, मला ऐकू आले नाही. कृपया पुन्हा सांगा.",
-    "bn": "দুঃখিত ডাক্তারবাবু, আমি শুনতে পাইনি। দয়া করে আরেকবার বলুন।",
+    "en": "Hmm, sorry, say that once more?",
+    "hi": "हम्म, माफ़ कीजिए, एक बार फिर से कहेंगे?",
+    "kn": "ಹ್ಮ್, ಕ್ಷಮಿಸಿ, ಇನ್ನೊಮ್ಮೆ ಹೇಳ್ತೀರಾ?",
+    "ta": "ஹ்ம், மன்னிக்கணும், இன்னொரு தடவை சொல்றீங்களா?",
+    "te": "హ్మ్, సారీ, ఇంకోసారి చెప్తారా?",
+    "mr": "हम्म, माफ करा, पुन्हा एकदा सांगाल का?",
+    "bn": "হুম, মাফ করবেন, আরেকবার বলবেন?",
+}
+
+# What the /llm proxy streams back, in character, when every provider fails
+# (instead of an HTTP error, which would make Agora speak FAILURE_MESSAGES).
+NATURAL_RETRY_LINES = {
+    "en": ["Hmm... sorry, could you ask that once more?",
+           "Sorry, my mind drifted for a second. What was that?",
+           "Hmm, one more time, please?",
+           "Oh, sorry, can you say that again?"],
+    "hi": ["हम्म... माफ़ कीजिए, एक बार फिर पूछेंगे?",
+           "माफ़ कीजिए, ध्यान थोड़ा भटक गया। क्या पूछा आपने?",
+           "हम्म, एक बार और बोलिए ना?"],
+    "kn": ["ಹ್ಮ್... ಕ್ಷಮಿಸಿ, ಇನ್ನೊಮ್ಮೆ ಕೇಳ್ತೀರಾ?",
+           "ಕ್ಷಮಿಸಿ, ಸ್ವಲ್ಪ ಗಮನ ತಪ್ಪಿತು. ಏನು ಕೇಳಿದ್ರಿ?",
+           "ಹ್ಮ್, ಇನ್ನೊಂದ್ಸಲ ಹೇಳಿ?"],
+    "ta": ["ஹ்ம்... மன்னிக்கணும், இன்னொரு தடவை கேக்கறீங்களா?",
+           "மன்னிக்கணும், கொஞ்சம் கவனம் சிதறிடுச்சு. என்ன கேட்டீங்க?",
+           "ஹ்ம், இன்னொரு முறை சொல்லுங்க?"],
+    "te": ["హ్మ్... సారీ, ఇంకోసారి అడుగుతారా?",
+           "సారీ, కొంచెం ధ్యాస తప్పింది. ఏం అడిగారు?",
+           "హ్మ్, ఇంకోసారి చెప్పండి?"],
+    "mr": ["हम्म... माफ करा, पुन्हा एकदा विचाराल का?",
+           "माफ करा, जरा लक्ष उडालं. काय विचारलंत?",
+           "हम्म, परत एकदा सांगा ना?"],
+    "bn": ["হুম... মাফ করবেন, আরেকবার জিজ্ঞেস করবেন?",
+           "মাফ করবেন, একটু অন্যমনস্ক হয়ে গেছিলাম। কী বললেন?",
+           "হুম, আরেকবার বলুন না?"],
 }
 
 
@@ -122,6 +152,13 @@ def fillers(lang: Optional[str]) -> list[str]:
 
 def failure_message(lang: Optional[str]) -> str:
     return FAILURE_MESSAGES[norm_lang(lang)]
+
+
+def natural_retry_line(lang: Optional[str], rng: Any = None) -> str:
+    """A short in-character 'say that again?' line, varied per call."""
+    import random
+
+    return (rng or random).choice(NATURAL_RETRY_LINES[norm_lang(lang)])
 
 
 # ── prompt language blocks ─────────────────────────────────────────────────
