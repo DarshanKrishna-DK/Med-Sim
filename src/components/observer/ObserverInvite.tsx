@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ObserverContacts } from './ObserverContacts';
+import { usePopoverRequest } from '../../observer/observerCall';
 import { POLYCLINIC_BED_INDEX } from '../../game/store';
 import { getExistingConversation } from '../../voice/conversationStore';
 import { inviteObserver, stopObserverLink, useObserverLink } from '../../observer/studentLink';
@@ -13,6 +15,17 @@ export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null;
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const [adding, setAdding] = useState(false);
+  const [prefill, setPrefill] = useState('');
+  const popReq = usePopoverRequest();
+
+  // "Invite Priya" with no saved Priya: Asha opens the add-contact form, name filled in.
+  useEffect(() => {
+    if (!popReq.seq) return;
+    setOpen(true);
+    setAdding(true);
+    setPrefill(popReq.prefillName);
+  }, [popReq]);
 
   const currentChannel = voiceLive ? getExistingConversation(POLYCLINIC_BED_INDEX)?.getSessionInfo()?.channel ?? '' : '';
   const sharingThisCase = link.status === 'live' && link.caseId === caseId;
@@ -71,6 +84,12 @@ export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null;
               Stop sharing
             </button>
           )}
+          <ObserverContacts
+            voiceLive={voiceLive}
+            adding={adding}
+            setAdding={setAdding}
+            prefill={prefill}
+          />
         </div>
       )}
       <button

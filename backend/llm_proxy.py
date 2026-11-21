@@ -183,6 +183,26 @@ _PATIENT_IS_ASHA = re.compile(
     r"\byou are (?:a human patient named |the \w+ of )?a{1,2}sha\b|\byour name is a{1,2}sha\b", re.IGNORECASE)
 
 
+# "Invite Darshan to observe", "call Darshan to watch", "ask Darshan to join": the
+# doctor asking Asha to phone an observer (src/observer/contacts.ts parses the same
+# lines). A bare "invite <name>" counts on its own; "call/ask <name>" needs the
+# "to observe/watch/join" tail, so "call me if it gets worse" still reaches the patient.
+_OBS_NAME = (
+    r"(?!(?:you|your|me|us|him|her|them|the|a|an|my|our|someone|somebody|back)\b)[a-z][a-z'.-]*"
+    r"(?:\s+(?!to\b|please\b|now\b)[a-z][a-z'.-]*)?"
+)
+_OBSERVER_CMD = re.compile(
+    r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha|please|can you|could you)\W+){0,3}"
+    r"(?:(?:invite|ask|call|ring|phone)\s+" + _OBS_NAME + r"\s+to\s+(?:observe|watch|join|sit in|listen)\b"
+    r"|invite\s+" + _OBS_NAME + r"(?:\s+(?:please|now))?\W*$)",
+    re.IGNORECASE,
+)
+
+
+def addressed_to_observer_call(text: str) -> bool:
+    return bool(_OBSERVER_CMD.search((text or "").strip()))
+
+
 def _patient_named_asha(messages: list[dict[str, Any]]) -> bool:
     first = next((m for m in messages if m.get("role") in ("system", "developer")), None)
     return bool(first and _PATIENT_IS_ASHA.search(str(first.get("content") or "")))
@@ -195,7 +215,7 @@ def addressed_to_nurse(messages: list[dict[str, Any]]) -> bool:
     text = str(messages[-1].get("content") or "").strip()
     if not text:
         return False
-    if _NURSE_ANYWHERE.search(text):
+    if _NURSE_ANYWHERE.search(text) or addressed_to_observer_call(text):
         return True
     # A patient (or child) called Asha: a bare leading "Asha" is the doctor talking to them.
     lead = _NURSE_TITLE if _patient_named_asha(messages) else _NURSE_ADDRESS

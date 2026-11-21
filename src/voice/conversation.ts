@@ -548,8 +548,10 @@ export class Conversation {
       this.nurseCandidate = '';
       if (this.disposed || !utterance || !this.clinicalAgents) return;
       // Dynamic import breaks the conversation ↔ nurseAgent ↔ store cycle.
-      void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach')])
-        .then(([ex, m, coach]) => {
+      void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach'), import('../observer/observerCall')])
+        .then(([ex, m, coach, obs]) => {
+          // "Invite Darshan to observe": Asha phones the observer, not a nurse order.
+          if (obs.maybeHandleObserverCommand(utterance)) return;
           if (coach.isHintRequest(utterance)) return void coach.requestHint();
           // An exam request ("let me check your abdomen") is not a nurse order.
           if (ex.maybeRunExamFromSpeech(utterance)) return;
@@ -798,8 +800,9 @@ export class Conversation {
     this.setStatus('thinking', 'Thinking…');
 
     if (this.clinicalAgents) {
-      void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach')])
-        .then(([ex, m, coach]) => {
+      void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach'), import('../observer/observerCall')])
+        .then(([ex, m, coach, obs]) => {
+          if (obs.maybeHandleObserverCommand(clean)) return;
           if (coach.isHintRequest(clean)) return void coach.requestHint();
           if (ex.maybeRunExamFromSpeech(clean)) return;
           if (m.looksLikeOrder(clean)) void m.runNurseAction(clean, 'typed');

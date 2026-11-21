@@ -4,6 +4,7 @@ import { isHintRequest, requestHint } from '../../agents/coach';
 import { store, useAgentRuns } from '../../game/store';
 import type { ActivePatient } from '../../game/types';
 import { runNurseAction } from '../../agents/nurseAgent';
+import { maybeHandleObserverCommand } from '../../observer/observerCall';
 import { TESTS, testById } from '../../data/tests';
 import { getTestReport } from '../../data/defaultTestResults';
 import { MEDICATIONS, medicationById } from '../../data/medications';
@@ -132,6 +133,7 @@ function NurseCommand() {
     setBusy(true);
     setText('');
     try {
+      if (maybeHandleObserverCommand(t)) return;
       if (isHintRequest(t)) await requestHint();
       else await runNurseAction(t, 'typed');
     } finally {

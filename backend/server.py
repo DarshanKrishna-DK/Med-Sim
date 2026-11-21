@@ -1455,6 +1455,10 @@ app.include_router(_calendar_invite.router)
 # rate limited per link; the doctor's summaries route sits under /agent/.
 from followup_call import router as followup_call_router  # noqa: E402
 app.include_router(followup_call_router)
+# Observer phone call: Twilio webhooks under /rx/obs-call/* are public (signature
+# checked); the doctor's call start / status routes sit under /agent/.
+from observer_call import router as observer_call_router  # noqa: E402
+app.include_router(observer_call_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the

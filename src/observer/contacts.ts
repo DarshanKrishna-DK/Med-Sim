@@ -1,0 +1,225 @@
+/**
+ * Observer contact book: people the student can ask Asha to phone and invite
+ * to watch a live consultation. Kept in this browser only
+ * (localStorage 'medsim.observerContacts.v1'), no account, no backend copy.
+ *
+ * Pure helpers (phone / Telegram normalisation, fuzzy name match, the
+ * "invite Darshan to observe" command parser) carry no imports so the Node
+ * test runner can load this file directly.
+ */
+
+export type Relation = 'friend' | 'senior' | 'teacher' | 'classmate' | 'family' | 'other';
+
+export const RELATIONS: { value: Relation; label: string; hint: string }[] = [
+  { value: 'teacher', label: 'Teacher', hint: 'Notes and marks' },
+  { value: 'senior', label: 'Senior', hint: 'Listen, whisper tips' },
+  { value: 'classmate', label: 'Classmate', hint: 'Listen, whisper tips' },
+  { value: 'friend', label: 'Friend', hint: 'Listen, whisper tips' },
+  { value: 'family', label: 'Family', hint: 'Listen only' },
+  { value: 'other', label: 'Other', hint: 'Listen only' },
+];
+
+export interface ObserverContact {
+  id: string;
+  name: string;
+  relation: Relation;
+  /** E.164, e.g. +919876543210. */
+  phone: string;
+  /** 'telegram' (latest bot chat), '@username' or 'tg:<chat id>'. */
+  telegram?: string;
+}
+
+const KEY = 'medsim.observerContacts.v1';
+const MAX_CONTACTS = 40;
+
+// ── pure helpers ────────────────────────────────────────────────
+
+/** E.164 or null. 10 bare digits are Indian (+91), same rule as the backend. */
+export function normalizePhone(raw: string): string | null {
+  let s = (raw ?? '').trim().replace(/[\s\-().]/g, '');
+  if (s.startsWith('00')) s = `+${s.slice(2)}`;
+  if (s.startsWith('+')) return /^\+\d{8,15}$/.test(s) ? s : null;
+  if (/^0\d{10}$/.test(s)) s = s.slice(1);
+  if (/^\d{10}$/.test(s)) return `+91${s}`;
+  if (/^91\d{10}$/.test(s)) return `+${s}`;
+  return null;
+}
+
+/** 'telegram' | '@user' | 'tg:<id>' (lower-cased), '' for blank, null when invalid. */
+export function normalizeTelegram(raw: string | undefined): string | null {
+  const s = (raw ?? '').trim().toLowerCase().replace(/^https?:\/\/t\.me\//, '@');
+  if (!s) return '';
+  if (s === 'telegram' || s === 'tg') return 'telegram';
+  if (/^tg:-?\d{3,20}$/.test(s)) return s;
+  const user = s.startsWith('@') ? s : `@${s}`;
+  return /^@[a-z0-9_]{4,32}$/.test(user) ? user : null;
+}
+
+export function isRelation(v: unknown): v is Relation {
+  return typeof v === 'string' && RELATIONS.some((r) => r.value === v);
+}
+
+/** Levenshtein distance, early exit above `max`. */
+export function editDistance(a: string, b: string, max = 3): number {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      cur.push(v);
+      if (v < rowMin) rowMin = v;
+    }
+    if (rowMin > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/^(dr|prof|sir|madam|mr|mrs|ms)\.?\s+/, '')
+    .replace(/[^a-z\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** Best contact for a spoken name: exact full name, then first name, then one
+ *  typo (edit distance <= 1, names of 3+ letters). Null when nothing or an
+ *  ambiguous tie matches. */
+export function findContact(name: string, contacts: ObserverContact[]): ObserverContact | null {
+  const q = norm(name);
+  if (!q) return null;
+  const qFirst = q.split(' ')[0];
+  const tiers: ((c: ObserverContact) => boolean)[] = [
+    (c) => norm(c.name) === q,
+    (c) => norm(c.name).split(' ')[0] === qFirst && (q === qFirst || norm(c.name).startsWith(q)),
+    (c) => norm(c.name).split(' ')[0] === qFirst,
+    (c) => {
+      const full = norm(c.name);
+      const first = full.split(' ')[0];
+      if (q.length < 3) return false;
+      return editDistance(full, q, 1) <= 1 || editDistance(first, qFirst, 1) <= 1;
+    },
+  ];
+  for (const t of tiers) {
+    const hits = contacts.filter(t);
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) return null;
+  }
+  return null;
+}
+
+export interface InviteCommand {
+  name: string;
+  /** "invite X" or "... X to observe/watch/join": clearly an observer request,
+   *  even when X is not in the contact book. A bare "call X" is not. */
+  explicit: boolean;
+}
+
+const STOP_NAMES = new Set([
+  'you', 'your', 'me', 'us', 'him', 'her', 'them', 'the', 'a', 'an', 'my', 'our', 'someone', 'somebody', 'back',
+  'it', 'this', 'that', 'lab', 'security', 'code', 'ambulance', 'doctor', 'surgeon', 'surgery', 'radiology',
+]);
+
+const LEAD = /^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha|please|can you|could you|would you)\W+)*(?:(?:nurse|sister|a{1,2}sha)\W+)?(?:(?:please|can you|could you|would you)\W+)*/i;
+const CMD = /^(invite|ask|call|ring|phone)\s+([a-z][a-z'.-]*(?:\s+[a-z][a-z'.-]*)?)(?:\s+(to\s+(?:come\s+and\s+)?(?:observe|watch|join|sit in|listen)\b.*|please|now))?\s*[.!?]*$/i;
+
+/** Parses "invite Darshan (to observe)", "call Darshan to watch",
+ *  "Asha, ask Darshan to join". Null for anything else. */
+export function parseInviteCommand(text: string): InviteCommand | null {
+  const t = (text ?? '').trim().replace(LEAD, '').trim();
+  const m = CMD.exec(t);
+  if (!m) return null;
+  const verb = m[1].toLowerCase();
+  let words = m[2].split(/\s+/);
+  // "call Darshan please" / "invite Darshan now" when the tail regex let a filler slip into the name.
+  words = words.filter((w, i) => i === 0 || !/^(please|now|in|over|up)$/i.test(w));
+  if (STOP_NAMES.has(words[0].toLowerCase())) return null;
+  const tail = (m[3] ?? '').toLowerCase();
+  const hasPurpose = tail.startsWith('to');
+  if (verb === 'ask' && !hasPurpose) return null;
+  const name = words.map((w) => w.replace(/[.']+$/, '')).join(' ');
+  return { name, explicit: verb === 'invite' || hasPurpose };
+}
+
+// ── storage ─────────────────────────────────────────────────────
+
+const storage = (): Storage | undefined => (typeof window === 'undefined' ? undefined : window.localStorage);
+const listeners = new Set<() => void>();
+let contacts: ObserverContact[] = read();
+
+function read(): ObserverContact[] {
+  try {
+    const raw = storage()?.getItem(KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as unknown;
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((c): c is ObserverContact => !!c && typeof c.name === 'string' && typeof c.phone === 'string')
+      .map((c) => ({
+        id: String(c.id || newId()),
+        name: c.name.slice(0, 60),
+        relation: isRelation(c.relation) ? c.relation : 'other',
+        phone: c.phone,
+        ...(c.telegram ? { telegram: String(c.telegram) } : {}),
+      }))
+      .slice(0, MAX_CONTACTS);
+  } catch {
+    return [];
+  }
+}
+
+function write() {
+  try {
+    storage()?.setItem(KEY, JSON.stringify(contacts));
+  } catch {
+    /* private mode: keep for this session */
+  }
+  for (const l of listeners) l();
+}
+
+function newId(): string {
+  return `oc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export const getContacts = (): ObserverContact[] => contacts;
+
+export function subscribeContacts(l: () => void): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+
+export interface ContactDraft {
+  name: string;
+  relation: Relation;
+  phone: string;
+  telegram?: string;
+}
+
+/** Validation messages per field; empty object when the draft is valid. */
+export function validateContact(d: ContactDraft): Partial<Record<'name' | 'phone' | 'telegram', string>> {
+  const out: Partial<Record<'name' | 'phone' | 'telegram', string>> = {};
+  if (d.name.trim().length < 2) out.name = 'Enter a name';
+  if (!normalizePhone(d.phone)) out.phone = 'Use +91 and 10 digits';
+  if (normalizeTelegram(d.telegram) === null) out.telegram = "Use @username, 'telegram' or tg:<chat id>";
+  return out;
+}
+
+/** Adds (or replaces a contact with the same phone). Returns it, or null when invalid. */
+export function addContact(d: ContactDraft): ObserverContact | null {
+  if (Object.keys(validateContact(d)).length) return null;
+  const phone = normalizePhone(d.phone)!;
+  const tg = normalizeTelegram(d.telegram) || undefined;
+  const c: ObserverContact = { id: newId(), name: d.name.trim().slice(0, 60), relation: d.relation, phone, ...(tg ? { telegram: tg } : {}) };
+  contacts = [c, ...contacts.filter((x) => x.phone !== phone)].slice(0, MAX_CONTACTS);
+  write();
+  return c;
+}
+
+export function removeContact(id: string) {
+  contacts = contacts.filter((c) => c.id !== id);
+  write();
+}

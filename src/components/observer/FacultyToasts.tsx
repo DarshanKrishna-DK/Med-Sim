@@ -26,7 +26,11 @@ function Toast({ toast }: { toast: FacultyToast }) {
   return (
     <div className={`faculty-toast faculty-toast--${toast.kind}`}>
       <p className="faculty-toast-text">
-        {toast.kind === 'whisper' ? (
+        {toast.kind === 'call' ? (
+          <>
+            <span className="faculty-toast-who">Message from {toast.examiner || 'your observer'}:</span> {toast.text}
+          </>
+        ) : toast.kind === 'whisper' ? (
           <>
             <span className="faculty-toast-who">Faculty{toast.examiner ? ` (${toast.examiner})` : ''}:</span> {toast.text}
           </>
