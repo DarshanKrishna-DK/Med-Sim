@@ -368,4 +368,4 @@ async def handle(payload: dict[str, Any], meta: dict[str, Any], model: str) -> R
 
 def _no_dashes(text: str) -> str:
     """Spoken replies and captions never carry em or en dashes (house style)."""
-    return re.sub(r"\s*[—–]\s*", ", ", text or "").strip(", ")
+    return re.sub("\\s*[\u2014\u2013]\\s*", ", ", text or "").strip(", ")
