@@ -36,10 +36,25 @@ function specialtyStats(): SpecialtyStat[] {
 }
 
 const NURSE_TOOLS = [
-  { name: 'order_test', what: 'Orders labs, imaging and bedside tests; the result lands in the chart.' },
-  { name: 'check_allergies', what: 'Reads the allergy record before anything is prescribed.' },
-  { name: 'prescribe', what: 'Writes the prescription, checked against the formulary.' },
-  { name: 'schedule_follow_up', what: 'Books the review and records why.' },
+  { name: 'order_test', what: 'Orders labs, imaging and bedside tests; the result lands in the chart and a FHIR record.' },
+  { name: 'check_allergies', what: 'Checks the allergy record plus NIH RxClass and the openFDA label, and cites them.' },
+  { name: 'prescribe', what: 'Writes the prescription against the formulary; holds anything unsafe.' },
+  { name: 'schedule_follow_up', what: 'Books it straight into Google Calendar, recurring if needed, with an Asha call link.' },
+  { name: 'send_to_patient', what: 'Sends the Rx and a Murf voice prescription to the patient on Telegram or WhatsApp.' },
+  { name: 'refer_patient', what: 'Writes an SBAR referral letter (Google Doc and PDF) and a voice handover.' },
+];
+
+/** Every agent a student meets, for the stats row. */
+const AGENTS = [
+  'Patient', 'Nurse Asha', 'Attending', 'Coach', 'Asha on follow-up calls', 'Asha on observer calls',
+  'Priya at Reception', 'Dr. Iyer', 'Dr. Vikram Rao', 'Prof. Kulkarni', 'OSCE examiner', 'Theatre team',
+];
+
+const BEYOND = [
+  { title: 'Follow-up calls', what: 'At the booked time Asha messages the patient and calls them over Agora. A red flag mid-call alerts the doctor on Telegram.' },
+  { title: 'Observer, by phone', what: '“Asha, invite Darshan to observe.” She phones him, answers his questions, and he joins the live call listen-only.' },
+  { title: 'Assignments and Reception', what: 'Teachers assign cases with a code. Priya at the front desk tells you what is pending and emails your report card.' },
+  { title: 'Logbook and referrals', what: 'Every debrief adds a CBME logbook row in Google Sheets; referrals become PDFs in Drive.' },
 ];
 
 export function LandingScreen() {
@@ -77,7 +92,7 @@ export function LandingScreen() {
                 <OrnamentRule />
               </div>
               <p className="hero-sub enter" style={{ ['--enter-delay' as string]: '0.48s' }}>
-                {CASES.length} patients · {SPECIALTIES.length} specialties · one night shift
+                {CASES.length} patients · {SPECIALTIES.length} specialties · 7 languages · {AGENTS.length} AI agents
               </p>
               <div className="hero-actions enter" style={{ ['--enter-delay' as string]: '0.56s' }}>
                 <button type="button" className="btn btn-primary btn-lg" onClick={enterHospital}>
@@ -147,8 +162,8 @@ export function LandingScreen() {
                 <dd><CountUp value={MEDICATIONS.length} /></dd>
               </div>
               <div className="stat">
-                <dt>Agents per shift</dt>
-                <dd><CountUp value={3} /></dd>
+                <dt>AI agents</dt>
+                <dd><CountUp value={AGENTS.length} /></dd>
               </div>
             </dl>
           </div>
@@ -166,7 +181,8 @@ export function LandingScreen() {
               <p className="lede">
                 Say the order the way you would on a ward. The charge-nurse agent hears it in the
                 transcript, plans it, calls her tools one by one, and tells you out loud when it's
-                done. If a tool refuses, you see why.
+                done. Her tools reach real systems: drug databases, a FHIR health record, Google
+                Calendar and the patient's phone. If a tool refuses, you see why.
               </p>
               <ul className="tool-list">
                 {NURSE_TOOLS.map((t) => (
@@ -182,6 +198,31 @@ export function LandingScreen() {
         </section>
 
         <Dither from="night" to="paper" />
+
+        {/* ── Agents beyond the room ── */}
+        <section id="beyond" className="band paper" aria-labelledby="beyond-title">
+          <div className="wrap landing-osce">
+            <div>
+              <h2 id="beyond-title" className="h2">
+                Agents that keep <span className="accent">working.</span>
+              </h2>
+              <p className="lede">
+                The consultation ends; the agents keep going. Asha follows up, phones your observer and files the
+                paperwork, while Priya at Reception keeps your teacher in the loop. Every voice runs on Agora
+                Conversational AI with Murf.
+              </p>
+            </div>
+            <div className="landing-osce-side">
+              <ul className="osce-rules">
+                {BEYOND.map((b) => (
+                  <li key={b.title}>
+                    <strong>{b.title}.</strong> {b.what}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
 
         {/* ── Specialties rail ─────────────────────────────────── */}
         <section id="specialties" className="band paper dots" aria-labelledby="spec-title">

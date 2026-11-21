@@ -1046,6 +1046,14 @@ select.input {
   --lane: var(--amber);
 }
 
+.lane--world {
+  --lane: var(--primary);
+}
+
+.lane--followup {
+  --lane: #f29e7a;
+}
+
 .lane--attending {
   --lane: var(--text);
 }

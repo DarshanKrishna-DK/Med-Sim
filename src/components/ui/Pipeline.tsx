@@ -1,8 +1,9 @@
 import { Fragment } from 'react';
 
-/** "How a consultation runs": the real data path, drawn as three lanes:
- *  the real-time voice loop (teal), the nurse agent acting on the
- *  transcript (amber), and the attending grading at the end (ink). */
+/** "How a consultation runs": the real data path, drawn as five lanes:
+ *  the real-time voice loop, the nurse agent acting on the transcript,
+ *  the real-world systems she writes to, the follow-up she runs later,
+ *  and the attending grading at the end. */
 
 interface Node {
   title: string;
@@ -14,7 +15,7 @@ interface Node {
 }
 
 interface Lane {
-  id: 'voice' | 'nurse' | 'attending';
+  id: 'voice' | 'nurse' | 'world' | 'followup' | 'attending';
   name: string;
   when: string;
   nodes: Node[];
@@ -27,13 +28,13 @@ const LANES: Lane[] = [
     when: 'Every sentence, in real time',
     nodes: [
       { title: 'Your microphone', detail: 'You talk; no push-to-talk' },
-      { title: 'Agora RTC', detail: 'Low-latency audio both ways' },
+      { title: 'Agora RTC + RTM', detail: 'Audio both ways, live transcript' },
       {
         title: 'Agora Conversational AI',
-        detail: 'Hears you, answers in character, speaks',
-        chain: ['Sarvam STT', 'sarvam-105b', 'Murf Falcon'],
+        detail: 'Hears you, answers in character, speaks in 7 languages',
+        chain: ['Sarvam STT', 'MedSim custom LLM', 'Murf Falcon'],
       },
-      { title: 'Patient voice', detail: 'Answers, interrupts, worries' },
+      { title: 'Patient voice', detail: 'Answers, interrupts, worries; stays quiet when you talk to the nurse' },
     ],
   },
   {
@@ -41,14 +42,36 @@ const LANES: Lane[] = [
     name: 'Nurse agent',
     when: 'When you give an order',
     nodes: [
-      { title: 'Live transcript', detail: '“Get a troponin and check allergies”' },
-      { title: 'Charge nurse', detail: 'Plans the order, calls tools' },
+      { title: 'Live transcript', detail: '“Get a CBC and start amoxicillin”' },
+      { title: 'Charge nurse Asha', detail: 'Plans the order, calls tools, adapts' },
       {
         title: 'Tool calls',
         detail: 'Each one checked and logged',
-        tools: ['order_test', 'check_allergies', 'prescribe', 'schedule_follow_up'],
+        tools: ['order_test', 'check_allergies', 'prescribe', 'schedule_follow_up', 'send_to_patient', 'refer_patient'],
       },
-      { title: 'Chart', detail: 'Results land; nurse confirms aloud' },
+      { title: 'Chart + voice', detail: 'Results land; she confirms in her Murf voice' },
+    ],
+  },
+  {
+    id: 'world',
+    name: 'Real world',
+    when: 'As the nurse acts',
+    nodes: [
+      { title: 'Drug safety', detail: 'NIH RxNorm / RxClass and openFDA labels' },
+      { title: 'Health record', detail: 'HL7 FHIR R4 orders, prescriptions, appointments' },
+      { title: 'Calendar', detail: 'Follow-ups booked straight into Google Calendar, recurring' },
+      { title: 'Patient’s phone', detail: 'Telegram / WhatsApp with a Murf voice prescription' },
+    ],
+  },
+  {
+    id: 'followup',
+    name: 'Follow-up',
+    when: 'At the scheduled time',
+    nodes: [
+      { title: 'Reminder', detail: '“Nurse Asha is ready for your check-in”' },
+      { title: 'Asha calls the patient', detail: 'Agora voice agent with Murf, in their language' },
+      { title: 'Acts mid-call', detail: 'Red flag alerts the doctor, reschedules the call' },
+      { title: 'Report', detail: 'Adherence, side effects, red flags on the chart' },
     ],
   },
   {
@@ -56,9 +79,10 @@ const LANES: Lane[] = [
     name: 'Attending',
     when: 'After you end the consultation',
     nodes: [
-      { title: 'Encounter log', detail: 'Questions, orders, diagnosis, Rx' },
-      { title: 'Attending agent', detail: 'Sarvam marks it against an OSCE rubric' },
+      { title: 'Encounter log', detail: 'Questions, exam, orders, diagnosis, Rx' },
+      { title: 'Attending agent', detail: 'Marks it against an OSCE rubric' },
       { title: 'Debrief', detail: 'Scores, evidence, guideline citations' },
+      { title: 'Logbook', detail: 'CBME row in Google Sheets; teacher reports by email' },
     ],
   },
 ];

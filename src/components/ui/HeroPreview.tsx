@@ -10,17 +10,39 @@ const T0 = Date.UTC(2026, 0, 1, 9, 14, 2);
 const EXAMPLE: NurseRun = {
   id: 'example',
   caseId: 'example',
-  utterance: 'Let’s get a full blood count, and check if she’s allergic to anything',
+  utterance: 'Nurse, get a CBC and start amoxicillin 500 three times a day',
   source: 'voice',
   status: 'done',
   startedAt: T0,
-  finishedAt: T0 + 1700,
+  finishedAt: T0 + 6400,
   intent: 'order',
   steps: [
-    { tool: 'order_test', args: { test_id: 'cbc' }, ok: true, summary: 'Full blood count ordered; result filed to the chart.' },
-    { tool: 'check_allergies', args: { patient: 'Mary Smith' }, ok: true, summary: 'No drug allergies recorded.' },
+    { tool: 'order_test', args: { testId: 'cbc' }, ok: true, summary: 'Ordered Complete Blood Count: within normal limits' },
+    {
+      tool: 'check_allergies_and_interactions',
+      args: { medicationId: 'amoxicillin-500' },
+      ok: true,
+      summary: 'NIH RxClass: amoxicillin is a penicillin; documented penicillin allergy. Held.',
+      result: {
+        realCheck: {
+          ok: true,
+          classes: ['Penicillins with extended spectrum'],
+          sources: [
+            { name: 'RxNorm/RxClass (NIH NLM)', url: 'https://rxnav.nlm.nih.gov/' },
+            { name: 'openFDA drug label', url: 'https://open.fda.gov/apis/drug/label/' },
+          ],
+        },
+      },
+    },
+    {
+      tool: 'record_to_ehr',
+      args: { server: 'HL7 FHIR R4' },
+      ok: true,
+      summary: 'Saved to the FHIR health record: ServiceRequest',
+      result: { records: [{ resourceType: 'ServiceRequest', id: 'demo', url: 'https://hapi.fhir.org/baseR4/ServiceRequest' }] },
+    },
   ],
-  spokenConfirmation: 'Bloods are in, doctor. No allergies on file.',
+  spokenConfirmation: 'CBC is sent, doctor... but I’ve held the amoxicillin. NIH and the FDA label flag his penicillin allergy.',
 };
 
 export function HeroPreview() {
@@ -29,8 +51,8 @@ export function HeroPreview() {
       <div className="preview-voice" aria-hidden="true">
         <ThinkingOrb state="composing" size={32} theme="dark" />
         <p className="subtitle">
-          <span className="subtitle-who">Mary</span>
-          <span className="subtitle-line">“It’s the stairs that get me. Two flights and I have to stop.”</span>
+          <span className="subtitle-who">Bhaskar</span>
+          <span className="subtitle-line">“This cough with yellow phlegm won’t stop, doctor. Five days now, with fever.”</span>
         </p>
       </div>
       <ol className="feed preview-feed" aria-hidden="true">
