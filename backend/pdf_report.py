@@ -131,7 +131,7 @@ def build_report_pdf(
     # Header band
     cv.rect(0, PAGE_H - 92, PAGE_W, 92, NIGHT)
     cv.text(MARGIN, PAGE_H - 50, "MedSim", 28, True, (1, 1, 1))
-    cv.text(MARGIN, PAGE_H - 72, "Consultation report card", 12, False, (0.82, 0.85, 0.95))
+    cv.text(MARGIN, PAGE_H - 72, "The Voice-First Clinical Simulator  |  Consultation report card", 12, False, (0.82, 0.85, 0.95))
     if date_text:
         cv.text(PAGE_W - MARGIN - text_width(_ascii(date_text), 10), PAGE_H - 72, date_text, 10, False, (0.82, 0.85, 0.95))
     y = PAGE_H - 126

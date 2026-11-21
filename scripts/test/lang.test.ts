@@ -49,13 +49,15 @@ test('Devanagari resolves to Marathi by session language or the letter ळ', () 
   assert.equal(langOfText('डोळे दुखतात ळ'), 'mr');
 });
 
-test('English adds no language block; hi and kn name their script', () => {
-  assert.equal(languageBlock('en'), '');
-  assert.equal(withLanguage('base', 'en'), 'base');
+test('English gets only the mixed-speech rule; hi and kn name their script', () => {
+  assert.match(languageBlock('en'), /MIXED LANGUAGES/);
+  assert.match(languageBlock('en'), /Indian English/);
+  assert.match(withLanguage('base', 'en'), /^base\n\nMIXED LANGUAGES/);
   const hi = withLanguage('base', 'hi', { female: true });
   assert.match(hi, /Devanagari/);
   assert.match(hi, /feminine Hindi/);
-  assert.match(hi, /language the doctor last spoke/);
+  assert.match(hi, /Always reply in Hindi/);
+  assert.match(hi, /MIXED LANGUAGES/);
   assert.match(languageBlock('hi', { female: false }), /masculine Hindi/);
   const kn = withLanguage('base', 'kn');
   assert.match(kn, /Kannada script/);
@@ -73,5 +75,4 @@ test('new Indian languages name their script and Marathi has gendered verbs', ()
   assert.match(languageBlock('mr', { female: false }), /masculine Marathi/);
   assert.match(languageBlock('ta', { role: 'teacher' }), /whole lesson/);
   assert.doesNotMatch(languageBlock('ta'), /feminine/);
-  assert.match(languageBlock('hi'), /another Indian language/);
 });

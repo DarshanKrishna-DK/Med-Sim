@@ -81,7 +81,7 @@ export function LandingScreen() {
                 />
               </div>
               <p className="kicker enter" style={{ ['--enter-delay' as string]: '0.1s' }}>
-                A voice-first clinical simulator
+                The Voice-First Clinical Simulator
               </p>
               <h1 id="hero-title" className="wordmark enter" style={{ ['--enter-delay' as string]: '0.2s' }}>
                 <span className="wordmark-text" data-text="MedSim">MedSim</span>

@@ -19,7 +19,7 @@ export function SiteFooter() {
           <p className="footer-line">
             See you on the <em>night shift</em>.
           </p>
-          <p className="footer-tag">Practise outpatient consultations out loud, on a night shift that never ends.</p>
+          <p className="footer-tag">The Voice-First Clinical Simulator. Practise outpatient consultations out loud, on a night shift that never ends.</p>
         </div>
 
         <nav className="footer-nav" aria-label="Footer">

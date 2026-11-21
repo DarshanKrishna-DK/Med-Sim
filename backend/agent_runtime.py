@@ -63,7 +63,7 @@ DEFAULT_FALLBACK = {
 VOICE_STYLE = (
     "VOICE: This is a live voice call. Keep each reply to one or two short spoken sentences (about 35 words) unless "
     "you are explaining a concept they asked for. Work out what the person means even from fragments, Hinglish or "
-    "mis-heard words, and act on your best guess; never say you did not understand or catch it. If it is truly "
+    "mis-heard words or a mix of languages in one sentence (English with Hindi, Kannada, Tamil and so on), and act on your best guess; reply in the session language; never say you did not understand or catch it. If it is truly "
     "ambiguous, ask ONE short question with your best guess in it. You may take ONE helpful action nobody asked for "
     "in a session, only when it is strongly implied."
 )

@@ -484,7 +484,7 @@ def render_report_email(rep: dict[str, Any], note: Optional[str] = None) -> tupl
 <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #d9dee7;">
 <tr><td style="background:#0b1f4b;padding:16px 24px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
 <td style="padding-right:12px;">{logo_html}</td>
-<td style="{font}font-size:22px;font-weight:bold;color:#f3f1e2;letter-spacing:1px;">MedSim</td>
+<td style="{font}font-size:22px;font-weight:bold;color:#f3f1e2;letter-spacing:1px;">MedSim<div style="font-size:11px;font-weight:normal;color:#c9d3e6;letter-spacing:0.5px;margin-top:2px;">The Voice-First Clinical Simulator</div></td>
 <td style="{font}font-size:12px;color:#a8e27c;padding-left:12px;text-transform:uppercase;letter-spacing:2px;">Assignment report</td>
 </tr></table></td></tr>
 <tr><td style="padding:22px 24px 8px;">
@@ -518,7 +518,7 @@ def render_report_email(rep: dict[str, Any], note: Optional[str] = None) -> tupl
 <td width="50%" valign="top" style="padding-left:10px;"><div style="{font}font-size:15px;font-weight:bold;color:#a3261f;margin-bottom:8px;">Areas to improve</div>{bullet_list(rep["weaknesses"], "Nothing flagged.")}</td>
 </tr></table></td></tr>
 <tr><td style="background:#0b1f4b;padding:12px 24px;{font}font-size:11px;color:#a8e27c;letter-spacing:3px;text-align:center;">SIMULATION</td></tr>
-<tr><td style="padding:10px 24px 16px;{font}font-size:11px;color:#6b7385;text-align:center;">Sent by Priya at MedSim Reception on behalf of the student. Synthetic training cases, not a clinical assessment.</td></tr>
+<tr><td style="padding:10px 24px 16px;{font}font-size:11px;color:#6b7385;text-align:center;">Sent by Priya at MedSim Reception (The Voice-First Clinical Simulator) on behalf of the student. Synthetic training cases, not a clinical assessment.</td></tr>
 </table></td></tr></table></body></html>"""
 
     lines = [

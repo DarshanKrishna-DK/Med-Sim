@@ -227,13 +227,13 @@ def build_upstream_body(payload: dict[str, Any], cfg: dict[str, str]) -> dict[st
 # those turns get an empty reply here instead of going to the LLM.
 _NURSE_ADDRESS = re.compile(
     r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha)\W+){0,2}"
-    r"(?:nurse|sister|staff nurse|a{1,2}sha|नर्स|आशा)(?![a-z])",
+    r"(?:nurse|sister|staff nurse|a{1,2}sha|नर्स|आशा|सिस्टर|दीदी|ನರ್ಸ್|ಆಶಾ|ಸಿಸ್ಟರ್|ನರ್ಸ|நர்ஸ்|ஆஷா|சிஸ்டர்|నర్స్|ఆశా|సిస్టర్|নার্স|আশা|সিস্টার)(?![a-z])",
     re.IGNORECASE,
 )
 # Same lead-in, but only the unambiguous titles (used when the patient is named Asha).
 _NURSE_TITLE = re.compile(
     r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha)\W+){0,2}"
-    r"(?:nurse|sister|staff nurse|नर्स)(?![a-z])",
+    r"(?:nurse|sister|staff nurse|नर्स|सिस्टर|ನರ್ಸ್|ಸಿಸ್ಟರ್|நர்ஸ்|నర్స్|নার্স)(?![a-z])",
     re.IGNORECASE,
 )
 _NURSE_ANYWHERE = re.compile(r"\b(?:nurse a{1,2}sha|sister a{1,2}sha|how am i doing,? a{1,2}sha)\b", re.IGNORECASE)

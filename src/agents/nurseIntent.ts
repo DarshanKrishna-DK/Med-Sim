@@ -48,7 +48,31 @@ const LEAD_FILLER = /^\W*(?:(?:ok(?:ay)?|so|and|right|alright|um+|uh+|hmm+|well|
 
 /** Spoken to the nurse: "Nurse, ...", "Sister ...", "Asha ...", "Didi ...",
  *  "Ma'am ..." at the start, or "nurse"/"Asha" anywhere in the sentence. */
+/** "Nurse", "Asha", "Sister", "Didi" written in Devanagari, Kannada, Tamil, Telugu or Bengali script
+ *  (Sarvam speech-to-text writes Indian-language speech in its own script). */
+const NATIVE_NURSE = /(नर्स|आशा|सिस्टर|दीदी|ನರ್ಸ್|ನರ್ಸ|ಆಶಾ|ಸಿಸ್ಟರ್|ಅಕ್ಕ|நர்ஸ்|ஆஷா|சிஸ்டர்|నర్స్|ఆశా|సిస్టర్|নার্স|আশা|সিস্টার)/;
+const INDIC = /[ऀ-෿]/;
+/** Request verbs in Hindi, Marathi, Kannada, Tamil, Telugu and Bengali, plus Roman Kannada / Hindi. */
+const NATIVE_ORDER =
+  /(करा\s*दो|करवा\s*दो|करवाइए|कर\s*दो|दे\s*दो|दीजिए|लगा\s*दो|चढ़ा\s*दो|भेज\s*दो|मंगवा|करा|द्या|लावा|ಮಾಡಿಸಿ|ಮಾಡ್ಸಿ|ಕೊಡಿ|ಕೊಡ್ರಿ|ಹಾಕಿ|ಕಳುಹಿಸಿ|ಕಳಿಸಿ|ತರಿಸಿ|ಚೆಕ್\s*ಮಾಡಿ|கொடுங்க|கொடுங்கள்|பண்ணுங்க|போடுங்க|எடுங்க|ఇవ్వండి|చేయించండి|చేయండి|పెట్టండి|দিন|করান|করুন)/;
+const ROMAN_ORDER = /(maadi|maadsi|madsi|maadisi|kodi|kodri|haaki|kalsi|karwa\s*do|karva\s*do|lagao|chadhao|bhejo|chadha\s*do)/i;
+/** English medical loanwords written in Indian scripts ("ECG", "X-ray", "sugar", "test", "tablet"). */
+const NATIVE_CLINICAL =
+  /(ईसीजी|एक्स\s*-?\s*रे|सीबीसी|ब्लड|शुगर|टेस्ट|जांच|इंजेक्शन|गोली|दवा|पैरासिटामोल|स्कैन|ड्रिप|ಇಸಿಜಿ|ಎಕ್ಸ್\s*-?\s*ರೇ|ಬ್ಲಡ್|ಶುಗರ್|ಟೆಸ್ಟ್|ಇಂಜೆಕ್ಷನ್|ಮಾತ್ರೆ|ಔಷಧ|ಪ್ಯಾರಸಿಟಮಾಲ್|ಸ್ಕ್ಯಾನ್|ಡ್ರಿಪ್|ஈசிஜி|எக்ஸ்\s*ரே|டெஸ்ட்|மாத்திரை|ஊசி|ఈసీజీ|ఎక్స్\s*రే|టెస్ట్|మాత్ర|ఇంజెక్షన్|ইসিজি|এক্স\s*রে|টেস্ট|ওষুধ)/;
+
+/** Mixed or native-script speech ("ಒಂದು ECG ಮಾಡಿಸಿ", "पैरासिटामोल दे दो", "sugar test maadi"). */
+export function looksLikeNativeOrder(text: string): boolean {
+  const t = (text ?? '').trim();
+  if (!t) return false;
+  if (NATIVE_NURSE.test(t)) return true;
+  if (ROMAN_ORDER.test(t)) return true;
+  if (!INDIC.test(t)) return false;
+  if (NATIVE_ORDER.test(t)) return true;
+  return NATIVE_CLINICAL.test(t) && !/[?？]\s*$/.test(t) && t.split(/\s+/).length <= 6;
+}
+
 export function isAddressedToNurse(text: string): boolean {
+  if (NATIVE_NURSE.test(text ?? '')) return true;
   const t = (text ?? '').trim().replace(LEAD_FILLER, '');
   if (/^(?:hey\s+|hi\s+)?(nurse|sister|a{1,2}sha|didi|ma'?am|madam|staff)\b/i.test(t)) return true;
   return /\b(nurse|a{1,2}sha)\b/i.test(t);
@@ -96,6 +120,7 @@ export function looksLikeOrder(text: string): boolean {
     return false;
   }
   if (ORDER_PHRASE.test(t)) return true;
+  if (looksLikeNativeOrder(raw)) return true;
   const n = normalise(t);
   if (!hasClinicalWord(n)) return false;
   // "Bloods", "CBC and LFT", "chest x-ray please": short and clinical.

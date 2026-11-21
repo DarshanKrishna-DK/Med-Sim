@@ -319,7 +319,7 @@ STEP_BY_KEY = {s["key"]: s for s in STEPS}
 NEW_RE = re.compile(r"\b(create|make|new|add|build|author)\b.{0,20}\b(patient|case)\b|\bnew ?(patient|case)\b", re.I)
 
 HELP = (
-    "I'm Asha from MedSim. I can turn your idea into a playable patient.\n\n"
+    "I'm Asha from MedSim, The Voice-First Clinical Simulator. I can turn your idea into a playable patient.\n\n"
     "/newpatient  create a patient, one question at a time\n"
     "/list  patients you created here\n"
     "/delete &lt;id&gt;  remove one of them\n"

@@ -4,7 +4,9 @@
 
 <h1 align="center">MedSim</h1>
 
-<p align="center"><strong>A voice-first clinical training simulator. Walk into a 3D Indian hospital, talk to an AI patient in 7 Indian languages, speak your orders, and an AI charge nurse carries them out, then grades how you did.</strong></p>
+<h3 align="center">The Voice-First Clinical Simulator</h3>
+
+<p align="center"><strong>Walk into a 3D Indian hospital, talk to an AI patient in 7 Indian languages, speak your orders, and an AI charge nurse carries them out, then grades how you did.</strong></p>
 
 <p align="center">Agora Conversational AI · Murf Falcon · Sarvam · React Three Fiber · FastAPI</p>
 

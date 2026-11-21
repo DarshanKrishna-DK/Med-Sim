@@ -168,16 +168,16 @@ _HI_RULES = (
     "for Hindi words). Common English medical loanwords are natural in Hindi speech and allowed, for example "
     "BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. "
     "Keep sentences short and conversational, the way a person in India really talks to a doctor. "
-    "Address the doctor respectfully as \"आप\". If the doctor switches to English or Kannada, reply in the "
-    "language the doctor last spoke."
+    "Address the doctor respectfully as \"आप\". Always reply in Hindi, even when the doctor mixes in "
+    "English or Kannada words."
 )
 _KN_RULES = (
     "LANGUAGE: Speak natural, everyday spoken Kannada, written in Kannada script only (never Roman letters "
     "for Kannada words). Common English medical loanwords are natural in spoken Kannada and allowed, for "
     "example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. "
     "Keep sentences short and conversational, the way a person in Karnataka really talks to a doctor. "
-    "Address the doctor respectfully as \"ನೀವು\". If the doctor switches to English or Hindi, reply in the "
-    "language the doctor last spoke."
+    "Address the doctor respectfully as \"ನೀವು\". Always reply in Kannada, even when the doctor mixes in "
+    "English or Hindi words."
 )
 
 
@@ -187,8 +187,8 @@ def _rules(name: str, script: str, region: str, you: str) -> str:
         f"for {name} words). Common English medical loanwords are natural in spoken {name} and allowed, for "
         "example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. "
         f"Keep sentences short and conversational, the way a person in {region} really talks to a doctor. "
-        f"Address the doctor respectfully as \"{you}\". If the doctor switches to English or Hindi, reply in the "
-        "language the doctor last spoke."
+        f"Address the doctor respectfully as \"{you}\". Always reply in {name}, even when the doctor mixes in "
+        "English or Hindi words."
     )
 
 
@@ -226,13 +226,19 @@ _ROLE_TAIL = {
 }
 
 
+MIXED_SPEECH = (
+    "MIXED LANGUAGES: The doctor may mix languages inside one sentence (Hinglish, Kannada with English and Hindi, Tamil or Telugu with English), in any script or in Roman letters, and speech-to-text may garble or half-transcribe it. Understand the meaning whatever the mix and answer what they meant. Never say you did not understand and never comment on their language. "
+)
+MIXED_SPEECH_EN = MIXED_SPEECH + "Reply in simple Indian English (a common word like haan or accha is fine)."
+
+
 def language_block(lang: Optional[str], *, female: bool = False, role: str = "patient") -> str:
-    """Prompt text that makes a persona speak the session language. Empty for English.
-    Prompts stay English; only the output language changes."""
+    """Prompt text that makes a persona understand mixed-language speech and speak the
+    session language. Prompts stay English; only the output language changes."""
     lg = norm_lang(lang)
     if lg == "en":
-        return ""
-    out = [_LANG_RULES[lg], _ROLE_TAIL.get(role, _ROLE_TAIL["patient"])]
+        return MIXED_SPEECH_EN
+    out = [_LANG_RULES[lg], MIXED_SPEECH, _ROLE_TAIL.get(role, _ROLE_TAIL["patient"])]
     if lg == "mr":
         out.append(
             "You are a woman: use feminine Marathi verb forms for yourself (\"मी आले होते\", \"मी करत आहे\")."

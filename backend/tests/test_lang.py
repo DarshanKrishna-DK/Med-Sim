@@ -106,7 +106,8 @@ class LangUnitTests(unittest.TestCase):
             b = lang.language_block(lg, female=True)
             self.assertIn(script, b)
             self.assertIn("BP, sugar, test", b)
-            self.assertIn("language the doctor last spoke", b)
+            self.assertIn("Always reply in", b)
+            self.assertIn("MIXED LANGUAGES", b)
             self.assertIn("JSON", lang.language_block(lg, role="coach"))
             self.assertIn("lesson", lang.language_block(lg, role="teacher"))
         self.assertIn("feminine Marathi", lang.language_block("mr", female=True))
@@ -153,19 +154,20 @@ class LangUnitTests(unittest.TestCase):
         self.assertEqual(voice.filler_block("kn")["content"]["static_config"]["phrases"], lang.fillers("kn"))
 
     def test_language_blocks(self) -> None:
-        self.assertEqual(lang.language_block("en"), "")
+        self.assertIn("MIXED LANGUAGES", lang.language_block("en"))
+        self.assertIn("Indian English", lang.language_block("en"))
         hi = lang.language_block("hi", female=True)
         self.assertIn("Devanagari", hi)
         self.assertIn("feminine Hindi", hi)
         self.assertIn("BP, sugar, test", hi)
-        self.assertIn("language the doctor last spoke", hi)
+        self.assertIn("Always reply in Hindi", hi)
         self.assertIn("masculine Hindi", lang.language_block("hi", female=False))
         kn = lang.language_block("kn")
         self.assertIn("Kannada script", kn)
         self.assertNotIn("feminine", kn)
         self.assertIn("JSON", lang.language_block("hi", role="coach"))
         self.assertIn("lesson", lang.language_block("kn", role="teacher"))
-        self.assertEqual(lang.with_language("X", "en"), "X")
+        self.assertTrue(lang.with_language("X", "en").startswith("X\n\nMIXED LANGUAGES"))
         self.assertTrue(lang.with_language("X", "hi", role="nurse").startswith("X\n\n"))
 
     def test_failure_message_per_language(self) -> None:
