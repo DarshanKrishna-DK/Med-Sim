@@ -48,6 +48,7 @@ function doPost(e) {
     var action = String(body.action || 'calendar').toLowerCase();
     if (action === 'logbook') return json_(logbook_(body));
     if (action === 'referral') return json_(referral_(body));
+    if (action === 'email') return json_(handleEmail_(body));
     if (action !== 'calendar') return json_({ ok: false, error: 'unknown action' });
     return calendar_(body);
   } catch (err) {
