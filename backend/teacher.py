@@ -462,14 +462,38 @@ class AskRequest(BaseModel):
     messages: list[AskMessage] = Field(min_length=1, max_length=40)
 
 
+# Typed / voice-off Q&A: same short, human style as the live voice agent.
+ASK_STYLE = (
+    "REPLY STYLE: Answer like a person talking, in one to three short sentences (about 50 words at most), with a "
+    "light acknowledgement when natural ('Achha, good question.'). Work out what the student means even from "
+    "fragments, typos or Hinglish and answer that; never say you did not understand. If it is truly ambiguous, ask "
+    "ONE short question with your best guess. End with a short check-in or an offer to go deeper, not a lecture."
+)
+
+# Spoken/shown when the model is down or empty: natural, moves the chat on.
+ASK_FALLBACK = {
+    "en": "Hmm, give me a moment on that one. Ask me again, or try it a different way?",
+    "hi": "हम्म, इस पर मुझे एक पल दीजिए। एक बार फिर पूछिए, या थोड़ा अलग तरीके से?",
+}
+
+
+def ask_fallback(lang: Optional[str]) -> str:
+    return ASK_FALLBACK.get((lang or "en").lower(), ASK_FALLBACK["en"])
+
+
 @router.post("/teach/ask")
 async def teach_ask(req: AskRequest):
     """Typed Q&A with the teacher when the live voice agent is not connected.
-    Same persona prompt the voice agent gets (sent by the browser)."""
-    msgs = [{"role": "system", "content": langmod.with_language(req.system, req.lang, female=True, role="teacher")}] + [m.model_dump() for m in req.messages[-12:]]
-    msg, _ = await asyncio.wait_for(chat(msgs, max_tokens=320, temperature=0.6), timeout=ATTEMPT_TIMEOUT_S * 1.5)
-    text = strip_think(msg.get("content") or "")
-    text = re.sub(r"[*_`#]+", "", text).strip()
+    Same persona prompt the voice agent gets (sent by the browser), plus ASK_STYLE.
+    A model failure returns a natural fallback line (fallback: true), never an error."""
+    system = langmod.with_language(req.system + " " + ASK_STYLE, req.lang, female=True, role="teacher")
+    msgs = [{"role": "system", "content": system}] + [m.model_dump() for m in req.messages[-12:]]
+    try:
+        msg, _ = await asyncio.wait_for(chat(msgs, max_tokens=220, temperature=0.6), timeout=ATTEMPT_TIMEOUT_S * 1.5)
+        text = re.sub(r"[*_`#]+", "", strip_think(msg.get("content") or "")).strip()
+    except Exception as e:  # noqa: BLE001 - provider down, timeout, bad body
+        log.warning("teach/ask failed: %s", type(e).__name__)
+        text = ""
     if not text:
-        raise HTTPException(status_code=502, detail="Teacher model returned an empty reply")
+        return {"reply": ask_fallback(req.lang), "fallback": True}
     return {"reply": text[:1200]}

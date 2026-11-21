@@ -7,6 +7,8 @@ import type { RadCase } from '../data/radiology';
 import { MODALITY_LABEL } from '../data/radiology.ts';
 import type { Lang } from '../game/lang';
 import { withLanguage } from './language.ts';
+import { getProfile } from '../game/profile.ts';
+import { addressLine, humanRules } from './humanVoice.ts';
 
 export const RADIOLOGIST = {
   name: 'Dr. Vikram Rao',
@@ -19,8 +21,18 @@ export const RADIOLOGIST = {
 export const RADIOLOGIST_GREETING =
   'Come in, come in. I am Doctor Vikram Rao. Pick a film, look at it properly, then describe it to me in order, the way you would report it. Take your time.';
 
-function basePersona(): string[] {
+function nameOf(name?: string | null): string {
+  if (name !== undefined) return name ?? '';
+  try {
+    return getProfile()?.name ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function basePersona(studentName?: string | null): string[] {
   return [
+    addressLine(nameOf(studentName)),
     `You are ${RADIOLOGIST.name}, a calm, experienced ${RADIOLOGIST.title} at an Indian medical college hospital, sitting at the reporting desk in a dim reading room with an MBBS student or intern.`,
     'You are speaking out loud through a voice call, so everything you say is heard, not read.',
     '',
@@ -30,10 +42,13 @@ function basePersona(): string[] {
     'Never name a missed finding outright and never reveal the diagnosis before they commit. If they have covered everything, ask them to commit to a diagnosis.',
     'Once they commit, they press the grade button; you may then briefly say whether you agree and give one teaching pearl.',
     'If they jump straight to a diagnosis, ask them to describe what they see first.',
+    'Read intent loosely: "kuch dikh raha hai right side", "lung looks white-ish", "is it pneumonia sir" are real descriptions or a diagnosis attempt; work with them. "Next one", "another film" means they want the next film; "I give up", "just tell me" means ask them to commit to their best guess first, then teach.',
     'Encourage a systematic approach (ABCDE for a chest film, rate rhythm axis intervals ST for an ECG, Blood Can Be Very Bad for a CT head).',
     '',
+    ...humanRules(35),
+    '',
     'HOW YOU SPEAK:',
-    'One to three short spoken sentences per turn, never more than about forty five words.',
+    'Usually one or two short spoken sentences; only a teaching pearl may run to about forty five words.',
     'No lists, no markdown, no headings, no emojis, no stage directions.',
     'A light Indian English warmth is fine ("achha", "see,"), but keep it sparing.',
     '',
@@ -42,12 +57,12 @@ function basePersona(): string[] {
   ];
 }
 
-export function buildRadiologistPersona(lang: Lang = 'en'): string {
-  return withLanguage(basePersona().join('\n'), lang, { female: false, role: 'teacher' });
+export function buildRadiologistPersona(lang: Lang = 'en', studentName?: string | null): string {
+  return withLanguage(basePersona(studentName).join('\n'), lang, { female: false, role: 'teacher' });
 }
 
 /** Persona grounded in the film currently on the screen (answer key kept private). */
-export function buildRadiologistCasePrompt(c: RadCase, lang: Lang = 'en'): string {
+export function buildRadiologistCasePrompt(c: RadCase, lang: Lang = 'en', studentName?: string | null): string {
   const key = {
     study: c.study,
     modality: MODALITY_LABEL[c.modality],
@@ -59,7 +74,7 @@ export function buildRadiologistCasePrompt(c: RadCase, lang: Lang = 'en'): strin
   };
   return withLanguage(
     [
-      ...basePersona(),
+      ...basePersona(studentName),
       '',
       'THE FILM ON THE SCREEN RIGHT NOW (your private answer key; never read it out, never reveal the diagnosis before the student commits):',
       JSON.stringify(key),

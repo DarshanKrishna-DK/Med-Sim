@@ -52,10 +52,21 @@ MAX_SESSIONS = 300
 
 Executor = Callable[[str, dict[str, Any], dict[str, Any]], Awaitable[dict[str, Any]]]
 
+# Spoken when the LLM or a tool fails: a short human line that keeps the
+# conversation moving, never a robotic apology or "I did not understand".
 DEFAULT_FALLBACK = {
-    "en": "Sorry, I could not finish that just now. Could you say it again?",
-    "hi": "माफ़ कीजिए, अभी यह पूरा नहीं हो पाया। क्या आप फिर से कह सकते हैं?",
+    "en": "Give me a second... okay, say that once more?",
+    "hi": "एक सेकंड... हाँ, एक बार फिर बोलिए?",
 }
+
+# Prepended to every toolset's addendum: voice replies stay short and human.
+VOICE_STYLE = (
+    "VOICE: This is a live voice call. Keep each reply to one or two short spoken sentences (about 35 words) unless "
+    "you are explaining a concept they asked for. Work out what the person means even from fragments, Hinglish or "
+    "mis-heard words, and act on your best guess; never say you did not understand or catch it. If it is truly "
+    "ambiguous, ask ONE short question with your best guess in it. You may take ONE helpful action nobody asked for "
+    "in a session, only when it is strongly implied."
+)
 
 
 @dataclass
@@ -233,9 +244,10 @@ async def run_tool(ts: AgentToolset, tctx: dict[str, Any], name: str, raw_args: 
 def _addendum(ts: AgentToolset, tctx: dict[str, Any]) -> str:
     a = ts.system_addendum
     try:
-        return a(tctx) if callable(a) else a
+        text = a(tctx) if callable(a) else a
     except Exception:  # noqa: BLE001
-        return ""
+        text = ""
+    return VOICE_STYLE + " " + text if text else VOICE_STYLE
 
 
 def _actions_note(tctx: dict[str, Any]) -> Optional[dict[str, str]]:

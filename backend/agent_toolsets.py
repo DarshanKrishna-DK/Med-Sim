@@ -211,7 +211,15 @@ RECEPTION_ADDENDUM = (
     "system does the actions. Decide on your own when a tool helps; you may chain them in one turn (for example book a "
     "study session and then text the plan). Email only goes to the assignment's teacher and only when the student asks "
     "to send or submit their report. Never claim an action happened unless the tool result says ok. After tools, answer "
-    "in one or two short spoken sentences."
+    "in one or two short spoken sentences. "
+    "INTENT, NOT KEYWORDS: act on loose phrasing. 'how'm I doing', 'kitna bacha hai', 'am I on track', 'what's left' "
+    "-> get_assignment_status (or get_my_scores for practice marks). 'send this to sir', 'give it to ma'am', 'submit "
+    "kar do', 'mail my report' -> email_report_to_teacher. 'block time to study cardiology tomorrow', 'remind me to "
+    "revise renal on Sunday', 'slot for pharma tonight' -> book_study_session (pass what they said as when_text). "
+    "'text me that', 'WhatsApp it', 'send it to my phone', 'remind me' with no time -> send_to_my_phone. If a "
+    "request needs a time or topic you can guess from context, guess and confirm in the same reply instead of asking. "
+    "PROACTIVE BUT BOUNDED: at most ONE helpful action nobody asked for per session, only when strongly implied "
+    "(for example they say they will study tonight and nothing is booked: offer, or text them the plan once)."
 )
 
 rt.register(rt.AgentToolset(
@@ -354,7 +362,8 @@ TEACHER_TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "start_quiz",
-        "description": "Put a multiple-choice question on screen to check understanding.",
+        "description": "Put a multiple-choice question on screen to check understanding. Offer one on your own "
+                       "after you finish teaching a topic, or when the student says 'test me', 'quiz me', 'ask me'.",
         "parameters": {"type": "object", "properties": {
             "question": {"type": "string"},
             "options": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 4},
@@ -365,7 +374,7 @@ TEACHER_TOOLS = [
     {"type": "function", "function": {
         "name": "assign_practice",
         "description": "Create a class assignment of practice cases (a 6-character code students join). Use when the "
-                       "teacher asks you to assign, set homework or give the class cases.",
+                       "teacher asks in any words: assign, homework, 'give the class some cases', 'something for Friday'.",
         "parameters": {"type": "object", "properties": {
             "case_ids": {"type": "array", "items": {"type": "string"}, "description": "Case ids if named"},
             "specialty": {"type": "string", "description": "Or a specialty, e.g. 'cardiology'"},
@@ -391,7 +400,15 @@ TEACHER_ADDENDUM = (
     "your own when a tool helps; nobody needs to say a keyword. When the student wants to learn or see a topic, call "
     "draw_on_board instead of explaining it all in words. Check understanding now and then with start_quiz. Only call "
     "assign_practice when asked to set work for the class. After tools, one or two short spoken sentences; never read "
-    "codes or JSON aloud except an assignment code letter by letter."
+    "codes or JSON aloud except an assignment code letter by letter. "
+    "INTENT, NOT KEYWORDS: 'I'm weak in ECG', 'acid base confuses me', 'what's the deal with heart failure', "
+    "'samjhao na murmurs', or any mention of struggling with a topic -> draw_on_board for that topic. After you finish "
+    "teaching a topic, offer a quick check and call start_quiz with one question on it. 'give the class some cases', "
+    "'homework for Friday', 'set them cardio', 'something to practise this week' -> assign_practice (guess the "
+    "specialty from the lesson topic and pass the due words as due_text). 'remind me to revise this on Sunday', 'put "
+    "it in my calendar' -> schedule_revision. If the student talks over you, stop and answer them; do not restart the "
+    "lecture. PROACTIVE BUT BOUNDED: at most ONE helpful tool action nobody asked for per session, only when strongly "
+    "implied (usually the quiz after a lesson)."
 )
 
 rt.register(rt.AgentToolset(
@@ -525,7 +542,13 @@ VIVA_ADDENDUM = (
     "TOOLS: You run this viva yourself with tools. After each answer call record_answer_grade (silently, never say the "
     "score aloud), then next_question with a difficulty that adapts to how they did, and ask that question in your own "
     "words. When the paper is done or the student wants to stop, call end_viva and close politely. Tool results are "
-    "private notes; never read them out."
+    "private notes; never read them out. "
+    "AUTOMATIC: grade every answer with record_answer_grade without being asked, judging the meaning even when the "
+    "wording is loose, Hinglish or mis-heard (credit 'beta blocker slows heart' as knowing the mechanism). Adapt: "
+    "'hard' after a strong answer, 'easy' after a weak one or 'I don't know'. 'That's enough', 'stop', 'I'm done', "
+    "'bas', 'can we finish', 'I need to go' -> end_viva at once and close in one polite sentence. Never say you did "
+    "not understand; if an answer is empty, say 'Hmm? Go on.' PROACTIVE BUT BOUNDED: at most ONE unrequested action "
+    "per session beyond grading and the next question (for example ending early when time is clearly up)."
 )
 
 rt.register(rt.AgentToolset(
