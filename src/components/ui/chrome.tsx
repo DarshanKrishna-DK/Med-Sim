@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { store, useScreen } from '../../game/store';
 import { HAS_CORRIDOR } from '../corridorRoute';
+import { getProfile, openProfileDialog } from '../../game/profile';
+import { ProfileChip } from './ProfileBadge';
 
 // ── Navigation helpers ───────────────────────────────────────────────
 
 /** "Enter the hospital": the 3D corridor when the 3D layer ships its
  *  screen, otherwise the case library. Call from a click handler. */
 export function enterHospital() {
+  if (!getProfile()) {
+    openProfileDialog(enterHospital);
+    return;
+  }
   if (HAS_CORRIDOR) store.enterCorridor();
   else store.setScreen('library');
 }
@@ -106,9 +112,12 @@ export function AppHeader({ overlay = false }: { overlay?: boolean }) {
             </button>
           ))}
         </nav>
-        <button type="button" className="btn btn-primary btn-sm nav-cta" onClick={enterHospital}>
-          Enter the hospital
-        </button>
+        <div className="nav-end">
+          <ProfileChip />
+          <button type="button" className="btn btn-primary btn-sm nav-cta" onClick={enterHospital}>
+            Enter the hospital
+          </button>
+        </div>
       </div>
     </header>
   );

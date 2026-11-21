@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { ProfileBadge } from '../ui/ProfileBadge';
 import { Drawer } from '@lucasmarkes/hairline/react';
 import { store } from '../../game/store';
 import { listEvalHistory } from '../../data/evalHistory';
@@ -20,6 +21,7 @@ export function ProgressScreen() {
       <AppHeader />
       <main className="progress wrap">
         <div className="library-head">
+          <ProfileBadge />
           <p className="kicker">My progress</p>
           <h1 className="page-title">How your consultations are going</h1>
           <p className="page-lede">Built from the debriefs saved on this browser: practice consultations and OSCE stations.</p>

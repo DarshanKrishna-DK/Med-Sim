@@ -4499,3 +4499,177 @@ button.hud-case[aria-expanded='true'] .hud-case-toggle {
     display: none;
   }
 }
+
+/* ── Profile dialog, styled select, badge ─────────────────────────── */
+
+.profile-layer {
+  position: fixed;
+  z-index: 80;
+}
+
+.profile-card {
+  width: min(460px, 100%);
+  gap: 16px;
+}
+
+.profile-field {
+  display: grid;
+  gap: 0;
+}
+
+.profile-err {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--destructive);
+}
+
+.input[aria-invalid='true'] {
+  box-shadow: inset 0 0 0 2px var(--destructive);
+}
+
+.select {
+  position: relative;
+}
+
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.select-placeholder {
+  color: var(--muted);
+}
+
+.select-chev {
+  flex: none;
+  color: var(--accent2);
+  transition: transform var(--d-fast) var(--ease-std);
+}
+
+.select[data-open] .select-chev {
+  transform: rotate(180deg);
+}
+
+.select[data-open] .select-trigger {
+  box-shadow: inset 0 0 0 2px var(--accent2);
+}
+
+.select-menu {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--line-strong), 0 12px 28px rgba(3, 10, 28, 0.55);
+  animation: select-in var(--d-fast) var(--ease-std) both;
+}
+
+@keyframes select-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+
+.select-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: 10px 12px;
+  font-size: 15px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.select-option[data-active] {
+  background: var(--surface-3);
+}
+
+.select-option[aria-selected='true'] {
+  color: var(--primary);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.select-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-menu { animation: none; }
+  .select-chev { transition: none; }
+}
+
+.doc-avatar {
+  display: block;
+  flex: none;
+  box-shadow: 0 0 0 2px var(--line-strong);
+}
+
+.profile-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: var(--s-3);
+}
+
+.profile-badge-text {
+  display: grid;
+  gap: 2px;
+}
+
+.profile-badge-name {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--text);
+}
+
+.profile-badge-uni {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.profile-badge--compact .profile-badge-name {
+  font-size: 1.15rem;
+}
+
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 3px;
+  border: 0;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--line);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.profile-chip:hover {
+  box-shadow: inset 0 0 0 2px var(--accent2);
+}
+
+.profile-chip .doc-avatar {
+  box-shadow: none;
+}
+
+@media print {
+  .profile-badge-name, .profile-badge-uni { color: #141414; }
+}
+
+.nav-end {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}

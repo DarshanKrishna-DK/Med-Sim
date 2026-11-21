@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ProfileBadge } from '../ui/ProfileBadge';
 import { ThinkingOrb } from 'thinking-orbs';
 import { ClipboardArt } from '../ui/pixel/MedArt';
 import { store, useStore } from '../../game/store';
@@ -185,6 +186,7 @@ function DebriefBody({
     <article className="debrief-body">
       <header className="verdict">
         <div className="verdict-meta">
+          <ProfileBadge />
           <p className="field-label">
             Debrief · {c.name}, {c.age}{c.gender}
             {savedAt ? ` · ${new Date(savedAt).toLocaleDateString()}` : ''}

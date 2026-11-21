@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ProfileBadge } from '../ui/ProfileBadge';
 import { ThinkingOrb } from 'thinking-orbs';
 import { store, useStore } from '../../game/store';
 import { getEvalHistory, saveEvalHistory, type EvalHistoryEntry } from '../../data/evalHistory';
@@ -150,6 +151,7 @@ function Report({ entry, result, encounter }: { entry: EvalHistoryEntry; result:
             <h1 id="osce-report-title" className="osce-report-title">Station marking sheet</h1>
           </div>
         </div>
+        <ProfileBadge />
         <div className="row-actions no-print">
           <button type="button" className="btn btn-primary" onClick={() => window.print()}>
             Print or save as PDF

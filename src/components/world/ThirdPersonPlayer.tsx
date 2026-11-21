@@ -3,7 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { WallCollider } from '../three/Player';
 import { HumanCharacter, makeControl } from './HumanCharacter';
-import { DOCTOR_LOOK, type Look } from './rigs';
+import { DOCTOR_LOOK, playerLook, type Look } from './rigs';
+import { useProfile } from '../../game/profile';
 
 export type Collider = WallCollider & { /** height of the obstacle; undefined = full wall */ h?: number };
 
@@ -112,7 +113,7 @@ export function ThirdPersonPlayer({
   colliders,
   rig,
   seat,
-  look = DOCTOR_LOOK,
+  look: lookProp,
   lookAt,
 }: {
   runtime: PlayerRuntime;
@@ -123,6 +124,8 @@ export function ThirdPersonPlayer({
   /** Optional world point the avatar's head tracks while seated. */
   lookAt?: THREE.Vector3 | null;
 }) {
+  const profile = useProfile();
+  const look = useMemo(() => playerLook(lookProp ?? DOCTOR_LOOK, profile?.gender), [lookProp, profile?.gender]);
   const { camera, gl } = useThree();
   const group = useRef<THREE.Group>(null);
   const control = useMemo(() => makeControl({ seatHeight: seat?.height }), [seat?.height]);

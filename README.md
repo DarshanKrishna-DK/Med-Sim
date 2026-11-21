@@ -39,6 +39,7 @@ You practise the full loop by voice (interview, order, adapt, prescribe, follow 
 ## What it does
 
 - **3D hospital, third person.** Walk your doctor down a corridor of 38 doors: 33 clinics with 327 Indian patients, an Operation Theatre, a Radiology reading room and a Teacher Portal.
+- **Your own doctor.** Enter your name, university and gender before your shift. You play a woman or man doctor to match, and your name and avatar appear on your debriefs, OSCE sheets and progress page. Stored only in your browser.
 - **Talk to the patient.** A real-time voice conversation through Agora. Patients answer only what you ask, hesitate, worry and ask questions back.
 - **Examine by voice.** "Let me listen to your chest." Findings consistent with the case appear on the chart, with real heart and lung sounds on a stethoscope button.
 - **7 Indian languages.** English, Hindi, Kannada, Tamil, Telugu, Marathi and Bengali. One toggle switches the patient, nurse, coach, teacher and examiner. Murf speaks the language and Sarvam understands whichever you use.

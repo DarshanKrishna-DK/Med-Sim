@@ -86,6 +86,26 @@ export const DOCTOR_LOOK: Look = {
   stethoscope: true,
 };
 
+/** The player when the profile says female: same white coat, navy trousers
+ *  and stethoscope as the male doctor, on the female rig. */
+export const FEMALE_DOCTOR_LOOK: Look = {
+  rig: 'female',
+  height: 1.63,
+  skin: '#c88f6c',
+  hair: HAIR_BLACK,
+  top: { color: '#f4f5f7', map: false, roughness: 0.8 },
+  bottom: { color: '#1d2a44', map: false },
+  shoes: '#2a221d',
+  stethoscope: true,
+};
+
+/** Swap a player look onto the body the profile asked for (keeps the outfit). */
+export function playerLook(base: Look, gender: 'female' | 'male' | 'other' | undefined): Look {
+  if (gender !== 'female') return base;
+  const { rig, height, skin, hair } = FEMALE_DOCTOR_LOOK;
+  return { ...base, rig, height, skin, hair, beard: undefined };
+}
+
 export const NURSE_LOOK: Look = {
   rig: 'female',
   height: 1.6,

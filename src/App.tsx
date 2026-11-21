@@ -12,6 +12,7 @@ import { lazy, Suspense } from 'react';
 import { CorridorRoute } from './components/corridorRoute';
 import { VoiceMetricsPanel } from './components/ui/VoiceMetricsPanel';
 import { FacultyToasts } from './components/observer/FacultyToasts';
+import { ProfileDialog } from './components/ui/ProfileDialog';
 
 // Teacher Portal lecture hall (3D + whiteboard), loaded on first visit.
 const TriageDrillScreen = lazy(() => import('./components/screens/TriageDrillScreen'));
@@ -36,6 +37,7 @@ export default function App() {
       <ScreenView screen={screen} />
       <VoiceMetricsPanel />
       <FacultyToasts />
+      <ProfileDialog />
     </>
   );
 }
