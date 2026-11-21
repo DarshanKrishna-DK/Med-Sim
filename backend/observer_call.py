@@ -700,7 +700,7 @@ async def obs_turn(token: str, request: Request) -> Response:
     out = await answer(s, speech)
     reply = out["reply"]
     if out.get("schedule"):
-        reply = await schedule_for_caller(s, out["schedule"])
+        reply = schedule_now_reply(s, out["schedule"])
     with _lock:
         if out["message"] and len(s["messages"]) < MAX_MESSAGES:
             s["messages"].append({"id": len(s["messages"]) + 1, "from": s["contact"]["name"], "text": out["message"],
@@ -712,7 +712,35 @@ async def obs_turn(token: str, request: Request) -> Response:
     return _xml(twiml_gather(token, reply, url, bye, b_url))
 
 
-async def schedule_for_caller(s: dict[str, Any], when_text: str) -> str:
+def _schedule_start(when_text: str) -> datetime:
+    from datetime import timedelta
+
+    import agent_toolsets
+
+    w = (when_text or "").strip().lower()
+    if not w or w in ("now", "right now", "asap", "immediately", "today now"):
+        return datetime.now(IST) + timedelta(minutes=2)
+    return agent_toolsets.resolve_when(w)
+
+
+def schedule_now_reply(s: dict[str, Any], when_text: str) -> str:
+    """Answer the caller at once and book the calendar event in the background,
+    so the Twilio webhook never times out ("URL not reachable")."""
+    import agent_toolsets
+
+    start = _schedule_start(when_text)
+    task = asyncio.get_event_loop().create_task(schedule_for_caller(s, when_text, start))
+    _BACKGROUND.add(task)
+    task.add_done_callback(_BACKGROUND.discard)
+    when = agent_toolsets._start_text(start)
+    return no_dashes(f"Sure, I'm putting it in your Google Calendar for {when}, with the joining link in the invite. "
+                     "Anything else?")
+
+
+_BACKGROUND: set = set()
+
+
+async def schedule_for_caller(s: dict[str, Any], when_text: str, start: Optional[datetime] = None) -> str:
     """The caller asked Asha to schedule: book a Google Calendar event with the
     observer link (MedSim Calendar Bridge) and say what was booked."""
     from datetime import timedelta
@@ -720,17 +748,13 @@ async def schedule_for_caller(s: dict[str, Any], when_text: str) -> str:
     import agent_toolsets
 
     st, cs = s["student"], s["case"]
-    w = (when_text or "").strip().lower()
-    if not w or w in ("now", "right now", "asap", "immediately", "today now"):
-        start = datetime.now(IST) + timedelta(minutes=2)
-    else:
-        start = agent_toolsets.resolve_when(w)
+    start = start or _schedule_start(when_text)
     who = st["name"] or "a MedSim student"
     title = f"Observe {who}'s MedSim {cs['specialtyLabel'] or 'clinic'} consultation"
     desc = (f"Live MedSim consultation (training simulation). Join as a listen-only observer: {s['inviteUrl']} "
             f"Your role: {ROLE_TEXT.get(s['contact']['relation'], ROLE_TEXT['other'])}")
     try:
-        res = await asyncio.wait_for(agent_toolsets.book_calendar(title, desc, start, 30, "MedSim (online)"), timeout=7.0)
+        res = await asyncio.wait_for(agent_toolsets.book_calendar(title, desc, start, 30, "MedSim (online)"), timeout=20.0)
     except Exception as e:  # noqa: BLE001
         log.warning("observer schedule failed: %s", type(e).__name__)
         res = {"ok": False}
