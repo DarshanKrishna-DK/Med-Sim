@@ -211,9 +211,11 @@ export async function requestHint(): Promise<void> {
   const caseId = p.case.id;
   const ctl = new AbortController();
   const timer = window.setTimeout(() => ctl.abort(), TIMEOUT_MS + 4000);
-  const { speakAsNurse } = await import('./nurseAgent');
-  void speakAsNurse('Let me have a look, doctor.');
+  let speak: typeof import('./nurseAgent').speakAsNurse | null = null;
   try {
+    const speakAsNurse = (await import('./nurseAgent')).speakAsNurse;
+    speak = speakAsNurse;
+    void speakAsNurse('Let me have a look, doctor.');
     const r = await fetch('/agent/coach/hint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -249,7 +251,7 @@ export async function requestHint(): Promise<void> {
     void speakAsNurse(data.hint);
   } catch (err) {
     console.debug(LOG, 'hint skipped:', err instanceof Error ? err.message : err);
-    void speakAsNurse("Sorry doctor, I couldn't check just now. Ask me again in a moment.");
+    if (speak) void speak("Sorry doctor, I couldn't check just now. Ask me again in a moment.");
   } finally {
     window.clearTimeout(timer);
     hintBusy = false;
