@@ -22,6 +22,7 @@ import type { ActivePatient, NurseRun, NurseStep } from '../game/types';
 import { TESTS } from '../data/tests';
 import { MEDICATIONS } from '../data/medications';
 import { getExistingConversation } from '../voice/conversationStore';
+import { callUrlsFromSteps, rememberFollowupCall } from '../voice/followupCall';
 
 export type { NurseRun, NurseStep } from '../game/types';
 
@@ -294,6 +295,8 @@ export async function runNurseAction(
       finishedAt: Date.now(),
     };
     store.updateAgentRun(id, done);
+    // Asha follow-up call links (calendar event) -> Plan tab "Follow-up call reports".
+    for (const url of callUrlsFromSteps(done.steps)) rememberFollowupCall(caseId, url);
     // Nurse Asha's mistake coach: local alerts from refused/flagged steps,
     // then a non-blocking LLM check. Never affects this run.
     void import('./coach')

@@ -177,6 +177,11 @@ _ROLE_TAIL = {
         "Write the free-text fields title, short, explanation and suggestion in this language. Keep the JSON "
         "keys and the severity values (info, warning, danger) in English."
     ),
+    "followup": (
+        "You are a nurse speaking to a patient on the phone, so wherever the rule above says \"doctor\", read "
+        "\"patient\". Your first line and every reply must follow this language rule, even though the instructions "
+        "above are written in English. No translations and no English duplicate of the same sentence."
+    ),
     "teacher": (
         "Speak the whole lesson in this language. Medical terms may stay in English where doctors in India "
         "normally say them in English."

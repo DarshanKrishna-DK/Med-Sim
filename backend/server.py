@@ -1445,6 +1445,10 @@ app.include_router(viva_router)
 from integrations import calendar_invite as _calendar_invite, notify as _notify  # noqa: E402
 app.include_router(_notify.router)
 app.include_router(_calendar_invite.router)
+# Asha follow-up call: /call-api/* is public (the patient's phone), token-guarded,
+# rate limited per link; the doctor's summaries route sits under /agent/.
+from followup_call import router as followup_call_router  # noqa: E402
+app.include_router(followup_call_router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the

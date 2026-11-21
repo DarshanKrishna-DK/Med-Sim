@@ -163,11 +163,12 @@ class NurseRecurringFollowUp(unittest.TestCase):
         self.assertIn("repeating every week x 4", summary)
         self.assertIn("added to Google Calendar", summary)
 
-    def test_plain_visit_has_no_call_link_and_unconfigured_not_booked(self):
+    def test_plain_visit_still_gets_call_link_and_unconfigured_not_booked(self):
         st = nurse.NurseState(req())
         with mock.patch.dict(os.environ, {"GCAL_SCRIPT_URL": "", "GCAL_SCRIPT_SECRET": ""}):
             res = asyncio.run(st.aexecute("schedule_follow_up", {"inDays": 3, "reason": "r"}))
-        self.assertNotIn("callUrl", res["calendar"])
+        # Every follow-up carries an Asha check-in call link.
+        self.assertIn("/call/", res["calendar"]["callUrl"])
         self.assertNotIn("booked", res["calendar"])
         self.assertIn("calendar invite ready", nurse.summarize("schedule_follow_up", {}, res))
 

@@ -337,7 +337,9 @@ class NurseState:
         from integrations import calendar_invite, followup_calls, gcal_script, notify
 
         rec = res.get("recurrence")
-        is_call = res.get("mode") == "call" or bool(rec)
+        # Every follow-up carries a link to a live Agora voice check-in with Asha
+        # (adherence, side effects, red flags) that reports back to the doctor.
+        is_call = True
         call_url: Optional[str] = None
         if is_call:
             try:
@@ -436,6 +438,18 @@ class NurseState:
             self.req.patient.name, self.req.doctorName or "your doctor", meds,
             {"startText": fu.get("startText"), "reason": fu.get("reason")} if fu else None,
             audio_url, (fu or {}).get("googleCalendarUrl"), lang)
+        call_url = (fu or {}).get("callUrl")
+        if fu and not call_url:
+            from integrations import followup_calls
+
+            p = self.req.patient
+            token = followup_calls.register_call({
+                "caseId": self.req.caseId, "patientName": p.name, "age": p.age, "gender": p.gender,
+                "chiefComplaint": p.chiefComplaint, "prescriptions": meds,
+                "reason": str(fu.get("reason") or ""), "lang": lang})
+            call_url = notify.absolute_url(f"/call/{token}") or f"/call/{token}"
+        if call_url and call_url.startswith("http"):
+            message = message.replace(notify.DISCLAIMER, f"Join your Asha follow-up call: {call_url}. {notify.DISCLAIMER}", 1)
         # The doctor may say "WhatsApp" when only Telegram or email is set up:
         # deliver through whatever is configured and fits the contact.
         if channel not in notify.configured_channels():
@@ -446,6 +460,8 @@ class NurseState:
         out["audioUrl"] = audio_url
         out["medications"] = [m["name"] for m in meds]
         out["message"] = message
+        if call_url:
+            out["callUrl"] = call_url
         if fu:
             out["followUp"] = fu.get("startText")
         return out

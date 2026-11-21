@@ -15,6 +15,7 @@ import { coachAfterDiagnosis, coachAfterManualPrescription, coachAfterManualTest
 import { useExamUi } from '../../agents/examAgent';
 import { ExamTab } from './ExamTab';
 import { VoiceRx } from './VoiceRx';
+import { FollowUpCallReports } from './FollowUpCallReports';
 import { Icon, IconButton } from './HudControls';
 
 type Tab = 'nurse' | 'exam' | 'results' | 'diagnosis' | 'rx';
@@ -355,6 +356,8 @@ function PlanTab({ patient }: { patient: ActivePatient }) {
       ) : (
         <p className="muted-note">None booked. Ask the nurse to schedule one.</p>
       )}
+
+      <FollowUpCallReports caseId={patient.case.id} />
 
       <VoiceRx patient={patient} />
 
