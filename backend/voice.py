@@ -205,12 +205,58 @@ def _agora_fail(r: httpx.Response, what: str) -> HTTPException:
     return HTTPException(status_code=502, detail=f"Agora {what} failed ({r.status_code}): {r.text[:800]}")
 
 
+AVATAR_UID = 900002
+# Murf sample_rate each avatar vendor needs (Agora avatar docs). Anam accepts
+# 16/24/48k and we ask it for 24k, so Murf stays at 24k for anam and liveavatar.
+AVATAR_SAMPLE_RATES = {"anam": 24000, "liveavatar": 24000, "heygen": 24000, "akool": 16000}
+AVATAR_DEFAULT_CASES = {"teacher", viva.VIVA_CASE_ID}
+
+
+def avatar_config() -> Optional[dict[str, str]]:
+    """Avatar settings from env, or None when not configured (feature off)."""
+    vendor = os.environ.get("AVATAR_VENDOR", "").strip().lower()
+    key = os.environ.get("AVATAR_API_KEY", "").strip()
+    if not vendor or not key:
+        return None
+    return {
+        "vendor": vendor,
+        "api_key": key,
+        "avatar_id": os.environ.get("AVATAR_ID", "").strip(),
+        "quality": os.environ.get("AVATAR_QUALITY", "").strip() or "high",
+    }
+
+
+def want_avatar(req: "VoiceStartRequest") -> bool:
+    if avatar_config() is None:
+        return False
+    if req.avatar is None:
+        return req.caseId in AVATAR_DEFAULT_CASES
+    return req.avatar
+
+
+def avatar_block(cfg: dict[str, str], avatar_token: str) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "api_key": cfg["api_key"],
+        "agora_uid": str(AVATAR_UID),
+        "agora_token": avatar_token,
+    }
+    if cfg["avatar_id"]:
+        params["avatar_id"] = cfg["avatar_id"]
+    vendor = cfg["vendor"]
+    if vendor in ("anam", "liveavatar", "heygen"):
+        params["quality"] = cfg["quality"]
+    if vendor == "anam":
+        params["sample_rate"] = AVATAR_SAMPLE_RATES["anam"]
+    return {"enable": True, "vendor": vendor, "params": params}
+
+
 class VoiceStartRequest(BaseModel):
     caseId: str
     systemPrompt: str
     initialLine: str
     gender: Literal["M", "F"] = "M"
     locale: Optional[str] = None
+    avatar: Optional[bool] = None
 
 
 class VoiceStartResponse(BaseModel):
@@ -220,10 +266,13 @@ class VoiceStartResponse(BaseModel):
     token: str
     agentUid: int
     agentId: str
+    avatarUid: Optional[int] = None
+    avatarError: Optional[str] = None
 
 
 def build_join_body(
-    req: VoiceStartRequest, channel: str, user_uid: int, agent_token: str, murf_key: str
+    req: VoiceStartRequest, channel: str, user_uid: int, agent_token: str, murf_key: str,
+    avatar_token: Optional[str] = None,
 ) -> dict[str, Any]:
     lang = langmod.norm_lang(req.locale)
     locale = langmod.locale_for(lang)
@@ -233,7 +282,8 @@ def build_join_body(
         if sarvam_key and os.environ.get("VOICE_ASR", "sarvam").lower() == "sarvam"
         else {"vendor": "ares", "language": locale}
     )
-    return {
+    cfg = avatar_config() if avatar_token else None
+    body = {
         "name": f"medsim-{secrets.token_hex(6)}",
         "properties": {
             "channel": channel,
@@ -259,14 +309,17 @@ def build_join_body(
                     "locale": locale,
                     "rate": 0,
                     "pitch": 0,
-                    "sample_rate": 24000,
+                    "sample_rate": AVATAR_SAMPLE_RATES.get(cfg["vendor"], 24000) if cfg else 24000,
                 },
             },
         },
     }
+    if cfg and avatar_token:
+        body["properties"]["avatar"] = avatar_block(cfg, avatar_token)
+    return body
 
 
-@router.post("/voice/start", response_model=VoiceStartResponse)
+@router.post("/voice/start", response_model=VoiceStartResponse, response_model_exclude_none=True)
 async def voice_start(req: VoiceStartRequest):
     env = _require_env(
         "AGORA_APP_ID", "AGORA_APP_CERTIFICATE", "AGORA_CUSTOMER_ID", "AGORA_CUSTOMER_SECRET", "MURF_API_KEY"
@@ -282,8 +335,16 @@ async def voice_start(req: VoiceStartRequest):
     # hi/kn: the opening line arrives in English (case chief complaint); speak it in the session language.
     if langmod.norm_lang(req.locale) != "en":
         req = req.model_copy(update={"initialLine": await langmod.translate_line(req.initialLine, req.locale)})
-    body = build_join_body(req, channel, user_uid, agent_token, env["MURF_API_KEY"])
+    avatar_token = _rtc_rtm_token(app_id, cert, channel, AVATAR_UID) if want_avatar(req) else None
+    body = build_join_body(req, channel, user_uid, agent_token, env["MURF_API_KEY"], avatar_token)
     r = await _agora_call("POST", "/join", body)
+    avatar_error: Optional[str] = None
+    if avatar_token and 400 <= r.status_code < 500:
+        # The avatar is optional polish: retry without it so the call still works.
+        avatar_error = f"Agora rejected the avatar ({r.status_code}): {r.text[:200]}"
+        log.warning(avatar_error)
+        body = build_join_body(req, channel, user_uid, agent_token, env["MURF_API_KEY"], None)
+        r = await _agora_call("POST", "/join", body)
     if 400 <= r.status_code < 500 and "filler" in r.text.lower():
         # Fillers are polish: never let them block the call.
         log.warning("Agora rejected filler_words (%s); retrying join without it", r.status_code)
@@ -297,7 +358,8 @@ async def voice_start(req: VoiceStartRequest):
         raise _agora_fail(r, "join (no agent_id)")
     observer.register_session(channel, user_uid, req.caseId, AGENT_UID)
     return VoiceStartResponse(
-        appId=app_id, channel=channel, uid=user_uid, token=user_token, agentUid=AGENT_UID, agentId=agent_id
+        appId=app_id, channel=channel, uid=user_uid, token=user_token, agentUid=AGENT_UID, agentId=agent_id,
+        avatarUid=AVATAR_UID if avatar_token and not avatar_error else None, avatarError=avatar_error,
     )
 
 

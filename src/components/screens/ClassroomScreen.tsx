@@ -8,7 +8,8 @@ import { ThirdPersonPlayer, isTypingTarget, makeRuntime, type PlayerRuntime } fr
 import { PostFX, WorldEnvironment, type FxQuality } from '../world/WorldFX';
 import { Fade, KeyCap, MenuButton, PauseMenu, PromptPill, UI, labelStyle, panel } from '../world/worldUi';
 import { loadSignFonts } from '../world/hindi';
-import { Whiteboard, type BoardStep } from '../teach/Whiteboard';
+import { AvatarVideo } from '../AvatarVideo';
+import { Whiteboard,type BoardStep } from '../teach/Whiteboard';
 import { FALLBACK_LESSON, SUGGESTED_TOPICS, detectTopicRequest, fetchLesson, type Lesson, type LessonLevel } from '../teach/lesson';
 import { useTeacherSession, type TeacherSession } from '../teach/useTeacherSession';
 import { TEACHER } from '../../voice/teacherPersona';
@@ -297,6 +298,14 @@ export function ClassroomScreen() {
         Menu · Esc
       </button>
 
+      {teacher.avatarTrack && (
+        <AvatarVideo
+          track={teacher.avatarTrack}
+          label="Teacher avatar"
+          style={{ position: 'absolute', right: PANEL_W + 32, top: 76, width: 220, height: 300, zIndex: 8 }}
+        />
+      )}
+
       {/* whiteboard view (kept mounted while hidden so playback continues) */}
       {lesson && (
         <div
@@ -304,7 +313,7 @@ export function ClassroomScreen() {
             position: 'absolute',
             left: 16,
             top: 76,
-            right: PANEL_W + 32,
+            right: PANEL_W + 32 + (teacher.avatarTrack ? 236 : 0),
             bottom: 16,
             zIndex: 8,
             display: boardOpen ? 'block' : 'none',

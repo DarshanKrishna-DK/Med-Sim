@@ -1,3 +1,4 @@
+import type { IRemoteVideoTrack } from 'agora-rtc-sdk-ng';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Conversation, type ConversationStatus, type SubtitleEvent } from '../../voice/conversation';
 import { ensureAudioContext } from '../../voice/conversationStore';
@@ -83,6 +84,7 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
   const [log, setLog] = useState<ClassLine[]>([]);
   const [micMuted, setMicMuted] = useState(false);
   const [thinking, setThinking] = useState(false);
+  const [avatarTrack, setAvatarTrack] = useState<IRemoteVideoTrack | null>(null);
 
   const convRef = useRef<Conversation | null>(null);
   const promptRef = useRef(buildTeacherPersona(store.getState().lang));
@@ -157,11 +159,13 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
       locale: LANG_LOCALE[store.getState().lang],
     });
     convRef.current = conv;
+    conv.onAvatarTrack(setAvatarTrack);
     setStatus('loading');
     conv.init().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   const hangUp = useCallback(() => {
+    setAvatarTrack(null);
     convRef.current?.dispose();
     convRef.current = null;
     setStatus('uninitialized');
@@ -340,6 +344,7 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
     sendQuestion,
     mouth,
     isSpeaking,
+    avatarTrack,
   };
 }
 

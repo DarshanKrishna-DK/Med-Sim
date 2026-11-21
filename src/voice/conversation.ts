@@ -31,6 +31,7 @@ import AgoraRTC, {
   type IAgoraRTCRemoteUser,
   type IMicrophoneAudioTrack,
   type IRemoteAudioTrack,
+  type IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
 import AgoraRTM, { type RTMClient } from 'agora-rtm';
 import { voiceMetrics } from './voiceMetrics';
@@ -109,6 +110,8 @@ export interface ConversationOptions {
   storageKey?: string;
   /** BCP-47 locale hint for ASR/TTS (backend default if omitted). */
   locale?: string;
+  /** Ask the backend for an Agora avatar (undefined = backend default). */
+  avatar?: boolean;
 }
 
 interface VoiceStartResponse {
@@ -118,6 +121,9 @@ interface VoiceStartResponse {
   token: string;
   agentUid: number;
   agentId: string;
+  /** Set when an Agora avatar joined the channel as a separate video user. */
+  avatarUid?: number;
+  avatarError?: string;
 }
 
 // ── backend helpers ─────────────────────────────────────────────
@@ -226,6 +232,8 @@ export class Conversation {
   private rtm: RTMClient | null = null;
   private micTrack: IMicrophoneAudioTrack | null = null;
   private remoteAudio: IRemoteAudioTrack | null = null;
+  private avatarVideo: IRemoteVideoTrack | null = null;
+  private avatarListeners = new Set<(t: IRemoteVideoTrack | null) => void>();
   private session: VoiceStartResponse | null = null;
   private disposed = false;
   private micMuted = false;
@@ -241,6 +249,7 @@ export class Conversation {
   private caseId: string;
   private clinicalAgents: boolean;
   private locale: string | undefined;
+  private wantAvatar: boolean | undefined;
   private storageKey: string | null = null;
 
   private messageSubscribers = new Set<(msgs: ReadonlyArray<ChatMessage>) => void>();
@@ -276,6 +285,7 @@ export class Conversation {
     this.caseId = options.caseId ?? 'unknown';
     this.clinicalAgents = options.clinicalAgents ?? !NON_PATIENT_SESSIONS.has(this.caseId);
     this.locale = options.locale;
+    this.wantAvatar = options.avatar;
     this.storageKey = options.storageKey ?? null;
 
     const restored = this.loadMessages();
@@ -324,6 +334,23 @@ export class Conversation {
   private emitMessages() {
     const snap = [...this.messages];
     this.messageSubscribers.forEach((fn) => fn(snap));
+  }
+
+  /** Avatar video track once the avatar user publishes, else null. */
+  getAvatarTrack(): IRemoteVideoTrack | null {
+    return this.avatarVideo;
+  }
+
+  /** Subscribe to avatar video changes. Fires immediately with the current track. */
+  onAvatarTrack(fn: (t: IRemoteVideoTrack | null) => void): () => void {
+    this.avatarListeners.add(fn);
+    fn(this.avatarVideo);
+    return () => { this.avatarListeners.delete(fn); };
+  }
+
+  private setAvatarTrack(t: IRemoteVideoTrack | null): void {
+    this.avatarVideo = t;
+    this.avatarListeners.forEach((fn) => fn(t));
   }
 
   /** Live mouth amplitude from the agent's remote audio track volume.
@@ -535,6 +562,7 @@ export class Conversation {
         initialLine,
         gender: this.voiceGender,
         ...(this.locale ? { locale: this.locale } : {}),
+        ...(this.wantAvatar !== undefined ? { avatar: this.wantAvatar } : {}),
       });
       if (!session || !session.appId || !session.channel || !session.token) {
         throw new VoiceBackendError('Voice backend not configured, /voice/start returned no Agora session.');
@@ -577,6 +605,16 @@ export class Conversation {
       const rtc = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       this.rtc = rtc;
       rtc.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType) => {
+        if (mediaType === 'video') {
+          if (session.avatarUid == null || String(user.uid) !== String(session.avatarUid)) return;
+          try {
+            await rtc.subscribe(user, 'video');
+            if (user.videoTrack) this.setAvatarTrack(user.videoTrack);
+          } catch (err) {
+            console.warn(LOG, 'avatar video subscribe failed:', err);
+          }
+          return;
+        }
         if (mediaType !== 'audio') return;
         try {
           await rtc.subscribe(user, 'audio');
@@ -590,6 +628,7 @@ export class Conversation {
         }
       });
       rtc.on('user-unpublished', (user: IAgoraRTCRemoteUser, mediaType) => {
+        if (mediaType === 'video' && user.videoTrack === this.avatarVideo) this.setAvatarTrack(null);
         if (mediaType === 'audio' && user.audioTrack === this.remoteAudio) {
           if (this.remoteAudio) pendingAutoplay.delete(this.remoteAudio);
           this.remoteAudio = null;
@@ -811,6 +850,10 @@ export class Conversation {
     if (this.micTrack) {
       try { this.micTrack.close(); } catch { /* noop */ }
       this.micTrack = null;
+    }
+    if (this.avatarVideo) {
+      try { this.avatarVideo.stop(); } catch { /* noop */ }
+      this.setAvatarTrack(null);
     }
     if (this.remoteAudio) {
       pendingAutoplay.delete(this.remoteAudio);
