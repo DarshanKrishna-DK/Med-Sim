@@ -107,7 +107,7 @@ test('verify-loop script is not referenced by accident outside its command', () 
     const stat = statSync(full);
     if (stat.isDirectory()) {
       for (const entry of readdirSync(full)) {
-        if (entry === 'node_modules' || entry.startsWith('.venv')) continue;
+        if (entry === 'node_modules' || entry.startsWith('.venv') || entry === 'worktrees') continue;
         walk(`${rel}/${entry}`);
       }
       return;

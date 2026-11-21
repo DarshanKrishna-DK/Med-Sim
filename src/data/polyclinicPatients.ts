@@ -7,7 +7,7 @@ import { COMMS_CASES_BY_SPECIALTY, COMMS_DIAGNOSIS_LABELS } from './commsCases.t
 const internalMedicine: PatientCase[] = [
   {
     id: 'im-001',
-    name: 'Sasmita Mohanty',
+    name: 'Viha Shomikha',
     age: 34,
     gender: 'F',
     severity: 'stable',
@@ -38,7 +38,7 @@ const internalMedicine: PatientCase[] = [
   },
   {
     id: 'im-002',
-    name: 'Sachin Deshmukh',
+    name: 'Deepak Hegde',
     age: 68,
     gender: 'M',
     severity: 'stable',
@@ -137,7 +137,7 @@ const internalMedicine: PatientCase[] = [
   },
   {
     id: 'im-004',
-    name: 'Mary D\'Souza',
+    name: 'Harshitha Rao',
     age: 58,
     gender: 'F',
     severity: 'stable',
@@ -273,7 +273,7 @@ const internalMedicine: PatientCase[] = [
   },
   {
     id: 'im-006',
-    name: 'Perin Mistry',
+    name: 'Nidhi Kulkarni',
     age: 42,
     gender: 'F',
     severity: 'stable',
@@ -303,7 +303,7 @@ const internalMedicine: PatientCase[] = [
   },
   {
     id: 'im-007',
-    name: 'Sunita Mishra',
+    name: 'Amrutha Gowda',
     age: 29,
     gender: 'F',
     severity: 'stable',
@@ -332,7 +332,7 @@ const internalMedicine: PatientCase[] = [
   },
   {
     id: 'im-008',
-    name: 'Harpreet Grewal',
+    name: 'Sagar Patil',
     age: 31,
     gender: 'M',
     severity: 'stable',
@@ -393,7 +393,7 @@ const internalMedicine: PatientCase[] = [
   },
   {
     id: 'im-010',
-    name: 'Remya Kurup',
+    name: 'Anusha Reddy',
     age: 38,
     gender: 'F',
     severity: 'stable',
