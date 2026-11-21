@@ -25,7 +25,8 @@ def req(**kw):
 
 class RealDrugCheck(unittest.TestCase):
     def test_source_backed_allergy_blocks_prescribe(self):
-        st = nurse.NurseState(req())
+        # The local catalogue check does not know coumarins; only the database conflict blocks.
+        st = nurse.NurseState(req(patient={"name": "Ravi Kumar", "age": 60, "gender": "M", "allergies": "coumarins"}))
         ext = {"ok": True, "drug": "warfarin", "rxcui": "11289", "classes": ["Vitamin K antagonists"],
                "allergyConflict": "Warfarin is in the Vitamin K antagonists class; patient allergy: warfarin",
                "interactions": [{"with": "aspirin", "excerpt": "aspirin increases bleeding risk"}],

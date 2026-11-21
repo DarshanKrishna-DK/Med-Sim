@@ -186,6 +186,8 @@ def pick_start(in_days: int, now: datetime | None = None) -> datetime:
     today = _as_ist(now or datetime.now(timezone.utc))
     d = today + timedelta(days=max(0, int(in_days)))
     d = d.replace(hour=10, minute=0, second=0, microsecond=0)
+    if d <= today:  # 10 am today has already passed: tomorrow
+        d += timedelta(days=1)
     if d.weekday() == 6:  # Sunday -> Monday
         d += timedelta(days=1)
     return d
