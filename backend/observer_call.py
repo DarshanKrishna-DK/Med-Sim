@@ -699,8 +699,12 @@ async def obs_turn(token: str, request: Request) -> Response:
         return _xml(twiml_hangup(bye, b_url))
     out = await answer(s, speech)
     reply = out["reply"]
-    if out.get("schedule"):
-        reply = schedule_now_reply(s, out["schedule"])
+    when = out.get("schedule") or schedule_intent(speech, s["transcript"])
+    if when:
+        reply = schedule_now_reply(s, when)
+    elif re.search(r"(all set|added|booked|scheduled|done)\b.*calendar|calendar.*\b(all set|added|booked|scheduled)", reply, re.I):
+        # Never claim a booking that did not happen.
+        reply = "Shall I put it in your Google Calendar now? Just tell me when, or say now."
     with _lock:
         if out["message"] and len(s["messages"]) < MAX_MESSAGES:
             s["messages"].append({"id": len(s["messages"]) + 1, "from": s["contact"]["name"], "text": out["message"],
@@ -720,7 +724,40 @@ def _schedule_start(when_text: str) -> datetime:
     w = (when_text or "").strip().lower()
     if not w or w in ("now", "right now", "asap", "immediately", "today now"):
         return datetime.now(IST) + timedelta(minutes=2)
+    m = re.search(r"(?:in|after|within)\s+(\d{1,3}|an?|one|two|three|five|ten|fifteen|twenty|thirty)\s*(min(?:ute)?s?|hours?|hrs?)\b", w)
+    if m:
+        words = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "five": 5, "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30}
+        n = int(m.group(1)) if m.group(1).isdigit() else words.get(m.group(1), 5)
+        mins = n * 60 if m.group(2).startswith(("h")) else n
+        return datetime.now(IST) + timedelta(minutes=max(2, min(mins, 24 * 60)))
     return agent_toolsets.resolve_when(w)
+
+
+_SCHED_WORDS = re.compile(
+    r"\b(calendar|calender|schedule|scheduled|book|invite|meeting|remind|reminder|add (?:it|this|that))\b", re.I)
+_AFFIRM = re.compile(r"^\W*(?:yes|yeah|yep|sure|ok(?:ay)?|please|go ahead|do it|haan|ha|accha|that would be great)\b", re.I)
+_QUESTION_ONLY = re.compile(r"^\W*(?:can|could|do|does|is|are|what|when|how|why|which)\b.*\?\W*$", re.I)
+
+
+def schedule_intent(speech: str, transcript: list[dict[str, Any]]) -> Optional[str]:
+    """When the caller wants the event booked, the time phrase to use ('now' if none).
+    Speech recognition garbles words ("SP added to my calendar"), so the decision
+    does not depend on the language model."""
+    t = (speech or "").strip()
+    if not t:
+        return None
+    last_asha = next((x["text"] for x in reversed(transcript) if x["who"] == "asha"), "")
+    offered = "calendar" in last_asha.lower() and "shall i" in last_asha.lower()
+    wants = bool(_SCHED_WORDS.search(t)) or (offered and bool(_AFFIRM.match(t)))
+    if not wants:
+        return None
+    m = re.search(r"((?:in|after|within)\s+\w+\s*(?:min(?:ute)?s?|hours?|hrs?)"
+                  r"|tomorrow[\w\s:]*|(?:mon|tues|wednes|thurs|fri|satur|sun)day[\w\s:]*|\d{1,2}(?::\d{2})?\s*(?:am|pm))", t, re.I)
+    if m:
+        return m.group(1).strip()  # a time phrase plus scheduling words: book it
+    if _QUESTION_ONLY.match(t) and not re.search(r"\b(schedule|book|add|put|send)\b", t, re.I):
+        return None  # e.g. "does the invite have a link?"
+    return "now"
 
 
 def schedule_now_reply(s: dict[str, Any], when_text: str) -> str:

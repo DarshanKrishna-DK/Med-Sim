@@ -385,3 +385,23 @@ class ObserverCommandRegexTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScheduleIntentTests(unittest.TestCase):
+    """Booking must not depend on the model: speech recognition garbles words."""
+
+    OFFER = [{"who": "asha", "text": "I can put the joining link straight into your calendar, shall I?"}]
+
+    def test_garbled_and_affirmative_requests_book(self):
+        self.assertEqual(oc.schedule_intent("SP added to my calendar", self.OFFER), "now")
+        self.assertEqual(oc.schedule_intent("yes please", self.OFFER), "now")
+        self.assertEqual(oc.schedule_intent("send me a calendar invite", []), "now")
+
+    def test_time_phrases(self):
+        self.assertEqual(oc.schedule_intent("can we have the meeting after 5 minutes?", []), "after 5 minutes")
+        self.assertEqual(oc.schedule_intent("schedule it for tomorrow 6 pm", []), "tomorrow 6 pm")
+
+    def test_questions_do_not_book(self):
+        self.assertIsNone(oc.schedule_intent("does the invite have a link?", []))
+        self.assertIsNone(oc.schedule_intent("Which specialty is this?", self.OFFER))
+        self.assertIsNone(oc.schedule_intent("no questions", self.OFFER))
