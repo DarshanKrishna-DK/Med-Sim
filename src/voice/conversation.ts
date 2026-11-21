@@ -262,6 +262,7 @@ export class Conversation {
   private rtm: RTMClient | null = null;
   private micTrack: IMicrophoneAudioTrack | null = null;
   private remoteAudio: IRemoteAudioTrack | null = null;
+  private avatarAudioOn = false;
   private avatarVideo: IRemoteVideoTrack | null = null;
   private avatarListeners = new Set<(t: IRemoteVideoTrack | null) => void>();
   private session: VoiceStartResponse | null = null;
@@ -692,7 +693,21 @@ export class Conversation {
           await rtc.subscribe(user, 'audio');
           const track = user.audioTrack;
           if (!track) return;
+          const isAvatar = session.avatarUid != null && String(user.uid) === String(session.avatarUid);
+          if (isAvatar) {
+            // The avatar re-publishes the agent's voice in sync with its lips:
+            // play that one and silence the agent's own stream (no double audio).
+            if (this.remoteAudio) {
+              try { this.remoteAudio.stop(); } catch { /* noop */ }
+              pendingAutoplay.delete(this.remoteAudio);
+            }
+            this.avatarAudioOn = true;
+            pendingAutoplay.add(track);
+            track.play();
+            return;
+          }
           this.remoteAudio = track;
+          if (this.avatarAudioOn) return;
           pendingAutoplay.add(track);
           track.play();
         } catch (err) {

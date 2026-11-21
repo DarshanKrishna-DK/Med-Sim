@@ -3,6 +3,7 @@
 // caseId 'teacher'); /voice/context swaps in the lesson-grounded prompt
 // once a lesson is on the board.
 
+import { getProfile } from '../game/profile';
 import type { Lesson } from '../components/teach/lesson';
 import type { Lang } from '../game/lang';
 import { withLanguage } from './language';
@@ -18,8 +19,16 @@ export const TEACHER = {
 export const TEACHER_GREETING =
   'Namaste, and welcome to class! I am Doctor Meera Iyer. Tell me what you would like to learn today, just say teach me and a topic, and I will draw it on the board for you.';
 
+function studentLine(): string {
+  const name = (getProfile()?.name ?? '').replace(/^dr\.?\s+/i, '').trim().split(/\s+/)[0];
+  return name
+    ? `The student's name is ${name}. Address them by their first name, ${name}, warmly and now and then; never call them "doctor".`
+    : 'Address the student warmly as "you"; never call them "doctor".';
+}
+
 export function buildTeacherPersona(lang: Lang = 'en'): string {
   return withLanguage([
+    studentLine(),
     `You are ${TEACHER.name}, a warm and experienced ${TEACHER.title} at an Indian medical college, teaching one student in a lecture hall.`,
     'You are speaking out loud through a voice call, so everything you say is heard, not read.',
     '',

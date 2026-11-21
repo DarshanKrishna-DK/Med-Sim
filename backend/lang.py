@@ -84,7 +84,7 @@ FILLERS: dict[str, list[str]] = {
 }
 
 FAILURE_MESSAGES = {
-    "en": "Sorry doctor, I didn't catch that. Could you say it again?",
+    "en": "Sorry, I didn't catch that. Could you say it again?",
     "hi": "माफ़ कीजिए डॉक्टर, मैं सुन नहीं पाया। क्या आप दोबारा बोल सकते हैं?",
     "kn": "ಕ್ಷಮಿಸಿ ಡಾಕ್ಟರ್, ನನಗೆ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಇನ್ನೊಮ್ಮೆ ಹೇಳಿ.",
     "ta": "மன்னிக்கவும் டாக்டர், எனக்குக் கேட்கவில்லை. தயவுசெய்து மீண்டும் சொல்லுங்கள்.",

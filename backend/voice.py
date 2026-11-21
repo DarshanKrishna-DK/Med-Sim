@@ -125,7 +125,7 @@ def _rtc_rtm_token(app_id: str, cert: str, channel: str, uid: int) -> str:
     )
 
 
-FAILURE_MESSAGE = "Sorry doctor, I didn't catch that. Could you say it again?"
+FAILURE_MESSAGE = "Sorry, I didn't catch that. Could you say it again?"
 
 # Noise-robust turn detection (field names per Agora /join reference).
 TURN_DETECTION = {

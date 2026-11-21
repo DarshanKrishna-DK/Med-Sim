@@ -55,9 +55,36 @@ _token_meta: dict[str, dict[str, Any]] = {}
 _tokens_lock = threading.Lock()
 
 
+def _token_secret() -> bytes:
+    raw = (os.environ.get("MEDSIM_PROXY_SECRET") or os.environ.get("AGORA_APP_CERTIFICATE") or "").strip()
+    return raw.encode() or _FALLBACK_SECRET
+
+
+_FALLBACK_SECRET = secrets.token_bytes(32)
+
+
+def _sign(body: str) -> str:
+    import base64
+    import hashlib
+
+    mac = hmac.new(_token_secret(), body.encode(), hashlib.sha256).digest()[:18]
+    return base64.urlsafe_b64encode(mac).decode().rstrip("=")
+
+
+def _signed_ok(candidate: str, now: float) -> bool:
+    """Stateless check, so a token minted before a redeploy or on another
+    instance still works (Agora keeps calling with it for the whole session)."""
+    try:
+        exp_s, nonce, sig = candidate.split(".", 2)
+        return float(exp_s) >= now and hmac.compare_digest(sig, _sign(f"{exp_s}.{nonce}"))
+    except (ValueError, TypeError):
+        return False
+
+
 def mint_token(meta: Optional[dict[str, Any]] = None) -> str:
-    tok = secrets.token_urlsafe(32)
     now = time.time()
+    body = f"{int(now + TOKEN_TTL_S)}.{secrets.token_urlsafe(16)}"
+    tok = f"{body}.{_sign(body)}"
     with _tokens_lock:
         for t in [t for t, exp in _tokens.items() if exp < now]:
             del _tokens[t]
@@ -118,7 +145,7 @@ def valid_token(candidate: str) -> bool:
             # compare against every token (no early exit) to stay constant-time-ish
             if hmac.compare_digest(t.encode(), candidate.encode()) and exp >= now:
                 ok = True
-    return ok
+    return ok or _signed_ok(candidate, now)
 
 
 # ---------------------------------------------------------------- sanitizing
