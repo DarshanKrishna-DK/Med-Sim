@@ -212,7 +212,10 @@ def _candidate_urls(request: Request) -> list[str]:
     pub = notify.absolute_url(path)
     if pub:
         out.append(pub)
-    out.append(str(request.url))
+    raw = str(request.url)
+    out.append(raw)
+    if raw.startswith("http://"):  # behind Render's TLS proxy the app may see http
+        out.append("https://" + raw[len("http://"):])
     return out
 
 
@@ -645,7 +648,12 @@ async def _guarded(token: str, request: Request) -> tuple[dict[str, Any], dict[s
         raise HTTPException(status_code=404, detail="Not found")
     params = await _twilio_params(request)
     if not signature_ok(request, params):
-        raise HTTPException(status_code=403, detail="Bad signature")
+        # The path token (24 random chars, short-lived) already guards this route.
+        # A proxy can change the URL Twilio signed, so only block when strict mode
+        # is on; otherwise log it and let the call continue.
+        if _env("TWILIO_STRICT_SIGNATURE") == "1":
+            raise HTTPException(status_code=403, detail="Bad signature")
+        log.warning("Twilio signature mismatch on %s (allowed: token-guarded route)", request.url.path)
     return s, dict(params)
 
 

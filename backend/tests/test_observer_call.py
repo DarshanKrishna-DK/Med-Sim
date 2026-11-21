@@ -225,6 +225,7 @@ class TwimlTests(Base):
         self.assertIn('<Say language="en-IN">Hi Darshan', x)
 
     def test_signature_required_and_checked(self):
+        os.environ["TWILIO_STRICT_SIGNATURE"] = "1"  # removed by self.env.stop() in tearDown
         tok = self.start_call()["token"]
         self.assertEqual(self.hook(tok, "twiml", {"CallSid": "CA123"}, signature="").status_code, 403)
         self.assertEqual(self.hook(tok, "twiml", {"CallSid": "CA123"}, signature="AAAA").status_code, 403)
@@ -340,7 +341,12 @@ class TurnTests(Base):
         self.assertEqual(out["reply"], "Open the link, no app needed.")
         self.assertEqual(oc._parse_reply("Plain text answer.")["reply"], "Plain text answer.")
 
+    def test_mismatch_allowed_without_strict_mode(self):
+        tok = self.start_call()["token"]
+        self.assertEqual(self.hook(tok, "twiml", {"CallSid": "CA123"}, signature="AAAA").status_code, 200)
+
     def test_turn_signature_checked(self):
+        os.environ["TWILIO_STRICT_SIGNATURE"] = "1"  # removed by self.env.stop() in tearDown
         tok = self.start_call()["token"]
         r = self.hook(tok, "turn", {"SpeechResult": "hi"}, signature=sign(f"{PUB}/rx/obs-call/{tok}/turn", {"SpeechResult": "x"}))
         self.assertEqual(r.status_code, 403)
