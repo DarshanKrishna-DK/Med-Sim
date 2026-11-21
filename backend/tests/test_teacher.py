@@ -196,8 +196,26 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["reply"], "Good question. Think of it as a pump.")
         sent = m.await_args.args[0]
-        self.assertEqual(sent[0], {"role": "system", "content": "You are a teacher."})
+        self.assertTrue(sent[0]["content"].startswith("You are a teacher."))
+        self.assertIn(teacher.ASK_STYLE, sent[0]["content"])
         self.assertEqual(sent[-1]["content"], "What is S1?")
+
+    def test_ask_model_down_gives_natural_fallback(self):
+        for side in (RuntimeError("down"), [({"role": "assistant", "content": "   "}, "sarvam")]):
+            with mock.patch.object(teacher, "chat", mock.AsyncMock(side_effect=side)):
+                r = self.client.post("/teach/ask", json={"system": "You are a teacher.", "lang": "hi",
+                                                         "messages": [{"role": "user", "content": "s1 kya"}]}, headers=HDR)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertTrue(r.json()["fallback"])
+            self.assertEqual(r.json()["reply"], teacher.ASK_FALLBACK["hi"])
+
+    def test_ask_style_and_fallbacks_are_human(self):
+        self.assertIn("short sentences", teacher.ASK_STYLE)
+        self.assertIn("never say you did not understand", teacher.ASK_STYLE)
+        for line in teacher.ASK_FALLBACK.values():
+            low = line.lower()
+            for bad in ("understand", "catch", "sorry", "error"):
+                self.assertNotIn(bad, low)
 
     def test_bad_level_rejected(self):
         r = self.client.post("/teach/lesson", json={"topic": "x", "level": "professor"}, headers=HDR)

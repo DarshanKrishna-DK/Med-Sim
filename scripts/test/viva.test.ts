@@ -171,3 +171,28 @@ test('examiner persona: one question at a time, hidden plan, language', () => {
   assert.ok(isClosingLine(timeUpLine('kn')));
   for (const s of [base, withPlan, hi, examinerGreeting(setup)]) assert.ok(!s.includes(String.fromCharCode(0x2014)), 'no em dashes');
 });
+
+test('human voice: first name, no title, intent over keywords', async () => {
+  const { addressLine, firstName, humanRules } = await import('../../src/voice/humanVoice.ts');
+  const { buildRadiologistCasePrompt } = await import('../../src/voice/radiologistPersona.ts');
+  const { RAD_CASES } = await import('../../src/data/radiology.ts');
+  const setup = { subjectId: 'pharmacology', subject: 'Pharmacology', topic: 'Autonomic drugs', year: '2nd year MBBS', lang: 'en' as const };
+  assert.equal(firstName('Dr. Ananya Rao'), 'Ananya');
+  assert.match(addressLine('Dr. Ananya Rao'), /Call them Ananya/);
+  assert.doesNotMatch(addressLine(''), /name is/);
+  const viva = buildVivaPersona(setup, 'Dr. Ananya Rao');
+  assert.match(viva, /Call them Ananya/);
+  assert.match(viva, /never call them "doctor"/);
+  assert.match(viva, /UNDERSTAND INTENT/);
+  assert.match(viva, /end politely at once/);
+  assert.doesNotMatch(viva, /Speak up/);
+  assert.match(examinerGreeting(setup, 'Ananya Rao'), /^Good morning Ananya\./);
+  assert.match(examinerGreeting(setup, null), /^Good morning\./);
+  const rad = buildRadiologistCasePrompt(RAD_CASES[0], 'en', 'Rahul');
+  assert.match(rad, /Call them Rahul/);
+  assert.match(rad, /ONE short clarifying question/);
+  assert.ok(humanRules().some((l) => l.includes('Never say "I did not understand"')));
+  for (const s of [viva, rad, ...humanRules()]) {
+    assert.ok(!s.includes(String.fromCharCode(0x2014)) && !s.includes(String.fromCharCode(0x2013)), 'no dashes');
+  }
+});

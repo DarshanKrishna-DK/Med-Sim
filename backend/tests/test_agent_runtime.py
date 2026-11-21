@@ -142,6 +142,44 @@ class RoutingTests(Base):
         self.assertEqual(self.seen[0]["messages"][-1]["role"], "user")
 
 
+class HumanVoiceTests(unittest.TestCase):
+    BAD = ("understand", "catch that", "didn't catch", "sorry", "error", "could not finish")
+
+    def test_fallbacks_are_short_and_human(self):
+        tables = [agent_runtime.DEFAULT_FALLBACK] + [agent_runtime.get(k).fallback
+                                                     for k in ("receptionist", "teacher", "viva-examiner")]
+        for table in tables:
+            for line in table.values():
+                self.assertLessEqual(len(line.split()), 16, line)
+                for bad in self.BAD:
+                    self.assertNotIn(bad, line.lower(), line)
+
+    def test_every_addendum_carries_voice_style(self):
+        tctx = {"lang": "en", "ctx": {}, "state": {"actions": []}}
+        for kind in ("receptionist", "teacher", "viva-examiner"):
+            text = agent_runtime._addendum(agent_runtime.get(kind), tctx)
+            self.assertTrue(text.startswith(agent_runtime.VOICE_STYLE))
+            self.assertIn("never say you did not understand", text)
+            self.assertIn("ONE helpful action", text)
+
+    def test_addenda_have_autonomy_guidance(self):
+        r = agent_toolsets.RECEPTION_ADDENDUM
+        for kw in ("INTENT, NOT KEYWORDS", "send this to sir", "block time to study cardiology tomorrow",
+                   "text me that", "how'm I doing", "remind me", "PROACTIVE BUT BOUNDED"):
+            self.assertIn(kw, r)
+        t = agent_toolsets.TEACHER_ADDENDUM
+        for kw in ("draw_on_board", "start_quiz", "give the class some cases", "homework for Friday",
+                   "struggling", "PROACTIVE BUT BOUNDED"):
+            self.assertIn(kw, t)
+        v = agent_toolsets.VIVA_ADDENDUM
+        for kw in ("record_answer_grade without being asked", "Adapt", "That's enough", "I'm done",
+                   "end_viva at once", "PROACTIVE BUT BOUNDED"):
+            self.assertIn(kw, v)
+        for text in (r, t, v, agent_runtime.VOICE_STYLE):
+            self.assertNotIn(chr(0x2014), text)
+            self.assertNotIn(chr(0x2013), text)
+
+
 # ---------------------------------------------------------------- SSE + fallbacks
 
 class SseTests(Base):

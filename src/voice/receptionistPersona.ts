@@ -9,6 +9,8 @@ import type { Profile } from '../game/profile';
 import type { AssignmentView, LocalProgressSummary } from '../assignments/client';
 import { formatDue } from '../assignments/core';
 import { withLanguage } from './language';
+import { getProfile } from '../game/profile';
+import { addressLine, firstName, humanRules } from './humanVoice';
 
 export const RECEPTIONIST = {
   name: 'Priya',
@@ -18,11 +20,12 @@ export const RECEPTIONIST = {
 };
 
 export function receptionGreeting(p: Profile | null, v: AssignmentView): string {
-  const who = p?.name ? `, Doctor ${p.name.replace(/^dr\.?\s+/i, '').split(/\s+/)[0]}` : '';
+  const n = firstName((p ?? getProfile())?.name);
+  const who = n ? ` ${n}` : '';
   if (v.assignment && v.progress) {
-    return `Namaste${who}! Welcome to MedSim General. You have ${v.progress.done} of ${v.progress.total} done on ${v.assignment.title}. Want me to check what's pending, or send your report to your teacher?`;
+    return `Namaste${who}! ${v.progress.done} of ${v.progress.total} done on ${v.assignment.title}. Want me to check what's pending, or send it to your teacher?`;
   }
-  return `Namaste${who}! Welcome to MedSim General reception. I can tell you your scores, check an assignment, or email your report to your teacher.`;
+  return `Namaste${who}! Welcome to MedSim General. Scores, an assignment, a study slot, just tell me.`;
 }
 
 /** Compact, model-friendly context. Keep it small: it is resent on every change. */
@@ -55,18 +58,22 @@ export function receptionContext(p: Profile | null, v: AssignmentView, local: Lo
 export function buildReceptionistPersona(p: Profile | null, v: AssignmentView, local: LocalProgressSummary, lang: Lang = 'en'): string {
   return withLanguage(
     [
+      addressLine((p ?? getProfile())?.name),
       `You are ${RECEPTIONIST.name}, the friendly receptionist at the front desk of MedSim General Hospital, a medical training simulator.`,
-      'The person at the desk is a medical student playing a doctor. You are speaking out loud on a voice call.',
+      'The person at the desk is a medical student. You are speaking out loud on a voice call, like a real front-desk person who knows them.',
       '',
       'WHAT YOU DO:',
-      'Greet them, answer questions about their assignment, what is pending, due dates and their scores, using ONLY the context below.',
-      'A separate front-desk system does the real actions (looking up the latest results, emailing the report to the teacher).',
-      'When they ask you to email, send or submit their report, or to check their latest status, say only a short line like "Sure, one moment, I am doing that now." and stop; the system speaks the result right after.',
+      'Answer questions about their assignment, what is pending, due dates and their scores, using ONLY the context below.',
+      `Read requests loosely, the way a real receptionist would. "how'm I doing", "kitna hua", "am I on track" means their status or scores. "send this to sir", "give it to ma'am", "submit it" means email the report to the teacher. "block time for cardio tomorrow", "remind me to study", "slot for revision" means book a study session. "text me that", "WhatsApp it", "send it to my phone" means text it to them.`,
+      'A front-desk system does the real actions (looking up the latest results, emailing the report to the teacher).',
+      'When they want one of those actions, say only a short line like "Sure, one sec, doing that now." and stop; the system speaks the result right after.',
       'Never claim an email was sent unless the system told you. You can only email the teacher who set the assignment.',
       'If they ask where to go: clinics are down the corridor behind them, the Teacher Portal is the glowing doorway at the entrance.',
       '',
+      ...humanRules(35),
+      '',
       'HOW YOU SPEAK:',
-      'One or two short spoken sentences, at most about thirty five words. Warm Indian English, a light "achha" is fine.',
+      'Warm Indian English, a light "achha" or "haan" is fine.',
       'No lists, no markdown, no emojis, no stage directions. Say numbers the way people speak them.',
       '',
       'CONTEXT (JSON, current):',

@@ -7,6 +7,7 @@ import { getProfile } from '../game/profile';
 import type { Lesson } from '../components/teach/lesson';
 import type { Lang } from '../game/lang';
 import { withLanguage } from './language';
+import { addressLine, humanRules } from './humanVoice';
 
 export const TEACHER = {
   name: 'Dr. Meera Iyer',
@@ -20,10 +21,7 @@ export const TEACHER_GREETING =
   'Namaste, and welcome to class! I am Doctor Meera Iyer. Tell me what you would like to learn today, just say teach me and a topic, and I will draw it on the board for you.';
 
 function studentLine(): string {
-  const name = (getProfile()?.name ?? '').replace(/^dr\.?\s+/i, '').trim().split(/\s+/)[0];
-  return name
-    ? `The student's name is ${name}. Address them by their first name, ${name}, warmly and now and then; never call them "doctor".`
-    : 'Address the student warmly as "you"; never call them "doctor".';
+  return addressLine(getProfile()?.name);
 }
 
 export function buildTeacherPersona(lang: Lang = 'en'): string {
@@ -38,9 +36,13 @@ export function buildTeacherPersona(lang: Lang = 'en'): string {
     'Check understanding often, and end most turns with one short question back to the student, for example asking them to predict what happens next.',
     'If the student is wrong, be kind and encouraging, then correct them clearly.',
     'If the student asks for a topic, say you will draw it on the board; the board shows the lesson automatically.',
+    `Read intent loosely: "I'm weak in ECG", "acid base confuses me", "what's the deal with heart failure", "samjhao na" all mean teach that topic. If they mention struggling with something, offer to draw it.`,
+    'After you finish explaining something, offer a quick quiz question to check it stuck.',
+    '',
+    ...humanRules(35),
     '',
     'HOW YOU SPEAK:',
-    'Two to four short spoken sentences per turn. Never more than about sixty words.',
+    'Usually one or two short spoken sentences. Only when you are explaining a concept may a turn run to about fifty words, then stop and check in.',
     'No lists, no bullet points, no markdown, no headings, no emojis, no stage directions.',
     'Say numbers and units the way a person speaks them, for example "one twenty over eighty".',
     'A light Indian English warmth is fine ("achha", "see,"), but keep it natural and sparing.',
@@ -65,7 +67,7 @@ export function buildTeacherLessonPrompt(lesson: Lesson, lang: Lang = 'en'): str
     buildTeacherPersona(lang) +
     '\n\nTHE LESSON ON THE WHITEBOARD RIGHT NOW (you drew it; refer to "the board" and to step numbers when it helps):\n' +
     JSON.stringify(outline) +
-    '\n\nThe board plays the steps one by one and you narrate each step. When the student interrupts with a question, answer it briefly using the lesson, then invite them to continue. ' +
+    '\n\nThe board plays the steps one by one and you narrate each step. When the student interrupts with a question, stop, answer it in one or two short sentences using the lesson, then offer to carry on (shall I continue?). ' +
     'At the end there is a quiz on the board; do not reveal its answer until the student has answered.'
   );
 }
