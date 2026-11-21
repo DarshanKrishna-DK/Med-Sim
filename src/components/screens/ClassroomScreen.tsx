@@ -13,7 +13,19 @@ import { Whiteboard,type BoardStep } from '../teach/Whiteboard';
 import { FALLBACK_LESSON, SUGGESTED_TOPICS, detectTopicRequest, fetchLesson, type Lesson, type LessonLevel } from '../teach/lesson';
 import { useTeacherSession, type TeacherSession } from '../teach/useTeacherSession';
 import { TEACHER } from '../../voice/teacherPersona';
-import { AssignPanel } from '../assignments/AssignPanel';
+import { AssignPanel, DEFAULT_TEACHER_EMAIL } from '../assignments/AssignPanel';
+import { CASES } from '../../data/cases';
+import { teacherAction, type AgentEvent, type QuizCard } from '../../agents/agentEvents';
+
+/** Up to 3 cases per clinic, the menu Dr. Iyer's assign_practice tool picks from. */
+function caseCatalog(): Record<string, string[][]> {
+  const out: Record<string, string[][]> = {};
+  for (const c of CASES) {
+    const rows = (out[c.clinic] ??= []);
+    if (rows.length < 3) rows.push([c.id, `${c.name}, ${c.age}${c.sex}: ${c.complaint}`.slice(0, 48)]);
+  }
+  return out;
+}
 
 const CAMERA_RIG = { distance: 2.8, minDistance: 1.2, maxDistance: 5.5, pivotHeight: 1.58, shoulder: 0.4, ceiling: 3.4 };
 const PANEL_W = 360;
@@ -106,6 +118,12 @@ export function ClassroomScreen() {
   const logEnd = useRef<HTMLDivElement>(null);
 
   const teacherRef = useRef<TeacherSession | null>(null);
+  const [quiz, setQuiz] = useState<QuizCard | null>(null);
+  const [quizPick, setQuizPick] = useState<number | null>(null);
+  const [notice, setNotice] = useState('');
+  const noticeTimer = useRef<number | null>(null);
+  const loadingRef = useRef<string | null>(null);
+  loadingRef.current = loadingTopic;
 
   const startLesson = useCallback((rawTopic: string, opts: { typed?: boolean } = {}) => {
     const topic = rawTopic.trim();
@@ -150,6 +168,12 @@ export function ClassroomScreen() {
 
   const onStudentFinal = useCallback(
     (text: string, typed: boolean) => {
+      // Tool-enabled Dr. Iyer hears spoken turns herself and decides whether to
+      // draw a lesson (draw_on_board): no client keyword detection needed.
+      if (!typed && teacherRef.current?.toolsEnabled()) {
+        if (lessonRef.current) setPauseToken((t) => t + 1);
+        return;
+      }
       const topic = detectTopicRequest(text, !!lessonRef.current);
       if (topic) {
         startLesson(topic, { typed });
@@ -162,7 +186,56 @@ export function ClassroomScreen() {
     [startLesson],
   );
 
-  const teacher = useTeacherSession({ onStudentFinal });
+  const showNotice = useCallback((text: string) => {
+    setNotice(text);
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setNotice(''), 9000);
+  }, []);
+  useEffect(() => () => {
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+  }, []);
+
+  const onAgentEvents = useCallback(
+    (events: AgentEvent[]) => {
+      for (const e of events) {
+        const a = teacherAction(e);
+        if (!a) continue;
+        if (a.kind === 'board') {
+          const same = (t?: string | null) => !!t && t.trim().toLowerCase() === a.topic.toLowerCase();
+          if (!same(loadingRef.current) && !same(lessonRef.current?.title)) startLesson(a.topic);
+        } else if (a.kind === 'quiz') {
+          setQuiz(a.quiz);
+          setQuizPick(null);
+        } else {
+          showNotice(a.text);
+        }
+      }
+    },
+    [startLesson, showNotice],
+  );
+
+  const agentContext = useCallback(() => {
+    const l = lessonRef.current;
+    return {
+      topic: l?.title ?? null,
+      level: levelRef.current,
+      lessonId: l ? l.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60) : null,
+      teacherEmail: DEFAULT_TEACHER_EMAIL,
+      teacherName: 'Dr. Meera Iyer',
+      catalog: caseCatalog(),
+      lang: langRef.current,
+    };
+  }, []);
+
+  const answerQuiz = (i: number) => {
+    if (!quiz || quizPick !== null) return;
+    setQuizPick(i);
+    const right = i === quiz.answerIndex;
+    const ans = quiz.options[quiz.answerIndex];
+    teacherRef.current?.speak(right ? `Correct, well done! ${quiz.why}` : `Not quite. The answer is ${ans}. ${quiz.why}`, { log: true });
+  };
+
+  const teacher = useTeacherSession({ onStudentFinal, onAgentEvents, agentContext });
   teacherRef.current = teacher;
 
   useEffect(() => {
@@ -401,6 +474,40 @@ export function ClassroomScreen() {
           <span style={{ ...labelStyle, fontSize: 10, color: UI.primary, display: 'block', marginBottom: 4 }}>{TEACHER.short}</span>
           {teacher.teacherCaption}
         </div>
+
+        {notice && (
+          <div role="status" style={{ ...labelStyle, fontSize: 11, color: '#0b1f4b', background: UI.amber, border: `2px solid ${UI.line}`, padding: '6px 8px' }}>
+            {notice}
+          </div>
+        )}
+
+        {/* quiz the teacher put up herself (start_quiz tool) */}
+        {quiz && (
+          <div role="group" aria-label="Quiz from Dr. Iyer" style={{ background: UI.bg, border: `2px solid ${UI.primary}`, padding: '10px 12px', display: 'grid', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ ...labelStyle, fontSize: 10, color: UI.primary }}>Quick quiz</span>
+              <button type="button" onClick={() => setQuiz(null)} style={{ ...smallBtn, marginLeft: 'auto', padding: '2px 6px', fontSize: 10 }} aria-label="Close quiz">
+                Close
+              </button>
+            </div>
+            <div style={{ fontFamily: UI.label, fontSize: 14, lineHeight: 1.35 }}>{quiz.question}</div>
+            {quiz.options.map((o, i) => {
+              const done = quizPick !== null;
+              const tone = done && i === quiz.answerIndex ? UI.primary : done && i === quizPick ? UI.amber : UI.bg;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => answerQuiz(i)}
+                  disabled={done}
+                  style={{ ...smallBtn, textAlign: 'left', textTransform: 'none', letterSpacing: '.02em', fontSize: 12, background: tone, color: tone === UI.bg ? UI.text : '#0b1f4b' }}
+                >
+                  {'ABCD'[i]}. {o}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* conversation log */}
         <div style={{ flex: 1, minHeight: 60, overflow: 'auto', display: 'grid', alignContent: 'start', gap: 6 }}>

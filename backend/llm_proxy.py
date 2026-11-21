@@ -77,6 +77,37 @@ def token_meta(candidate: str) -> Optional[dict[str, Any]]:
     return dict(meta) if meta else None
 
 
+# Agora agent id -> its LLM bearer token, so /voice/context can update the ctx
+# a tool-enabled agent's tools read (agent_runtime).
+_agent_tokens: dict[str, str] = {}
+
+
+def bind_agent(agent_id: str, token: str) -> None:
+    if not agent_id or not token:
+        return
+    with _tokens_lock:
+        for a in [a for a, t in _agent_tokens.items() if t not in _tokens]:
+            del _agent_tokens[a]
+        _agent_tokens[agent_id] = token
+
+
+def agent_token(agent_id: str) -> Optional[str]:
+    with _tokens_lock:
+        tok = _agent_tokens.get(agent_id)
+        return tok if tok and tok in _tokens else None
+
+
+def update_token_ctx(agent_id: str, ctx: dict[str, Any]) -> bool:
+    """Replace meta["ctx"] for the agent's token. False when the agent has no tagged token."""
+    with _tokens_lock:
+        tok = _agent_tokens.get(agent_id)
+        meta = _token_meta.get(tok or "")
+        if not tok or tok not in _tokens or meta is None or "ctx" not in meta:
+            return False
+        meta["ctx"] = dict(ctx)
+        return True
+
+
 def valid_token(candidate: str) -> bool:
     if not candidate:
         return False
@@ -290,11 +321,13 @@ async def patient_chat_completions(request: Request):
     if not cfgs:
         return _err(503, "no LLM provider configured", "server_error")
     meta = token_meta(bearer)
-    if meta and meta.get("kind") == "followup":
-        # Asha's follow-up call: tools run here, server-side (Agora custom-LLM tool pattern).
-        import followup_tools
+    if meta:
+        # Tool-enabled agents (Asha's follow-up call, Priya, Dr. Iyer, the viva
+        # examiner): tools run here, server-side (Agora custom-LLM tool pattern).
+        import agent_runtime
 
-        return await followup_tools.handle(payload, meta, cfgs[0]["model"])
+        if agent_runtime.is_registered(meta.get("kind")):
+            return await agent_runtime.handle(payload, meta, cfgs[0]["model"])
     if addressed_to_nurse(sanitize_messages(payload.get("messages"))):
         log.info("doctor addressed the nurse; patient stays silent")
         return _silent_reply(payload.get("stream", True) is not False, cfgs[0]["model"])

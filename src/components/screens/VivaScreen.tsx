@@ -486,6 +486,22 @@ function ExamHall({
               <button type="button" className="btn btn-quiet btn-sm" onClick={onRetryPlan}>Retry</button>
             </p>
           )}
+          {session.liveGrades.length > 0 && (
+            <div aria-label="Examiner's live marks">
+              <p className="muted-note">Examiner's notes, marked live</p>
+              <ol className="viva-log">
+                {session.liveGrades.map((g, i) => (
+                  <li key={i} className="viva-line viva-line--examiner">
+                    <span className="viva-line-who">{g.score}/10</span>
+                    <span className="viva-line-text">
+                      {g.question}
+                      {g.missed.length > 0 && <span className="muted-note"> Missed: {g.missed.join(', ')}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
           {session.error && <p className="viva-warn">{session.error}</p>}
           {session.progress && session.status === 'loading' && <p className="muted-note">{session.progress}</p>}
         </section>

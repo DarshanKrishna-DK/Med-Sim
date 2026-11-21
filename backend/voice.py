@@ -269,6 +269,15 @@ class VoiceStartRequest(BaseModel):
     gender: Literal["M", "F"] = "M"
     locale: Optional[str] = None
     avatar: Optional[bool] = None
+    # Autonomous agents (receptionist / teacher / viva-examiner): what their
+    # server-side tools may act on, e.g. {assignmentCode, knownCodes, profile}.
+    # Whitelisted and size-limited per kind in agent_runtime.clean_ctx.
+    agentContext: Optional[dict[str, Any]] = None
+
+
+# Sessions whose live agent runs its own tools inside our custom LLM endpoint
+# (agent_runtime / agent_toolsets). Needs the proxy route (PUBLIC_URL or tunnel).
+AUTONOMOUS_CASES = ("receptionist", "teacher", viva.VIVA_CASE_ID)
 
 
 class VoiceStartResponse(BaseModel):
@@ -280,6 +289,9 @@ class VoiceStartResponse(BaseModel):
     agentId: str
     avatarUid: Optional[int] = None
     avatarError: Optional[str] = None
+    # True when the agent's tools run server-side (the client then drops its
+    # keyword triggers and polls /agent/agent-events/{channel}).
+    toolsEnabled: Optional[bool] = None
 
 
 def build_join_body(
@@ -349,9 +361,12 @@ async def start_agent_session(
     idle_timeout: int = AGENT_IDLE_TIMEOUT_S,
     translate_greeting: bool = True,
     llm_token_meta: Optional[dict[str, Any]] = None,
+    agent_kind: Optional[str] = None,
+    agent_ctx: Optional[dict[str, Any]] = None,
 ) -> VoiceStartResponse:
     """Mint RTC+RTM tokens, start one ConvoAI agent and return the session.
-    Shared by /voice/start (patient persona) and the follow-up call (Asha)."""
+    Shared by /voice/start (patient persona) and the follow-up call (Asha).
+    agent_kind tags the LLM token for an autonomous agent (tools + ctx)."""
     env = _require_env(
         "AGORA_APP_ID", "AGORA_APP_CERTIFICATE", "AGORA_CUSTOMER_ID", "AGORA_CUSTOMER_SECRET", "MURF_API_KEY"
     )
@@ -359,6 +374,9 @@ async def start_agent_session(
     app_id, cert = env["AGORA_APP_ID"], env["AGORA_APP_CERTIFICATE"]
     safe_case = "".join(ch for ch in req.caseId if ch.isalnum() or ch in "-_")[:24] or "case"
     channel = f"{channel_prefix}-{safe_case}-{secrets.token_hex(4)}"
+    if agent_kind and llm_token_meta is None:
+        llm_token_meta = {"kind": agent_kind, "ctx": dict(agent_ctx or {}), "channel": channel,
+                          "lang": langmod.norm_lang(req.locale)}
     user_uid = secrets.randbelow(900000) + 100000
     user_token = _rtc_rtm_token(app_id, cert, channel, user_uid)
     agent_token = _rtc_rtm_token(app_id, cert, channel, AGENT_UID)
@@ -394,14 +412,29 @@ async def start_agent_session(
     except Exception:  # noqa: BLE001
         raise _agora_fail(r, "join (no agent_id)")
     observer.register_session(channel, user_uid, req.caseId, AGENT_UID)
+    llm = body["properties"]["llm"]
+    tools_enabled: Optional[bool] = None
+    if agent_kind:
+        tools_enabled = llm.get("vendor") == "custom"
+        if tools_enabled:
+            llm_proxy.bind_agent(agent_id, str(llm.get("api_key") or ""))
     return VoiceStartResponse(
         appId=app_id, channel=channel, uid=user_uid, token=user_token, agentUid=AGENT_UID, agentId=agent_id,
         avatarUid=AVATAR_UID if avatar_token and not avatar_error else None, avatarError=avatar_error,
+        toolsEnabled=tools_enabled,
     )
 
 
 @router.post("/voice/start", response_model=VoiceStartResponse, response_model_exclude_none=True)
 async def voice_start(req: VoiceStartRequest):
+    if req.caseId in AUTONOMOUS_CASES:
+        import agent_runtime
+
+        try:
+            ctx = agent_runtime.clean_ctx(req.caseId, req.agentContext or {})
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return await start_agent_session(req, agent_kind=req.caseId, agent_ctx=ctx)
     return await start_agent_session(req)
 
 
@@ -467,14 +500,38 @@ async def voice_speak(req: VoiceSpeakRequest):
 
 class VoiceContextRequest(BaseModel):
     agentId: str
-    systemPrompt: str
+    systemPrompt: Optional[str] = None
+    # Autonomous agents: keys merged into the ctx their tools read (validated per kind).
+    agentContext: Optional[dict[str, Any]] = None
+
+
+def update_agent_ctx(agent_id: str, patch: dict[str, Any]) -> bool:
+    """Merge a validated ctx patch into a tool-enabled agent's token meta. False when not tool-enabled."""
+    import agent_runtime
+
+    tok = llm_proxy.agent_token(agent_id)
+    meta = llm_proxy.token_meta(tok) if tok else None
+    if not meta or "ctx" not in meta:
+        return False
+    kind = str(meta.get("kind"))
+    merged = {**meta["ctx"], **agent_runtime.clean_ctx(kind, patch)}
+    return llm_proxy.update_token_ctx(agent_id, agent_runtime.clean_ctx(kind, merged))
 
 
 @router.post("/voice/context")
 async def voice_context(req: VoiceContextRequest):
     """Best effort: the update API documents `properties.llm.system_messages`
     as runtime-updatable. Fails with 502 (Agora body) if the engine rejects it;
-    the frontend should treat that as non-fatal."""
+    the frontend should treat that as non-fatal. agentContext (optional)
+    updates what an autonomous agent's tools act on, without an Agora call."""
+    ctx_updated: Optional[bool] = None
+    if req.agentContext is not None:
+        try:
+            ctx_updated = update_agent_ctx(req.agentId, req.agentContext)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    if req.systemPrompt is None:
+        return {"ok": True, "ctxUpdated": bool(ctx_updated)}
     r = await _agora_call(
         "POST",
         f"/agents/{req.agentId}/update",
@@ -482,7 +539,7 @@ async def voice_context(req: VoiceContextRequest):
     )
     if r.status_code != 200:
         raise _agora_fail(r, "update")
-    return {"ok": True}
+    return {"ok": True} if ctx_updated is None else {"ok": True, "ctxUpdated": ctx_updated}
 
 
 class VoiceTtsRequest(BaseModel):
