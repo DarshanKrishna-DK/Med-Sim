@@ -66,8 +66,24 @@ def _as_ist(dt: datetime) -> datetime:
     return dt.astimezone(IST)
 
 
+def build_rrule(recurrence: dict | None) -> str | None:
+    """Normalise {freq, count, interval} into an RFC 5545 RRULE line (without folding)."""
+    if not recurrence:
+        return None
+    freq = str(recurrence.get("freq", "")).upper()
+    if freq not in ("DAILY", "WEEKLY", "MONTHLY"):
+        return None
+    try:
+        count = max(1, min(52, int(recurrence.get("count", 1))))
+        interval = max(1, min(12, int(recurrence.get("interval", 1) or 1)))
+    except (TypeError, ValueError):
+        return None
+    return f"RRULE:FREQ={freq};COUNT={count};INTERVAL={interval}"
+
+
 def build_ics(uid: str, title: str, description: str, start: datetime,
-              minutes: int = 15, location: str = "MedSim Clinic") -> str:
+              minutes: int = 15, location: str = "MedSim Clinic",
+              rrule: str | None = None, url: str | None = None) -> str:
     s = _as_ist(start)
     e = s + timedelta(minutes=minutes)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -95,6 +111,8 @@ def build_ics(uid: str, title: str, description: str, start: datetime,
         f"SUMMARY:{_esc(title)}",
         f"DESCRIPTION:{_esc(description)}",
         f"LOCATION:{_esc(location)}",
+        *([rrule] if rrule else []),
+        *([f"URL:{url}"] if url else []),
         "STATUS:CONFIRMED",
         "BEGIN:VALARM",
         "ACTION:DISPLAY",
@@ -108,16 +126,17 @@ def build_ics(uid: str, title: str, description: str, start: datetime,
 
 
 def google_calendar_link(title: str, details: str, start: datetime,
-                         end: datetime, location: str = "MedSim Clinic") -> str:
+                         end: datetime, location: str = "MedSim Clinic",
+                         rrule: str | None = None) -> str:
     def utc(d: datetime) -> str:
         d = d.replace(tzinfo=IST) if d.tzinfo is None else d
         return d.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
-    q = urlencode(
-        {"action": "TEMPLATE", "text": title, "dates": f"{utc(start)}/{utc(end)}",
-         "details": details, "location": location},
-        quote_via=quote,
-    )
+    params = {"action": "TEMPLATE", "text": title, "dates": f"{utc(start)}/{utc(end)}",
+              "details": details, "location": location}
+    if rrule:
+        params["recur"] = rrule
+    q = urlencode(params, quote_via=quote)
     return "https://calendar.google.com/calendar/render?" + q
 
 
@@ -179,21 +198,29 @@ def _start_text(d: datetime) -> str:
 
 
 def make_follow_up(case_id: str, patient_name: str, in_days: int, reason: str,
-                   clinic: str = "MedSim Clinic", now: datetime | None = None) -> dict:
+                   clinic: str = "MedSim Clinic", now: datetime | None = None,
+                   recurrence: dict | None = None, call_url: str | None = None) -> dict:
     start = pick_start(in_days, now)
-    minutes = 15
+    rrule = build_rrule(recurrence)
+    minutes = 20 if call_url else 15
     title = f"Follow-up: {reason}"
-    desc = f"Follow-up visit for {patient_name} at {clinic}. Reason: {reason}. Simulated visit (MedSim)."
+    kind = "call" if call_url else "visit"
+    desc = f"Follow-up {kind} for {patient_name} at {clinic}. Reason: {reason}. Simulated visit (MedSim)."
+    if call_url:
+        desc += f" Join your Asha follow-up call: {call_url}"
     uid = f"{secrets.token_hex(8)}-{case_id}@medsim"
-    token = store_ics(build_ics(uid, title, desc, start, minutes, clinic))
+    token = store_ics(build_ics(uid, title, desc, start, minutes, clinic, rrule=rrule, url=call_url))
     return {
         "ok": True,
         "start": start.isoformat(),
         "startText": _start_text(start),
         "icsPath": f"/rx/calendar/{token}.ics",
         "googleCalendarUrl": google_calendar_link(
-            title, desc, start, start + timedelta(minutes=minutes), clinic),
+            title, desc, start, start + timedelta(minutes=minutes), clinic, rrule=rrule),
         "title": title,
+        "description": desc,
+        "minutes": minutes,
+        "rrule": rrule,
     }
 
 

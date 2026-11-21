@@ -35,7 +35,7 @@ function stepLinks(step: NurseStep): Link[] {
   const r = (step.result ?? {}) as Record<string, any>;
   const out: Link[] = [];
   const add = (label: string, href: unknown) => {
-    if (typeof href === 'string' && /^(https?:\/\/|\/rx\/)/.test(href)) out.push({ label, href });
+    if (typeof href === 'string' && /^(https?:\/\/|\/rx\/|\/call\/)/.test(href)) out.push({ label, href });
   };
   if (step.tool === 'check_allergies_and_interactions' && r.realCheck?.ok) {
     for (const s of (r.realCheck.sources ?? []) as Array<{ name?: string; url?: string }>) add(s.name ?? 'Source', s.url);
@@ -43,6 +43,8 @@ function stepLinks(step: NurseStep): Link[] {
   if (step.tool === 'schedule_follow_up' && r.calendar) {
     add('Add to Google Calendar', r.calendar.googleCalendarUrl);
     add('Download .ics', r.calendar.icsUrl);
+    add('Open in Google Calendar', r.calendar.booked?.htmlLink);
+    add('Asha call link', r.calendar.callUrl);
   }
   if (step.tool === 'record_to_ehr') {
     for (const rec of (r.records ?? []) as Array<{ resourceType?: string; id?: string; url?: string }>) add(`FHIR ${rec.resourceType}/${rec.id}`, rec.url);
