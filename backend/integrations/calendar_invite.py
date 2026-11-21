@@ -199,8 +199,9 @@ def _start_text(d: datetime) -> str:
 
 def make_follow_up(case_id: str, patient_name: str, in_days: int, reason: str,
                    clinic: str = "MedSim Clinic", now: datetime | None = None,
-                   recurrence: dict | None = None, call_url: str | None = None) -> dict:
-    start = pick_start(in_days, now)
+                   recurrence: dict | None = None, call_url: str | None = None,
+                   start_at: datetime | None = None) -> dict:
+    start = _as_ist(start_at) if start_at else pick_start(in_days, now)
     rrule = build_rrule(recurrence)
     minutes = 20 if call_url else 15
     title = f"Follow-up: {reason}"

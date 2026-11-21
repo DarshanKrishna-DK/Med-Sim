@@ -219,9 +219,15 @@ async def _send_twilio(channel: str, number: str, message: str, audio_url: Optio
         return _fail(channel, number, "Twilio is not configured (set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN)")
     if channel == "whatsapp":
         frm = "whatsapp:" + (_env("TWILIO_WHATSAPP_FROM") or DEFAULT_WA_FROM).removeprefix("whatsapp:")
-        form = {"From": frm, "To": "whatsapp:" + number, "Body": message}
-        if audio_url and audio_url.startswith("https://"):
-            form["MediaUrl"] = audio_url
+        content_sid = _env("TWILIO_WHATSAPP_CONTENT_SID")
+        if content_sid:
+            # Trial / business-initiated sends: WhatsApp only allows a pre-approved
+            # template here (Twilio trial: the "Appointment Reminders" template).
+            form = {"From": frm, "To": "whatsapp:" + number, "ContentSid": content_sid}
+        else:
+            form = {"From": frm, "To": "whatsapp:" + number, "Body": message}
+            if audio_url and audio_url.startswith("https://"):
+                form["MediaUrl"] = audio_url
     else:
         frm = _env("TWILIO_SMS_FROM")
         if not frm:
@@ -239,7 +245,10 @@ async def _send_twilio(channel: str, number: str, message: str, audio_url: Optio
     if r.status_code >= 300:
         msg = str(data.get("message") or "")[:200] if isinstance(data, dict) else ""
         return _fail(channel, number, f"Twilio error {r.status_code}" + (f": {msg}" if msg else ""))
-    return {"ok": True, "channel": channel, "to": mask(number), "sid": data.get("sid") if isinstance(data, dict) else None}
+    out = {"ok": True, "channel": channel, "to": mask(number), "sid": data.get("sid") if isinstance(data, dict) else None}
+    if "ContentSid" in form:
+        out["template"] = True
+    return out
 
 
 def _smtp_send(msg: EmailMessage) -> None:

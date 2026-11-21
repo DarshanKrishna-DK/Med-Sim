@@ -209,7 +209,7 @@ AVATAR_UID = 900002
 # Murf sample_rate each avatar vendor needs (Agora avatar docs). Anam accepts
 # 16/24/48k and we ask it for 24k, so Murf stays at 24k for anam and liveavatar.
 AVATAR_SAMPLE_RATES = {"anam": 24000, "liveavatar": 24000, "heygen": 24000, "akool": 16000}
-AVATAR_DEFAULT_CASES = {"teacher", viva.VIVA_CASE_ID}
+AVATAR_DEFAULT_CASES = {"teacher"}  # one avatar (Anam free tier): the Teacher Portal only
 
 
 def avatar_config() -> Optional[dict[str, str]]:

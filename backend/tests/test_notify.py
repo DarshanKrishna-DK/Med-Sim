@@ -21,7 +21,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from integrations import notify  # noqa: E402
 
-TW = {"TWILIO_ACCOUNT_SID": "ACtest", "TWILIO_AUTH_TOKEN": "tok", "TWILIO_SMS_FROM": "+15005550006"}
+TW = {"TWILIO_ACCOUNT_SID": "ACtest", "TWILIO_AUTH_TOKEN": "tok", "TWILIO_SMS_FROM": "+15005550006",
+      "TWILIO_WHATSAPP_CONTENT_SID": "", "TWILIO_WHATSAPP_FROM": ""}
 SMTP = {"SMTP_USER": "doc@gmail.com", "SMTP_PASSWORD": "pw"}
 
 

@@ -1,6 +1,6 @@
 /**
  * MedSim -> Google Calendar bridge. Deploy as a Web app:
- * Execute as: Me, Who has access: Anyone. Set script property MEDSIM_SECRET.
+ * Execute as: Me, Who has access: Anyone. Optional script property MEDSIM_SECRET.
  *
  * POST body (JSON):
  * { secret, title, description, location, startIso, minutes,
@@ -19,8 +19,10 @@ function doGet() {
 function doPost(e) {
   try {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    // Optional shared secret: if the MEDSIM_SECRET script property is set it must
+    // match. Without it, the unguessable web-app URL itself is the key.
     var expected = PropertiesService.getScriptProperties().getProperty('MEDSIM_SECRET');
-    if (!expected || body.secret !== expected) {
+    if (expected && body.secret !== expected) {
       return json_({ ok: false, error: 'unauthorized' });
     }
     var start = new Date(body.startIso);

@@ -270,7 +270,8 @@ class NurseState:
         stems = {re.split(r"[\s\-_0-9]", medication_id.lower())[0], re.split(r"[\s\-_0-9(]", name.lower())[0]}
         return any(len(s) >= 4 and s in said for s in stems)
 
-    def schedule_follow_up(self, inDays: Any, reason: str = "", recurrence: Any = None, mode: Any = None) -> dict[str, Any]:
+    def schedule_follow_up(self, inDays: Any, reason: str = "", recurrence: Any = None, mode: Any = None,
+                           startsInMinutes: Any = None) -> dict[str, Any]:
         try:
             days = max(0, min(365, int(inDays)))
         except (TypeError, ValueError):
@@ -282,6 +283,14 @@ class NurseState:
         m = str(mode or "").lower()
         if m in ("visit", "call"):
             self.follow_up["mode"] = m
+        try:
+            mins = int(startsInMinutes) if startsInMinutes not in (None, "") else 0
+        except (TypeError, ValueError):
+            mins = 0
+        if 0 < mins <= 1440:
+            # "check-in call in 5 minutes": a call today at an exact time.
+            self.follow_up["startsInMinutes"] = mins
+            self.follow_up["mode"] = "call"
         return {"ok": True, **self.follow_up}
 
     # --- real-world tools (network; never raise)
@@ -362,9 +371,13 @@ class NurseState:
             except Exception as e:  # noqa: BLE001
                 log.warning("follow-up call link failed: %s", type(e).__name__)
         try:
+            from datetime import timedelta, timezone
+
+            mins = res.get("startsInMinutes")
             cal = calendar_invite.make_follow_up(
                 self.req.caseId, self.req.patient.name, res["inDays"], res["reason"],
-                recurrence=rec, call_url=call_url)
+                recurrence=rec, call_url=call_url,
+                start_at=datetime.now(timezone.utc) + timedelta(minutes=int(mins)) if mins else None)
         except Exception as e:  # noqa: BLE001
             log.warning("calendar invite failed: %s", type(e).__name__)
             return
@@ -392,6 +405,16 @@ class NurseState:
             res["calendar"]["booked"] = {
                 "ok": True, "htmlLink": booked.get("htmlLink"),
                 "recurring": bool(rec), "seriesId": booked.get("seriesId")}
+            if self.follow_up is not None:
+                self.follow_up["booked"] = True
+        # At each call time the patient is messaged "Asha is ready, tap to join".
+        if call_url and contact:
+            from integrations import call_reminders
+
+            times = call_reminders.schedule(contact, self.req.patient.name, call_url,
+                                            datetime.fromisoformat(cal["start"]), rec, res.get("reason", ""))
+            if times:
+                res["calendar"]["reminders"] = len(times)
 
     async def send_to_patient(self, channel: str = "auto") -> dict[str, Any]:
         from integrations import calendar_invite, notify
@@ -433,14 +456,17 @@ class NurseState:
         except Exception as e:  # noqa: BLE001
             log.warning("voice prescription for send failed: %s", type(e).__name__)
         ics: Optional[bytes] = None
-        if fu and fu.get("icsPath"):
+        if fu and fu.get("icsPath") and not fu.get("booked"):  # booked straight into the calendar: no invite file
             token = fu["icsPath"].rsplit("/", 1)[-1].removesuffix(".ics")
             text = calendar_invite.get_ics(token)
             ics = text.encode() if text else None
         message = notify.compose_message(
             self.req.patient.name, self.req.doctorName or "your doctor", meds,
             {"startText": fu.get("startText"), "reason": fu.get("reason")} if fu else None,
-            audio_url, (fu or {}).get("googleCalendarUrl"), lang)
+            audio_url, None if (fu or {}).get("booked") else (fu or {}).get("googleCalendarUrl"), lang)
+        if fu and fu.get("booked"):
+            # Already booked straight into the calendar: no "add to calendar" step.
+            message = message.replace(notify.DISCLAIMER, f"It is already booked in your Google Calendar. {notify.DISCLAIMER}", 1)
         call_url = (fu or {}).get("callUrl")
         if fu and not call_url:
             from integrations import followup_calls
@@ -502,7 +528,9 @@ def summarize(tool: str, args: dict[str, Any], res: dict[str, Any]) -> str:
         cal = res.get("calendar") or {}
         when = cal.get("startText")
         rec = res.get("recurrence")
-        text = f"Follow-up in {res['inDays']} days: {res['reason']}"
+        mins = res.get("startsInMinutes")
+        text = (f"Check-in call in {mins} minutes: {res['reason']}" if mins
+                else f"Follow-up in {res['inDays']} days: {res['reason']}")
         if rec:
             unit = {"DAILY": "day", "WEEKLY": "week", "MONTHLY": "month"}[rec["freq"]]
             every = "" if rec["interval"] == 1 else f"{rec['interval']} "
@@ -511,6 +539,9 @@ def summarize(tool: str, args: dict[str, Any], res: dict[str, Any]) -> str:
             text += " (remote call with Nurse Asha)"
         if when:
             text += f" ({when}, " + ("added to Google Calendar" if (cal.get("booked") or {}).get("ok") else "calendar invite ready") + ")"
+        if cal.get("reminders"):
+            n = cal["reminders"]
+            text += f"; the patient gets a join reminder at {'each call' if n > 1 else 'call time'}"
         return text
     if tool == "send_to_patient":
         return f"Sent to the patient by {res.get('channel')} ({res.get('to')}): " + ", ".join(res.get("medications") or [])
@@ -543,14 +574,17 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {"type": "function", "function": {
         "name": "schedule_follow_up",
         "description": "Schedule a follow-up and put it in the doctor's Google Calendar. Use recurrence for repeating check-ins "
-                       "(e.g. weekly for a month) and mode call for a remote voice call with Nurse Asha instead of a clinic visit.",
+                       "(e.g. weekly for a month) and mode call for a remote voice call with Nurse Asha instead of a clinic visit. "
+                       "For a call later today ('check-in call in 5 minutes') set inDays 0 and startsInMinutes.",
         "parameters": {"type": "object", "properties": {
             "inDays": {"type": "integer"}, "reason": {"type": "string"},
             "recurrence": {"type": "object", "properties": {
                 "freq": {"type": "string", "enum": ["daily", "weekly", "monthly"]},
                 "count": {"type": "integer", "minimum": 1, "maximum": 12},
                 "interval": {"type": "integer", "minimum": 1, "maximum": 4}}, "required": ["freq", "count"]},
-            "mode": {"type": "string", "enum": ["visit", "call"]}},
+            "mode": {"type": "string", "enum": ["visit", "call"]},
+            "startsInMinutes": {"type": "integer", "minimum": 1, "maximum": 1440,
+                                "description": "Only for a call later today, e.g. 'check-in call in 5 minutes' -> 5 (set inDays 0)."}},
             "required": ["inDays", "reason"]}}},
     {"type": "function", "function": {
         "name": "send_to_patient",

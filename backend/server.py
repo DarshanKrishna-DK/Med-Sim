@@ -115,9 +115,13 @@ BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8787"))
 @asynccontextmanager
 async def _lifespan(_app):
     llm_proxy.start_tunnel(BACKEND_PORT)
+    from integrations import call_reminders
+
+    call_reminders.start()  # scheduled "Asha is ready for your check-in" messages
     try:
         yield
     finally:
+        call_reminders.stop()
         llm_proxy.stop_tunnel()
 
 
