@@ -91,7 +91,7 @@ function detectEmotion(text: string): PatientEmotion {
 /** Sessions that are NOT a patient consultation. Their utterances must never
  *  reach the clinical agents (nurse orders, exam detection): a viva answer
  *  like "give atropine" is not an order for the patient in the clinic. */
-const NON_PATIENT_SESSIONS = new Set(['teacher', 'viva-examiner', 'radiologist']);
+const NON_PATIENT_SESSIONS = new Set(['teacher', 'viva-examiner', 'radiologist', 'followup-call']);
 
 export interface ConversationOptions {
   /** Run the nurse/exam agents on this session's utterances. Defaults to true
@@ -109,6 +109,12 @@ export interface ConversationOptions {
   storageKey?: string;
   /** BCP-47 locale hint for ASR/TTS (backend default if omitted). */
   locale?: string;
+  /** Custom agent start endpoint (default /voice/start). The persona then
+   *  lives server-side: `startBody` is posted as is, instead of the prompt. */
+  startUrl?: string;
+  startBody?: Record<string, unknown>;
+  /** Custom stop endpoint (default /voice/stop), posted {agentId}. */
+  stopUrl?: string;
 }
 
 interface VoiceStartResponse {
@@ -180,16 +186,17 @@ function friendlyMediaError(err: unknown): string | null {
 
 // ── page-unload safety net: stop any agents we started ─────────
 
-const liveAgentIds = new Set<string>();
+/** agentId -> stop endpoint. */
+const liveAgentIds = new Map<string, string>();
 let unloadHookInstalled = false;
 function installUnloadHook() {
   if (unloadHookInstalled || typeof window === 'undefined') return;
   unloadHookInstalled = true;
   window.addEventListener('pagehide', () => {
-    for (const agentId of liveAgentIds) {
+    for (const [agentId, stopUrl] of liveAgentIds) {
       try {
         const blob = new Blob([JSON.stringify({ agentId })], { type: 'application/json' });
-        navigator.sendBeacon('/voice/stop', blob);
+        navigator.sendBeacon(stopUrl, blob);
       } catch { /* noop */ }
     }
     liveAgentIds.clear();
@@ -242,6 +249,9 @@ export class Conversation {
   private clinicalAgents: boolean;
   private locale: string | undefined;
   private storageKey: string | null = null;
+  private startUrl: string | null;
+  private startBody: Record<string, unknown> | null;
+  private stopUrl: string;
 
   private messageSubscribers = new Set<(msgs: ReadonlyArray<ChatMessage>) => void>();
 
@@ -277,6 +287,9 @@ export class Conversation {
     this.clinicalAgents = options.clinicalAgents ?? !NON_PATIENT_SESSIONS.has(this.caseId);
     this.locale = options.locale;
     this.storageKey = options.storageKey ?? null;
+    this.startUrl = options.startUrl ?? null;
+    this.startBody = options.startBody ?? null;
+    this.stopUrl = options.stopUrl ?? '/voice/stop';
 
     const restored = this.loadMessages();
     this.messages = restored && restored.length > 0 ? restored : [this.initialMessage];
@@ -529,18 +542,24 @@ export class Conversation {
     try {
       this.listeners.onProgress?.('Starting voice agent…');
       const initialLine = this.initialMessage.content;
-      const session = await postVoice<VoiceStartResponse>('/voice/start', {
-        caseId: this.caseId,
-        systemPrompt: this.systemPrompt,
-        initialLine,
-        gender: this.voiceGender,
-        ...(this.locale ? { locale: this.locale } : {}),
-      });
+      const startUrl = this.startUrl ?? '/voice/start';
+      const session = await postVoice<VoiceStartResponse>(
+        startUrl,
+        this.startUrl
+          ? (this.startBody ?? {})
+          : {
+              caseId: this.caseId,
+              systemPrompt: this.systemPrompt,
+              initialLine,
+              gender: this.voiceGender,
+              ...(this.locale ? { locale: this.locale } : {}),
+            },
+      );
       if (!session || !session.appId || !session.channel || !session.token) {
-        throw new VoiceBackendError('Voice backend not configured, /voice/start returned no Agora session.');
+        throw new VoiceBackendError(`Voice backend not configured, ${startUrl} returned no Agora session.`);
       }
       this.session = session;
-      liveAgentIds.add(session.agentId);
+      liveAgentIds.set(session.agentId, this.stopUrl);
       if (this.disposed) return this.teardown();
 
       // 1. RTM first so we don't miss the greeting transcript.
@@ -832,7 +851,7 @@ export class Conversation {
       const { agentId } = this.session;
       this.session = null;
       liveAgentIds.delete(agentId);
-      postVoice('/voice/stop', { agentId }, { keepalive: true }).catch(() => undefined);
+      postVoice(this.stopUrl, { agentId }, { keepalive: true }).catch(() => undefined);
     }
     this.smoothedAmp = 0;
   }

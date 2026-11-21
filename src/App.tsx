@@ -13,6 +13,7 @@ import { CorridorRoute } from './components/corridorRoute';
 import { VoiceMetricsPanel } from './components/ui/VoiceMetricsPanel';
 import { FacultyToasts } from './components/observer/FacultyToasts';
 import { ProfileDialog } from './components/ui/ProfileDialog';
+import { callTokenFromUrl } from './voice/followupCall';
 
 // Teacher Portal lecture hall (3D + whiteboard), loaded on first visit.
 const TriageDrillScreen = lazy(() => import('./components/screens/TriageDrillScreen'));
@@ -25,11 +26,26 @@ const OTScreen = lazy(() => import('./components/screens/OTScreen'));
 const VivaScreen = lazy(() => import('./components/screens/VivaScreen'));
 // Live faculty observer (?observe=<code>), loaded on first visit.
 const ObserverScreen = lazy(() => import('./components/screens/ObserverScreen'));
+// Asha follow-up call (/call/<token>, the patient's phone), loaded on first visit.
+const FollowUpCallScreen = lazy(() => import('./components/screens/FollowUpCallScreen'));
+const CALL_TOKEN = callTokenFromUrl();
 
 /** Screen router. The Screen union in game/types.ts still carries legacy
  *  values (splash, onboarding, mode, gpRoom, endConfirm, agenticRounds…);
  *  each one folds into the nearest MedSim screen so nothing renders blank. */
 export default function App() {
+  if (CALL_TOKEN) {
+    // Patient-facing page: none of the simulator chrome.
+    return (
+      <Suspense fallback={<div className="route-loading">Opening your call...</div>}>
+        <FollowUpCallScreen token={CALL_TOKEN} />
+      </Suspense>
+    );
+  }
+  return <SimulatorApp />;
+}
+
+function SimulatorApp() {
   const screen = useScreen();
   return (
     <>

@@ -223,8 +223,17 @@ class VoiceStartResponse(BaseModel):
 
 
 def build_join_body(
-    req: VoiceStartRequest, channel: str, user_uid: int, agent_token: str, murf_key: str
+    req: VoiceStartRequest,
+    channel: str,
+    user_uid: int,
+    agent_token: str,
+    murf_key: str,
+    *,
+    voice_kind: Optional[str] = None,
+    idle_timeout: int = AGENT_IDLE_TIMEOUT_S,
 ) -> dict[str, Any]:
+    """Agora /join body. voice_kind overrides req.gender for the Murf voice
+    ('nurse' for Asha's follow-up call); idle_timeout is the post-leave linger."""
     lang = langmod.norm_lang(req.locale)
     locale = langmod.locale_for(lang)
     sarvam_key = os.environ.get("SARVAM_API_KEY", "").strip()
@@ -242,7 +251,7 @@ def build_join_body(
             "remote_rtc_uids": [str(user_uid)],
             # Seconds the agent lingers after the doctor leaves the channel. Kept
             # short so a crashed tab or lost /voice/stop burns few ConvoAI minutes.
-            "idle_timeout": AGENT_IDLE_TIMEOUT_S,
+            "idle_timeout": idle_timeout,
             "advanced_features": {"enable_rtm": True},
             "parameters": {"data_channel": "rtm", "enable_error_message": True, "enable_metrics": True},
             "asr": asr,
@@ -254,7 +263,7 @@ def build_join_body(
                 "params": {
                     "api_key": murf_key,
                     "base_url": "wss://global.api.murf.ai/v1/speech/stream-input",
-                    "voiceId": _voice_for(req.gender, req.caseId, lang),
+                    "voiceId": _voice_for(voice_kind or req.gender, req.caseId, lang),
                     "model": os.environ.get("MURF_AGORA_MODEL", "").strip() or "FALCON",
                     "locale": locale,
                     "rate": 0,
@@ -266,23 +275,33 @@ def build_join_body(
     }
 
 
-@router.post("/voice/start", response_model=VoiceStartResponse)
-async def voice_start(req: VoiceStartRequest):
+async def start_agent_session(
+    req: VoiceStartRequest,
+    *,
+    voice_kind: Optional[str] = None,
+    channel_prefix: str = "medsim",
+    idle_timeout: int = AGENT_IDLE_TIMEOUT_S,
+    translate_greeting: bool = True,
+) -> VoiceStartResponse:
+    """Mint RTC+RTM tokens, start one ConvoAI agent and return the session.
+    Shared by /voice/start (patient persona) and the follow-up call (Asha)."""
     env = _require_env(
         "AGORA_APP_ID", "AGORA_APP_CERTIFICATE", "AGORA_CUSTOMER_ID", "AGORA_CUSTOMER_SECRET", "MURF_API_KEY"
     )
     _llm_block("", "", probe=True)  # fail fast (503) if no LLM configured
     app_id, cert = env["AGORA_APP_ID"], env["AGORA_APP_CERTIFICATE"]
     safe_case = "".join(ch for ch in req.caseId if ch.isalnum() or ch in "-_")[:24] or "case"
-    channel = f"medsim-{safe_case}-{secrets.token_hex(4)}"
+    channel = f"{channel_prefix}-{safe_case}-{secrets.token_hex(4)}"
     user_uid = secrets.randbelow(900000) + 100000
     user_token = _rtc_rtm_token(app_id, cert, channel, user_uid)
     agent_token = _rtc_rtm_token(app_id, cert, channel, AGENT_UID)
 
     # hi/kn: the opening line arrives in English (case chief complaint); speak it in the session language.
-    if langmod.norm_lang(req.locale) != "en":
+    if translate_greeting and langmod.norm_lang(req.locale) != "en":
         req = req.model_copy(update={"initialLine": await langmod.translate_line(req.initialLine, req.locale)})
-    body = build_join_body(req, channel, user_uid, agent_token, env["MURF_API_KEY"])
+    body = build_join_body(
+        req, channel, user_uid, agent_token, env["MURF_API_KEY"], voice_kind=voice_kind, idle_timeout=idle_timeout
+    )
     r = await _agora_call("POST", "/join", body)
     if 400 <= r.status_code < 500 and "filler" in r.text.lower():
         # Fillers are polish: never let them block the call.
@@ -299,6 +318,32 @@ async def voice_start(req: VoiceStartRequest):
     return VoiceStartResponse(
         appId=app_id, channel=channel, uid=user_uid, token=user_token, agentUid=AGENT_UID, agentId=agent_id
     )
+
+
+@router.post("/voice/start", response_model=VoiceStartResponse)
+async def voice_start(req: VoiceStartRequest):
+    return await start_agent_session(req)
+
+
+async def leave_agent(agent_id: str) -> bool:
+    """Stop an agent. True when it stopped or was already gone (idempotent)."""
+    r = await _agora_call("POST", f"/agents/{agent_id}/leave")
+    if r.status_code == 200:
+        return True
+    t = r.text.lower()
+    if r.status_code in (404, 410) or any(k in t for k in ("not found", "not exist", "invalidrequestbody", "shutting down", "conflict")):
+        return True
+    raise _agora_fail(r, "leave")
+
+
+async def speak_line(agent_id: str, text: str, priority: str = "INTERRUPT", interruptable: bool = True) -> None:
+    r = await _agora_call(
+        "POST",
+        f"/agents/{agent_id}/speak",
+        {"text": text.encode()[:500].decode(errors="ignore"), "priority": priority, "interruptable": interruptable},
+    )
+    if r.status_code != 200:
+        raise _agora_fail(r, "speak")
 
 
 class AgentRef(BaseModel):

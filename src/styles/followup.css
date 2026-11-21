@@ -1,0 +1,300 @@
+/* Asha follow-up call: patient phone page (/call/<token>) + doctor-side reports. */
+
+.fu-call {
+  min-height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: var(--s-5) var(--s-4) var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+.fu-call-head {
+  text-align: center;
+}
+
+.fu-call-title {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  font-size: 44px;
+  line-height: 1;
+  margin: var(--s-1) 0 0;
+}
+
+.fu-call-sub {
+  color: var(--accent2);
+  font-size: var(--t-sm);
+}
+
+.fu-asha {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) 0 var(--s-2);
+  background: var(--surface);
+  box-shadow: var(--bevel);
+}
+
+.fu-asha.is-speaking .asha {
+  filter: drop-shadow(0 0 10px var(--teal-tint));
+}
+
+.fu-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+.fu-clock {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--muted);
+}
+
+.fu-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--muted);
+}
+
+.fu-dot--listen {
+  background: var(--primary);
+}
+
+.fu-dot--speak {
+  background: var(--accent2);
+  animation: fu-pulse 0.9s steps(2, jump-none) infinite;
+}
+
+@keyframes fu-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fu-dot--speak { animation: none; }
+}
+
+.fu-card {
+  padding: var(--s-4);
+  background: var(--surface);
+  box-shadow: var(--bevel);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.fu-strong {
+  font-size: var(--t-lg);
+  font-weight: 600;
+}
+
+.fu-note {
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.fu-center {
+  text-align: center;
+}
+
+.fu-error {
+  padding: var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--destructive);
+  background: var(--red-tint);
+  box-shadow: inset 0 0 0 1.5px var(--destructive);
+}
+
+.fu-meds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.fu-meds li {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-2) var(--s-3);
+  background: var(--field);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+
+.fu-med-name {
+  font-weight: 600;
+}
+
+.fu-med-dose {
+  font-size: var(--t-xs);
+  color: var(--muted);
+}
+
+.fu-start {
+  min-height: 64px;
+  font-size: 14px;
+  white-space: normal;
+  text-align: center;
+}
+
+.fu-captions {
+  flex: 1;
+  min-height: 160px;
+  max-height: 42dvh;
+  overflow-y: auto;
+  padding: var(--s-3);
+  background: var(--bg-deep);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.fu-cap {
+  font-size: var(--t-md);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.fu-cap b {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.fu-cap--asha b { color: var(--accent2); }
+.fu-cap--you { color: var(--ink-2); }
+.fu-cap--you b { color: var(--primary); }
+.fu-cap--partial { opacity: 0.7; }
+
+.fu-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+}
+
+.fu-controls .btn {
+  min-height: 60px;
+}
+
+.fu-mute.is-on {
+  background: var(--amber-tint);
+  color: var(--amber-strong);
+  box-shadow: inset 0 0 0 1.6px var(--amber);
+}
+
+.fu-hangup {
+  background: var(--destructive);
+  color: var(--on-primary);
+  box-shadow: 0 0 0 2px var(--line), 2px 2px 0 0 var(--bg-deep);
+}
+
+.fu-hangup:hover:not(:disabled) {
+  background: #ff8587;
+}
+
+/* ── doctor side: Plan tab reports ─────────────────────────────────── */
+
+.fu-reports {
+  margin-top: var(--s-4);
+}
+
+.fu-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+
+.fu-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.fu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.fu-report {
+  padding: var(--s-3);
+  background: var(--field);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+}
+
+.fu-report--flag {
+  box-shadow: inset 0 0 0 2px var(--destructive);
+}
+
+.fu-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fu-when {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--muted);
+  margin-right: auto;
+}
+
+.fu-flags {
+  color: var(--destructive);
+}
+
+.fu-summary {
+  line-height: 1.5;
+}
+
+.fu-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--s-3);
+  margin: 0;
+  font-size: var(--t-xs);
+}
+
+.fu-meta dt {
+  color: var(--muted);
+}
+
+.fu-meta dd {
+  margin: 0;
+}
+
+.fu-transcript summary {
+  cursor: pointer;
+  font-size: var(--t-xs);
+  color: var(--accent2);
+}
+
+.fu-transcript p {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-xs);
+  line-height: 1.45;
+}

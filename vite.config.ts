@@ -34,6 +34,11 @@ const PROXY = {
     target: BACKEND,
     changeOrigin: true,
   },
+  // Asha follow-up call API (the SPA route /call/<token> stays on the frontend).
+  '^/call-api/': {
+    target: BACKEND,
+    changeOrigin: true,
+  },
 };
 
 export default defineConfig({
