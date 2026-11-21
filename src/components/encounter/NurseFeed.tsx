@@ -27,6 +27,47 @@ function clock(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+type Link = { label: string; href: string };
+
+/** Evidence links for the real-world tools: drug database sources, the FHIR
+ *  records, the calendar invite and the voice note that went to the phone. */
+function stepLinks(step: NurseStep): Link[] {
+  const r = (step.result ?? {}) as Record<string, any>;
+  const out: Link[] = [];
+  const add = (label: string, href: unknown) => {
+    if (typeof href === 'string' && /^(https?:\/\/|\/rx\/)/.test(href)) out.push({ label, href });
+  };
+  if (step.tool === 'check_allergies_and_interactions' && r.realCheck?.ok) {
+    for (const s of (r.realCheck.sources ?? []) as Array<{ name?: string; url?: string }>) add(s.name ?? 'Source', s.url);
+  }
+  if (step.tool === 'schedule_follow_up' && r.calendar) {
+    add('Add to Google Calendar', r.calendar.googleCalendarUrl);
+    add('Download .ics', r.calendar.icsUrl);
+  }
+  if (step.tool === 'record_to_ehr') {
+    for (const rec of (r.records ?? []) as Array<{ resourceType?: string; id?: string; url?: string }>) add(`FHIR ${rec.resourceType}/${rec.id}`, rec.url);
+  }
+  if (step.tool === 'send_to_patient') add('Murf voice note', r.audioUrl);
+  return out;
+}
+
+function StepLinks({ step }: { step: NurseStep }) {
+  const links = stepLinks(step);
+  const r = (step.result ?? {}) as Record<string, any>;
+  const classes: string[] = step.tool === 'check_allergies_and_interactions' && r.realCheck?.ok ? r.realCheck.classes ?? [] : [];
+  if (!links.length && !classes.length) return null;
+  return (
+    <p className="step-links">
+      {classes.length > 0 && <span className="step-tag">NIH class: {classes.slice(0, 2).join(', ')}</span>}
+      {links.map((l) => (
+        <a key={l.href} href={l.href} target="_blank" rel="noreferrer noopener" className="step-link">
+          {l.label}
+        </a>
+      ))}
+    </p>
+  );
+}
+
 function Step({ step }: { step: NurseStep }) {
   return (
     <li className={`step ${step.ok ? 'step--ok' : 'step--fail'}`} data-step>
@@ -46,6 +87,7 @@ function Step({ step }: { step: NurseStep }) {
           <span className="sr-only">{step.ok ? 'Succeeded: ' : 'Failed: '}</span>
           {step.summary}
         </p>
+        <StepLinks step={step} />
       </div>
     </li>
   );

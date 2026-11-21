@@ -45,6 +45,11 @@ You practise the full loop by voice (interview, order, adapt, prescribe, follow 
 - **7 Indian languages.** English, Hindi, Kannada, Tamil, Telugu, Marathi and Bengali. One toggle switches the patient, nurse, coach, teacher and examiner. Murf speaks the language and Sarvam understands whichever you use.
 - **Voice prescription.** After you prescribe, Murf reads a take-home audio prescription in the patient's own language (what each medicine is for, when to take it, warning signs), downloadable as an MP3, for patients who can't read a prescription.
 - **Speak orders, the nurse does them.** "Get an ECG and a troponin, start aspirin 75." Nurse Asha plans and runs tool calls (`find_in_catalog`, `order_test`, `check_allergies_and_interactions`, `prescribe`, `schedule_follow_up`), puts the results on the chart, and confirms by voice.
+- **Real-world tools, not just talk.** Asha's tool calls reach real systems:
+  - `check_allergies_and_interactions` also queries **NIH RxNorm/RxClass** and **openFDA drug labels**, and she cites them out loud ("the openFDA label flags...").
+  - Every test order, prescription and follow-up is written to a real **HL7 FHIR R4** server (public HAPI test server) as ServiceRequest, MedicationRequest and Appointment, with clickable record links.
+  - `schedule_follow_up` returns a **Google Calendar** link and an `.ics` invite.
+  - `send_to_patient` ("Nurse, send it to the patient") delivers the prescription, a **Murf voice note in the patient's language** and the calendar invite by **Telegram**, WhatsApp (Twilio), SMS or email. The live **Agora** patient is told their phone just buzzed and reacts.
 - **She adapts.** A penicillin allergy blocks amoxicillin: she holds it and tells you why. A stocked strength differs from your dose: she says so.
 - **"How am I doing, Asha?"** Press the button or just say it. Asha checks your history, exam, orders and drugs against the case and gives one honest, Socratic nudge in her Murf voice ("On track", "Getting there" or "Rethink the plan") without giving away the diagnosis.
 - **Talk to the nurse mid-consultation.** Start a sentence with "Nurse" or "Asha" and the patient stays silent: our custom LLM route returns an empty turn to Agora, and the nurse agent takes the order.

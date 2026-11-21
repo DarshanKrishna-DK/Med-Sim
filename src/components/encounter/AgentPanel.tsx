@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type FormEvent, type ReactNode } from 'react';
+import { setPatientContact, usePatientContact } from '../../game/patientContact';
 import { isHintRequest, requestHint } from '../../agents/coach';
 import { store, useAgentRuns } from '../../game/store';
 import type { ActivePatient } from '../../game/types';
@@ -268,6 +269,56 @@ function DiagnosisTab({ patient }: { patient: ActivePatient }) {
 
 // ── Plan: prescriptions + follow-up ──────────────────────────────────
 
+type NotifyStatus = { channels: string[]; telegram: { username: string; link: string } | null };
+
+function PatientContactField() {
+  const contact = usePatientContact();
+  const [draft, setDraft] = useState(contact);
+  const [status, setStatus] = useState<NotifyStatus | null>(null);
+  useEffect(() => {
+    const ctl = new AbortController();
+    fetch('/agent/notify/status', { signal: ctl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: NotifyStatus | null) => d && setStatus(d))
+      .catch(() => undefined);
+    return () => ctl.abort();
+  }, []);
+  useEffect(() => setDraft(contact), [contact]);
+  const tg = status?.telegram;
+  return (
+    <div className="manual contact-field">
+      <label className="field-label" htmlFor="patient-contact">Send to the patient (demo)</label>
+      <input
+        id="patient-contact"
+        className="input"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => setPatientContact(draft)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') setPatientContact(draft);
+        }}
+        placeholder="telegram, @username, +91 98765 43210 or name@gmail.com"
+        autoComplete="off"
+      />
+      {tg && (
+        <p className="contact-tg">
+          <a href={tg.link} target="_blank" rel="noreferrer noopener" className="step-link">
+            Open @{tg.username} and press Start
+          </a>
+          <button type="button" className="btn btn-quiet btn-sm" onClick={() => setPatientContact('telegram')}>
+            Use Telegram
+          </button>
+        </p>
+      )}
+      <p className="muted-note">
+        Then say "Nurse, send the prescription to the patient". Asha sends the medicines, a Murf voice note in the patient's
+        language and the follow-up calendar invite
+        {status ? ` (ready: ${status.channels.join(', ') || 'no channel configured yet'})` : ''}.
+      </p>
+    </div>
+  );
+}
+
 function PlanTab({ patient }: { patient: ActivePatient }) {
   const [q, setQ] = useState('');
   const rx = patient.prescriptions ?? [];
@@ -306,6 +357,8 @@ function PlanTab({ patient }: { patient: ActivePatient }) {
       )}
 
       <VoiceRx patient={patient} />
+
+      <PatientContactField />
 
       <div className="manual">
         <label className="field-label" htmlFor="med-search">Prescribe yourself</label>

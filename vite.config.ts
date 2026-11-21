@@ -29,6 +29,11 @@ const PROXY = {
     target: BACKEND,
     changeOrigin: true,
   },
+  // Patient-facing links: Murf voice prescription MP3 and follow-up .ics invite.
+  '^/rx/': {
+    target: BACKEND,
+    changeOrigin: true,
+  },
 };
 
 export default defineConfig({

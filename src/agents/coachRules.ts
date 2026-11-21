@@ -88,6 +88,9 @@ function fromStep(step: NurseStep, runAppliedSomething: boolean): Draft | null {
   if (!step.ok) {
     // A failed catalog lookup is normal mid-run if the nurse retried and succeeded.
     if (step.tool === 'find_in_catalog' && runAppliedSomething) return null;
+    // Delivery and record-keeping (WhatsApp/email, FHIR) failing is not a clinical mistake;
+    // the step itself shows the reason in the nurse feed.
+    if (step.tool === 'send_to_patient' || step.tool === 'record_to_ehr') return null;
     const what = step.tool === 'find_in_catalog' ? String(step.args?.query ?? 'that order') : step.tool.replace(/_/g, ' ');
     return {
       severity: 'info',

@@ -1440,6 +1440,11 @@ app.include_router(osce_router)
 app.include_router(exam_router)
 app.include_router(observer_router)
 app.include_router(viva_router)
+# Real-world delivery: public, token-guarded links the patient's phone opens
+# (Murf voice prescription MP3, follow-up .ics invite).
+from integrations import calendar_invite as _calendar_invite, notify as _notify  # noqa: E402
+app.include_router(_notify.router)
+app.include_router(_calendar_invite.router)
 
 
 # Production: serve the built SPA (../dist) from this same service so the

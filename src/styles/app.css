@@ -4698,3 +4698,36 @@ button.hud-case[aria-expanded='true'] .hud-case-toggle {
   outline: 2px solid var(--accent2);
   outline-offset: 2px;
 }
+
+/* Real-world tool evidence in the nurse feed */
+.step-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.step-link {
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--on-teal);
+  background: var(--teal);
+  text-decoration: none;
+  box-shadow: 0 0 0 1px var(--line);
+}
+.step-link:hover { background: var(--teal-strong); }
+.step-link:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.step-tag {
+  padding: 2px 7px;
+  font-size: 11px;
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.contact-field .muted-note { margin-top: 6px; font-size: 12px; }
+.contact-tg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}

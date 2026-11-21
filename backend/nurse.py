@@ -7,6 +7,7 @@ request payload only; nothing is fabricated beyond tool output.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -74,6 +75,14 @@ class NurseActRequest(BaseModel):
     alreadyOrdered: list[str] = Field(default_factory=list)
     alreadyPrescribed: list[str] = Field(default_factory=list)
     lang: Optional[str] = None
+    # Real-world delivery (send_to_patient): the patient's phone or email for this
+    # demo encounter, and the doctor's display name for the message.
+    contact: Optional[str] = None
+    doctorName: Optional[str] = None
+    # Everything already on the chart, so "send it to the patient" can include
+    # prescriptions and the follow-up from earlier orders.
+    prescriptionsSoFar: list[dict[str, Any]] = Field(default_factory=list)
+    followUpSoFar: Optional[dict[str, Any]] = None
 
 
 # ── tool executors (pure, no network) ──────────────────────────────────────
@@ -116,6 +125,8 @@ class NurseState:
         self.new_tests: list[str] = []
         self.new_rx: list[dict[str, str]] = []
         self.follow_up: Optional[dict[str, Any]] = None
+        # Hard conflicts found by the real drug databases (NIH RxClass, openFDA).
+        self.ext_hard: dict[str, list[str]] = {}
 
     # --- helpers
     def _allergy_text(self) -> str:
@@ -155,6 +166,9 @@ class NurseState:
                     soft.append(msg)
         if med_id in self.prescribed:
             soft.append("already prescribed this encounter")
+        for h in self.ext_hard.get(med_id, []):
+            if h not in hard:
+                hard.append(h)
         return hard, soft
 
     # --- tools
@@ -247,6 +261,134 @@ class NurseState:
         self.follow_up = {"inDays": days, "reason": reason or "follow-up"}
         return {"ok": True, **self.follow_up}
 
+    # --- real-world tools (network; never raise)
+    async def aexecute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
+        if tool == "send_to_patient":
+            try:
+                return await self.send_to_patient(**args)
+            except TypeError as e:
+                return {"ok": False, "error": f"bad arguments: {e}"}
+        res = self.execute(tool, args)
+        if tool == "check_allergies_and_interactions" and res.get("ok"):
+            await self._real_drug_check(str(args.get("medicationId", "")), res)
+        elif tool == "schedule_follow_up" and res.get("ok"):
+            self._calendar(res)
+        return res
+
+    async def _real_drug_check(self, med_id: str, res: dict[str, Any]) -> None:
+        from integrations import drugsafety
+
+        m = self.meds.get(med_id)
+        if not m:
+            return
+        allergies = " ".join([self.req.patient.allergies or ""] + [
+            qa.answer for qa in self.req.patient.anamnesis if "allerg" in f"{qa.question} {qa.answer}".lower()])
+        current = [self.meds[p].name for p in self.prescribed if p in self.meds] + [
+            qa.answer for qa in self.req.patient.anamnesis if "medic" in qa.question.lower()]
+        try:
+            ext = await asyncio.wait_for(drugsafety.check_drug(m.name, allergies, current), timeout=7.0)
+        except Exception as e:  # noqa: BLE001
+            log.warning("real drug check failed: %s", type(e).__name__)
+            ext = None
+        if not ext or not ext.get("ok"):
+            res["realCheck"] = {"ok": False, "note": "public drug databases unreachable; checked the clinic catalogue only"}
+            return
+        conflict = ext.get("allergyConflict")
+        if conflict:
+            msg = f"NIH RxClass: {conflict}"
+            self.ext_hard.setdefault(med_id, []).append(msg)
+            if msg not in res["hardConflicts"]:
+                res["hardConflicts"].append(msg)
+            res["safe"] = False
+        for it in (ext.get("interactions") or [])[:2]:
+            res["warnings"].append(f"FDA label, with {it.get('with')}: {it.get('excerpt')}")
+        res["realCheck"] = {
+            "ok": True,
+            "drug": ext.get("drug"),
+            "rxcui": ext.get("rxcui"),
+            "classes": (ext.get("classes") or [])[:4],
+            "boxedWarning": ext.get("boxedWarning"),
+            "sources": ext.get("sources") or [],
+        }
+
+    def _calendar(self, res: dict[str, Any]) -> None:
+        from integrations import calendar_invite, notify
+
+        try:
+            cal = calendar_invite.make_follow_up(self.req.caseId, self.req.patient.name, res["inDays"], res["reason"])
+        except Exception as e:  # noqa: BLE001
+            log.warning("calendar invite failed: %s", type(e).__name__)
+            return
+        res["calendar"] = {
+            "startText": cal.get("startText"),
+            "googleCalendarUrl": cal.get("googleCalendarUrl"),
+            "icsUrl": notify.absolute_url(cal["icsPath"]) or cal["icsPath"],
+        }
+        if self.follow_up is not None:
+            self.follow_up.update(startText=cal.get("startText"), googleCalendarUrl=cal.get("googleCalendarUrl"), icsPath=cal["icsPath"])
+
+    async def send_to_patient(self, channel: str = "auto") -> dict[str, Any]:
+        from integrations import calendar_invite, notify
+        import rx_audio
+
+        to = (self.req.contact or "").strip()
+        if not to:
+            return {"ok": False, "error": "no patient phone or email on file; add it in the Plan tab first"}
+        meds: list[dict[str, str]] = []
+        for rx in list(self.req.prescriptionsSoFar) + self.new_rx:
+            mid = str(rx.get("medicationId", ""))
+            name = self.meds[mid].name if mid in self.meds else str(rx.get("name") or mid)
+            if name and all(x["name"] != name for x in meds):
+                meds.append({"name": name, "dose": str(rx.get("dose", "")), "duration": str(rx.get("duration", ""))})
+        if not meds:
+            return {"ok": False, "error": "nothing prescribed yet, so there is nothing to send"}
+        fu = dict(self.follow_up or self.req.followUpSoFar or {}) or None
+        if fu and not fu.get("icsPath") and fu.get("inDays") is not None:
+            try:
+                cal = calendar_invite.make_follow_up(self.req.caseId, self.req.patient.name, int(fu["inDays"]), str(fu.get("reason") or "follow-up"))
+                fu.update(startText=cal.get("startText"), googleCalendarUrl=cal.get("googleCalendarUrl"), icsPath=cal["icsPath"])
+            except Exception:  # noqa: BLE001
+                pass
+        lang = langmod.norm_lang(self.req.lang)
+        # Murf voice prescription in the patient's language, hosted for the phone.
+        mp3: Optional[bytes] = None
+        audio_url: Optional[str] = None
+        try:
+            rq = rx_audio.RxAudioRequest(
+                caseId=self.req.caseId[:80],
+                patient=rx_audio.RxPatient(name=self.req.patient.name[:80]),
+                prescriptions=[rx_audio.RxItem(name=m["name"][:80], dose=m["dose"][:80], duration=m["duration"][:60]) for m in meds[:12]],
+                followUp=rx_audio.RxFollowUp(inDays=fu.get("inDays"), reason=str(fu.get("reason") or "")[:160]) if fu else None,
+                lang=lang,
+            )
+            script = await rx_audio.generate_script(rq, lang)
+            mp3, _voice, _locale = await rx_audio.synthesize(script, lang)
+            audio_url = notify.absolute_url(notify.store_audio(mp3))
+        except Exception as e:  # noqa: BLE001
+            log.warning("voice prescription for send failed: %s", type(e).__name__)
+        ics: Optional[bytes] = None
+        if fu and fu.get("icsPath"):
+            token = fu["icsPath"].rsplit("/", 1)[-1].removesuffix(".ics")
+            text = calendar_invite.get_ics(token)
+            ics = text.encode() if text else None
+        message = notify.compose_message(
+            self.req.patient.name, self.req.doctorName or "your doctor", meds,
+            {"startText": fu.get("startText"), "reason": fu.get("reason")} if fu else None,
+            audio_url, (fu or {}).get("googleCalendarUrl"), lang)
+        # The doctor may say "WhatsApp" when only Telegram or email is set up:
+        # deliver through whatever is configured and fits the contact.
+        if channel not in notify.configured_channels():
+            channel = "auto"
+        if channel == "auto" and notify.is_telegram(to):
+            channel = "telegram"
+        out = await notify.send_to_patient(channel, to, message, audio_url, mp3, ics)
+        out["audioUrl"] = audio_url
+        out["medications"] = [m["name"] for m in meds]
+        out["message"] = message
+        if fu:
+            out["followUp"] = fu.get("startText")
+        return out
+
     def execute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
         fn = {
             "find_in_catalog": self.find_in_catalog,
@@ -277,7 +419,12 @@ def summarize(tool: str, args: dict[str, Any], res: dict[str, Any]) -> str:
     if tool == "prescribe":
         return f"Prescribed {res.get('name', args.get('medicationId'))} {res.get('dose', '')} x {res.get('duration', '')}".strip()
     if tool == "schedule_follow_up":
-        return f"Follow-up in {res['inDays']} days: {res['reason']}"
+        when = (res.get("calendar") or {}).get("startText")
+        return f"Follow-up in {res['inDays']} days: {res['reason']}" + (f" ({when}, calendar invite ready)" if when else "")
+    if tool == "send_to_patient":
+        return f"Sent to the patient by {res.get('channel')} ({res.get('to')}): " + ", ".join(res.get("medications") or [])
+    if tool == "record_to_ehr":
+        return "Saved to the FHIR health record: " + ", ".join(f"{r['resourceType']}/{r['id']}" for r in res.get("records", []))
     return "ok"
 
 
@@ -307,6 +454,13 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "description": "Schedule a follow-up visit.",
         "parameters": {"type": "object", "properties": {
             "inDays": {"type": "integer"}, "reason": {"type": "string"}}, "required": ["inDays", "reason"]}}},
+    {"type": "function", "function": {
+        "name": "send_to_patient",
+        "description": "Send the patient their prescription (with a Murf voice-prescription audio link in their language) "
+                       "and the follow-up date with a calendar invite, by Telegram, WhatsApp, SMS or email to the contact on file (use auto unless the doctor names a channel). "
+                       "Only when the doctor asks to send, share, message, Telegram, WhatsApp or email it to the patient.",
+        "parameters": {"type": "object", "properties": {
+            "channel": {"type": "string", "enum": ["auto", "telegram", "whatsapp", "sms", "email"]}}, "required": ["channel"]}}},
 ]
 
 SYSTEM_PROMPT = (
@@ -316,7 +470,10 @@ SYSTEM_PROMPT = (
     "call NO tools and reply with exactly: NO_ORDER\n"
     "- Otherwise: first write one short plan sentence, then call tools. Resolve every test/medication id with "
     "find_in_catalog, order tests with order_test, run check_allergies_and_interactions before prescribe, then prescribe "
-    "or schedule_follow_up. If a tool fails or a drug is refused for allergy, adapt: say so and (only if the doctor "
+    "or schedule_follow_up. check_allergies_and_interactions also queries real public drug databases (NIH RxNorm/RxClass "
+    "and openFDA labels): if it reports a source-backed conflict, hold the drug and name the source briefly (e.g. "
+    "'the FDA label warns...'). If the doctor asks to send, share, WhatsApp, SMS or email the prescription or follow-up "
+    "to the patient, call send_to_patient (after any prescribe or schedule_follow_up in the same request). If a tool fails or a drug is refused for allergy, adapt: say so and (only if the doctor "
     "named a class or indication) pick a safe alternative from the catalog; otherwise just hold it.\n"
     "- Never invent results, ids, or doses beyond tool outputs and the catalog.\n"
     "- Dose: pass the doctor's spoken dose and frequency to prescribe exactly as said (e.g. '75 mg once daily'). "
@@ -380,7 +537,7 @@ async def _run_native(st: NurseState, messages: list[dict[str, Any]], steps: lis
                     args = {}
             except json.JSONDecodeError:
                 args = {}
-            res = st.execute(name, args)
+            res = await st.aexecute(name, args)
             steps.append({"tool": name, "args": args, "ok": bool(res.get("ok")), "summary": summarize(name, args, res), "result": res})
             messages.append({"role": "tool", "tool_call_id": call.get("id", ""), "content": json.dumps(res)})
     # iteration cap: ask for the closing sentence without tools
@@ -409,7 +566,7 @@ async def _run_json_plan(st: NurseState, req: NurseActRequest, steps: list[dict[
         return "", "NO_ORDER"
     for c in plan_obj["calls"][:8]:
         name, args = c.get("tool", ""), c.get("args") or {}
-        res = st.execute(name, args if isinstance(args, dict) else {})
+        res = await st.aexecute(name, args if isinstance(args, dict) else {})
         steps.append({"tool": name, "args": args, "ok": bool(res.get("ok")), "summary": summarize(name, args, res), "result": res})
     msg2, _ = await chat(
         [{"role": "system", "content": langmod.with_language("Write a short spoken confirmation (max 30 words, no markdown, no 'Done -' prefix) as a warm Indian charge nurse talking to the doctor: contractions, numbers as words, commas and '...' for pauses, e.g. 'Okay doctor, I've sent the troponin and ECG... anything else?'. Mention anything refused or abnormal. Use only the facts given.", req.lang, female=True, role="nurse")},
@@ -449,6 +606,29 @@ def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]], lang: Op
     return ("Okay doctor, " + ", ".join(bits) + ". Anything else?") if bits else "I couldn't complete that order."
 
 
+async def _record_to_ehr(req: NurseActRequest, st: NurseState, steps: list[dict[str, Any]]) -> None:
+    """Write this run's orders to a real FHIR R4 server (public HAPI test server by default)."""
+    if not (st.new_tests or st.new_rx or st.follow_up):
+        return
+    from integrations import fhir
+
+    p = req.patient
+    case = {"id": req.caseId, "name": p.name, "age": p.age, "gender": p.gender}
+    tests = [(t, st.tests[t].name) for t in st.new_tests if t in st.tests]
+    meds = [{"name": st.meds[r["medicationId"]].name if r["medicationId"] in st.meds else r["medicationId"],
+             "dose": r["dose"], "duration": r["duration"]} for r in st.new_rx]
+    try:
+        records = await asyncio.wait_for(fhir.record_batch(case, tests, meds, st.follow_up), timeout=8.0)
+    except Exception as e:  # noqa: BLE001
+        log.warning("FHIR write failed: %s", type(e).__name__)
+        records = []
+    res = {"ok": bool(records), "records": records or []}
+    if not records:
+        res["error"] = "FHIR server unreachable; the order is on the local chart only"
+    steps.append({"tool": "record_to_ehr", "args": {"server": "HL7 FHIR R4"}, "ok": bool(records),
+                  "summary": summarize("record_to_ehr", {}, res), "result": res})
+
+
 @router.post("/agent/nurse/act")
 async def nurse_act(req: NurseActRequest):
     run_id = "run_" + secrets.token_hex(6)
@@ -474,6 +654,7 @@ async def nurse_act(req: NurseActRequest):
     if not steps:
         return {"runId": run_id, "intent": "none", "plan": "", "steps": [],
                 "applied": {"orderedTestIds": [], "prescriptions": []}, "spokenConfirmation": ""}
+    await _record_to_ehr(req, st, steps)
     spoken = final if final and "NO_ORDER" not in final else _fallback_confirmation(st, steps, req.lang)
     applied: dict[str, Any] = {"orderedTestIds": st.new_tests, "prescriptions": st.new_rx}
     if st.follow_up:
@@ -483,3 +664,11 @@ async def nurse_act(req: NurseActRequest):
         "plan": plan or "; ".join(s["summary"] for s in steps[:3]),
         "steps": steps, "applied": applied, "spokenConfirmation": spoken[:400],
     }
+
+
+@router.get("/agent/notify/status")
+async def notify_status():
+    """Which delivery channels are configured, and the Telegram bot's Start link."""
+    from integrations import notify
+
+    return {"channels": notify.configured_channels(), "telegram": await notify.telegram_bot_info()}

@@ -14,6 +14,8 @@
 //   4. tell the patient persona what happened via /voice/context so the
 //      patient can react naturally ("a blood test? okay...").
 
+import { getPatientContact } from '../game/patientContact';
+import { doctorName, getProfile } from '../game/profile';
 import { store, POLYCLINIC_BED_INDEX } from '../game/store';
 import { LANG_LOCALE, langOfText } from '../game/lang';
 import type { ActivePatient, NurseRun, NurseStep } from '../game/types';
@@ -105,6 +107,11 @@ function buildPayload(p: ActivePatient, utterance: string) {
     catalog: { tests: TEST_CATALOG, medications: MED_CATALOG },
     alreadyOrdered: [...p.orderedTestIds],
     alreadyPrescribed: (p.prescriptions ?? []).map((rx) => rx.medicationId),
+    // Real-world delivery (send_to_patient) and everything already on the chart.
+    contact: getPatientContact() || undefined,
+    doctorName: doctorName(getProfile()),
+    prescriptionsSoFar: (p.prescriptions ?? []).map(({ medicationId, dose, duration }) => ({ medicationId, dose, duration })),
+    followUpSoFar: p.followUp ?? undefined,
   };
 }
 
@@ -295,7 +302,16 @@ export async function runNurseAction(
 
     if (done.intent === 'order') {
       if (res.spokenConfirmation) void speakAsNurse(res.spokenConfirmation);
-      const note = describeForPatient(applied);
+      const sent = (res.steps ?? []).find((s) => s.tool === 'send_to_patient' && s.ok);
+      const note = [
+        describeForPatient(applied),
+        // The live Agora patient reacts to the real message landing on their phone.
+        sent
+          ? 'Your phone just buzzed: the clinic sent you your prescription, a voice note explaining it in your language, and your follow-up date. You may mention it briefly if it fits.'
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' ') || null;
       const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
       if (note && conv && conv.getCaseId() === caseId) void conv.appendContextNote(note);
     }
