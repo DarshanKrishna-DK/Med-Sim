@@ -158,8 +158,10 @@ class HelperTests(Base):
         self.assertEqual(notify.mask("dev@gmail.com"), "d***@gmail.com")
 
     def test_configured_channels(self):
-        self.assertEqual(notify.configured_channels(), [])
-        with mock.patch.dict(os.environ, {**TW, **SMTP}):
+        clean = {"TELEGRAM_BOT_TOKEN": "", "TWILIO_ACCOUNT_SID": "", "TWILIO_AUTH_TOKEN": "", "SMTP_USER": "", "SMTP_PASSWORD": ""}
+        with mock.patch.dict(os.environ, clean):
+            self.assertEqual(notify.configured_channels(), [])
+        with mock.patch.dict(os.environ, {**clean, **TW, **SMTP}):
             self.assertEqual(notify.configured_channels(), ["whatsapp", "sms", "email"])
 
     def test_compose(self):

@@ -316,12 +316,30 @@ async def _tg_resolve_chat(c: httpx.AsyncClient, dest: str) -> Optional[int]:
     return _tg_chats.get(d)
 
 
+def telegram_html(message: str, audio_attached: bool) -> str:
+    """Telegram version of the message: links become short tappable labels, and the
+    audio link is dropped when the MP3 itself is attached."""
+    import html as _html
+
+    text = _html.escape(message, quote=False)
+    if audio_attached:
+        text = re.sub(r"\s*(Listen to your prescription|Listen in your language): \S+?\.(?=\s|$)", "", text)
+    else:
+        text = re.sub(r"(Listen to your prescription|Listen in your language): (\S+?)\.(?=\s|$)",
+                      lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>.', text)
+    text = re.sub(r"Add to calendar: (\S+?)\.(?=\s|$)", lambda m: f'<a href="{m.group(1)}">Add to Google Calendar</a>.', text)
+    text = re.sub(r"(Join your Asha follow-up call|Asha call): (\S+?)\.?(?=\s|$)",
+                  lambda m: f'<a href="{m.group(2)}">Join your Asha follow-up call</a>', text)
+    return text
+
+
 async def _send_telegram(dest: str, message: str, mp3: Optional[bytes], ics: Optional[bytes]) -> dict[str, Any]:
     async with _client_factory() as c:
         chat_id = await _tg_resolve_chat(c, dest)
         if not chat_id:
             return _fail("telegram", dest, "No Telegram chat yet: open the bot link on the phone and press Start, then retry")
-        r = await c.post(_tg_url("sendMessage"), json={"chat_id": chat_id, "text": message})
+        r = await c.post(_tg_url("sendMessage"), json={"chat_id": chat_id, "text": telegram_html(message, bool(mp3)),
+                                                        "parse_mode": "HTML", "disable_web_page_preview": True})
         body = r.json() if r.content else {}
         if not body.get("ok"):
             return _fail("telegram", dest, f"Telegram error: {str(body.get('description') or r.status_code)[:120]}")
