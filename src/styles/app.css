@@ -4523,6 +4523,28 @@ button.hud-case[aria-expanded='true'] .hud-case-toggle {
   color: var(--destructive);
 }
 
+.profile-hint {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Send result to Telegram: button + status chip on the debrief and OSCE report */
+.result-send {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-send .tag {
+  max-width: 100%;
+  white-space: normal;
+  height: auto;
+  min-height: 22px;
+  padding: 3px 8px;
+}
+
 .input[aria-invalid='true'] {
   box-shadow: inset 0 0 0 2px var(--destructive);
 }

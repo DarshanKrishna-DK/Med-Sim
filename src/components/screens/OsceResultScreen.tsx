@@ -17,6 +17,9 @@ import {
 } from '../../agents/osceCore';
 import { AppHeader } from '../ui/chrome';
 import { FacultyMarksCard } from '../observer/FacultyMarksCard';
+import { SendResultButton } from '../ui/SendResultButton';
+import { buildResultPayload } from '../../agents/resultSend';
+import { getProfile } from '../../game/profile';
 import '../../styles/osce.css';
 
 type SavedOsce = NonNullable<EvalHistoryEntry['osce']>;
@@ -140,6 +143,26 @@ function Report({ entry, result, encounter }: { entry: EvalHistoryEntry; result:
   const ratingTone = result.globalRating === 'clear-fail' || result.globalRating === 'borderline' ? 'bad' : 'good';
   const submitted = encounter.submittedDiagnosisId;
   const r: OsceResult = result;
+  const sessionLang = useStore((st) => st.lang);
+  const profile = getProfile();
+  const resultPayload = buildResultPayload({
+    profile: { name: candidate || profile?.name, university: profile?.university },
+    caseId: c.id,
+    caseTitle: `OSCE: ${c.name}, ${c.age}${c.gender}`,
+    patientName: c.name,
+    specialty: specialty ? CLINIC_LABELS[specialty] : '',
+    chiefComplaint: c.chiefComplaint,
+    score: r.score,
+    verdict: OSCE_RATING_LABEL[r.globalRating] ?? '',
+    domains: r.domains.map((d) => ({ name: d.label, score: d.score, max: 100 })),
+    strengths: r.strengths,
+    improvements: r.improvements,
+    narrative: r.examinerComment,
+    diagnosisChosen: dxLabel(submitted ?? null),
+    diagnosisCorrect: dxLabel(c.correctDiagnosisId),
+    diagnosisIsCorrect: submitted ? submitted === c.correctDiagnosisId : false,
+    lang: sessionLang,
+  });
 
   return (
     <article className="osce-report" aria-labelledby="osce-report-title">
@@ -163,6 +186,7 @@ function Report({ entry, result, encounter }: { entry: EvalHistoryEntry; result:
             My progress
           </button>
         </div>
+        <SendResultButton sendKey={`osce:${entry.id}`} payload={resultPayload} auto={Date.now() - entry.savedAt < 10 * 60 * 1000} />
       </header>
 
       <dl className="osce-meta">

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { closeProfileDialog, getProfile, saveProfile, useProfileDialog, type Gender } from '../../game/profile';
+import { closeProfileDialog, DEFAULT_RESULTS_TO, getProfile, saveProfile, useProfileDialog, type Gender } from '../../game/profile';
+import { isTelegramDest } from '../../agents/resultSend';
 
 const GENDERS: { value: Gender; label: string; hint: string }[] = [
   { value: 'female', label: 'Female', hint: 'You play a woman doctor' },
@@ -19,6 +20,7 @@ function ProfileForm() {
   const [name, setName] = useState(existing?.name ?? '');
   const [university, setUniversity] = useState(existing?.university ?? '');
   const [gender, setGender] = useState<Gender | ''>(existing?.gender ?? '');
+  const [resultsTo, setResultsTo] = useState(existing?.resultsTo ?? DEFAULT_RESULTS_TO);
   const [tried, setTried] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -31,12 +33,13 @@ function ProfileForm() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const valid = name.trim().length >= 2 && university.trim().length >= 2 && gender !== '';
+  const resultsOk = resultsTo.trim() === '' || isTelegramDest(resultsTo);
+  const valid = name.trim().length >= 2 && university.trim().length >= 2 && gender !== '' && resultsOk;
 
   const submit = () => {
     setTried(true);
     if (!valid) return;
-    saveProfile({ name, university, gender: gender as Gender });
+    saveProfile({ name, university, gender: gender as Gender, resultsTo });
     closeProfileDialog(true);
   };
 
@@ -88,6 +91,26 @@ function ProfileForm() {
           <Select value={gender} onChange={setGender} labelledBy="gender-label" invalid={tried && gender === ''} />
           {tried && gender === '' && <span className="profile-err">Choose one</span>}
         </div>
+
+        <label className="profile-field">
+          <span className="field-label">Telegram for my results (optional)</span>
+          <input
+            className="input"
+            value={resultsTo}
+            onChange={(e) => setResultsTo(e.target.value)}
+            placeholder="telegram, @username or tg:chat id"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={40}
+            aria-invalid={tried && !resultsOk}
+            aria-describedby="results-to-hint"
+          />
+          {tried && !resultsOk ? (
+            <span className="profile-err">Use telegram, @username or tg:chat id, or leave it empty</span>
+          ) : (
+            <span className="profile-hint" id="results-to-hint">Your debrief, report card PDF and a voice summary go here after each case. Press Start on the MedSim bot first. Leave empty to turn it off.</span>
+          )}
+        </label>
 
         <button type="submit" className="btn btn-primary btn-lg btn-block">
           Enter
