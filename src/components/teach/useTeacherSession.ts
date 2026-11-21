@@ -28,6 +28,50 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
+// ── offline narration (voice off) ─────────────────────────────────────
+// One line at a time; a new line interrupts the previous one, like the live
+// agent's INTERRUPT priority.
+let offlineAudio: HTMLAudioElement | null = null;
+let offlineSeq = 0;
+
+export function stopOfflineNarration() {
+  offlineSeq++;
+  if (offlineAudio) {
+    offlineAudio.pause();
+    offlineAudio = null;
+  }
+}
+
+async function playOffline(text: string, onDuration: (ms: number) => void): Promise<void> {
+  stopOfflineNarration();
+  const seq = offlineSeq;
+  try {
+    const r = await fetch('/voice/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: 'F', caseId: 'teacher', gender: 'F', locale: LANG_LOCALE[store.getState().lang] }),
+    });
+    if (!r.ok || seq !== offlineSeq) return;
+    const url = URL.createObjectURL(await r.blob());
+    if (seq !== offlineSeq) return URL.revokeObjectURL(url);
+    const audio = new Audio(url);
+    offlineAudio = audio;
+    audio.addEventListener('loadedmetadata', () => {
+      if (Number.isFinite(audio.duration)) onDuration(audio.duration * 1000 + 250);
+    });
+    const done = () => {
+      URL.revokeObjectURL(url);
+      if (offlineAudio === audio) offlineAudio = null;
+      onDuration(0);
+    };
+    audio.addEventListener('ended', done, { once: true });
+    audio.addEventListener('error', done, { once: true });
+    await audio.play().catch(done);
+  } catch (err) {
+    console.warn('[teacher] offline narration failed:', err);
+  }
+}
+
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: boolean) => void; onStudentPartial?: () => void }) {
@@ -86,7 +130,11 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
     },
   });
 
+  // Leaving the lecture hall stops any offline narration.
+  useEffect(() => stopOfflineNarration, []);
+
   const connect = useCallback(() => {
+    stopOfflineNarration();
     if (convRef.current && convRef.current.getStatus() !== 'error') return;
     convRef.current?.dispose();
     let ctx: AudioContext;
@@ -184,7 +232,12 @@ export function useTeacherSession(opts: { onStudentFinal: (text: string, typed: 
           localSpeechUntil.current = performance.now() + estimateSpeechMs(clean);
         });
       } else {
+        // Voice off: no live call, but Dr. Iyer still speaks the lesson in her
+        // Murf voice (HTTP TTS). The caption and mouth follow the real audio.
         localSpeechUntil.current = performance.now() + estimateSpeechMs(clean);
+        void playOffline(clean, (ms) => {
+          localSpeechUntil.current = performance.now() + ms;
+        });
       }
     },
     [isLive, pushLine],
