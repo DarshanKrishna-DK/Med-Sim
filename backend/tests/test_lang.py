@@ -171,7 +171,22 @@ class LangUnitTests(unittest.TestCase):
     def test_failure_message_per_language(self) -> None:
         self.assertTrue(lang.has_script(lang.failure_message("hi"), "hi"))
         self.assertTrue(lang.has_script(lang.failure_message("kn"), "kn"))
-        self.assertIn("didn't catch", lang.failure_message("en"))
+        self.assertEqual(lang.failure_message("en"), "Hmm, sorry, say that once more?")
+
+    def test_failure_and_retry_lines_sound_human(self) -> None:
+        doctor = ("doctor", "डॉक्टर", "ಡಾಕ್ಟರ್", "டாக்டர்", "డాక్టర్", "ডাক্তার")
+        robotic = ("didn't", "did not", "catch that", "error", "system", "सुन नहीं")
+        for lg in lang.LANGS:
+            lines = [lang.failure_message(lg), *lang.NATURAL_RETRY_LINES[lg]]
+            self.assertGreaterEqual(len(lang.NATURAL_RETRY_LINES[lg]), 3, lg)
+            for line in lines:
+                low = line.lower()
+                self.assertFalse([w for w in doctor if w in low], f"{lg}: {line}")
+                self.assertFalse([w for w in robotic if w in low], f"{lg}: {line}")
+                self.assertLessEqual(len(line), 80, f"{lg}: {line}")
+                if lg != "en":
+                    self.assertTrue(lang.has_script(line, lg), f"{lg}: {line}")
+            self.assertIn(lang.natural_retry_line(lg), lang.NATURAL_RETRY_LINES[lg])
 
     def test_voice_for_ignores_english_override_for_indic(self) -> None:
         old = os.environ.get("MURF_NURSE_VOICE")

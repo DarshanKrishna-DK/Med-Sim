@@ -125,18 +125,24 @@ def _rtc_rtm_token(app_id: str, cert: str, channel: str, uid: int) -> str:
     )
 
 
-FAILURE_MESSAGE = "Sorry, I didn't catch that. Could you say it again?"
+# Spoken by Agora when the LLM call fails: a human "say that again?", per language in lang.py.
+FAILURE_MESSAGE = langmod.failure_message("en")
 
 # Noise-robust turn detection (field names per Agora /join reference).
+# Tuned for a natural conversation: the doctor can barge in after ~0.2 s of real
+# speech (interrupt_duration_ms, was 240), and the patient answers after ~0.56 s
+# of silence (silence_duration_ms, was 640). 560 ms still sits above the usual
+# mid-sentence pause, so loose, thinking-aloud questions are not cut off.
+# speech_threshold stays 0.6 so clinic background noise does not count as speech.
 TURN_DETECTION = {
     "mode": "default",
     "config": {
         "speech_threshold": 0.6,
         "start_of_speech": {
             "mode": "vad",
-            "vad_config": {"interrupt_duration_ms": 240, "prefix_padding_ms": 800},
+            "vad_config": {"interrupt_duration_ms": 200, "prefix_padding_ms": 800},
         },
-        "end_of_speech": {"mode": "vad", "vad_config": {"silence_duration_ms": 640}},
+        "end_of_speech": {"mode": "vad", "vad_config": {"silence_duration_ms": 560}},
     },
 }
 
