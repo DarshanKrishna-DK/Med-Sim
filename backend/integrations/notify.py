@@ -385,6 +385,15 @@ async def _tg_resolve_chat(c: httpx.AsyncClient, dest: str) -> Optional[int]:
             return None
     if d == "tg":
         d = "telegram"
+    # The bot poller (telegram_bot.py) consumes getUpdates, so ask its cache first.
+    try:
+        import telegram_bot
+
+        hit = telegram_bot.known_chat(d)
+        if hit or telegram_bot.polling_active():
+            return hit or _tg_chats.get(d)
+    except ImportError:
+        pass
     try:
         await _tg_scan(c)
     except Exception as e:  # noqa: BLE001

@@ -8,12 +8,13 @@ import { OsceScreen } from './components/screens/OsceScreen';
 import { OsceResultScreen } from './components/screens/OsceResultScreen';
 import { ProgressScreen } from './components/screens/ProgressScreen';
 import { RouteProgress } from './components/ui/chrome';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { CorridorRoute } from './components/corridorRoute';
 import { VoiceMetricsPanel } from './components/ui/VoiceMetricsPanel';
 import { FacultyToasts } from './components/observer/FacultyToasts';
 import { ProfileDialog } from './components/ui/ProfileDialog';
 import { callTokenFromUrl } from './voice/followupCall';
+import { startCustomCaseSync } from './data/customCases';
 
 // Teacher Portal lecture hall (3D + whiteboard), loaded on first visit.
 const TriageDrillScreen = lazy(() => import('./components/screens/TriageDrillScreen'));
@@ -47,6 +48,8 @@ export default function App() {
 
 function SimulatorApp() {
   const screen = useScreen();
+  // Cases created on Telegram join the library (and open from ?case=<id>).
+  useEffect(() => startCustomCaseSync(), []);
   return (
     <>
       <RouteProgress />

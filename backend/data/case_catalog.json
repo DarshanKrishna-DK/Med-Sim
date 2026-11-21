@@ -1,0 +1,704 @@
+{
+ "specialties": [
+  {
+   "id": "internal-medicine",
+   "label": "Internal Medicine"
+  },
+  {
+   "id": "cardiology",
+   "label": "Cardiology"
+  },
+  {
+   "id": "neurology",
+   "label": "Neurology"
+  },
+  {
+   "id": "neurosurgery",
+   "label": "Neurosurgery"
+  },
+  {
+   "id": "dermatology",
+   "label": "Dermatology"
+  },
+  {
+   "id": "endocrinology",
+   "label": "Endocrinology"
+  },
+  {
+   "id": "gastroenterology",
+   "label": "Gastroenterology"
+  },
+  {
+   "id": "pulmonology",
+   "label": "Pulmonology"
+  },
+  {
+   "id": "nephrology",
+   "label": "Nephrology"
+  },
+  {
+   "id": "rheumatology",
+   "label": "Rheumatology"
+  },
+  {
+   "id": "hematology",
+   "label": "Hematology"
+  },
+  {
+   "id": "oncology",
+   "label": "Oncology"
+  },
+  {
+   "id": "infectious-disease",
+   "label": "Infectious Disease"
+  },
+  {
+   "id": "allergy-immunology",
+   "label": "Allergy & Immunology"
+  },
+  {
+   "id": "psychiatry",
+   "label": "Psychiatry"
+  },
+  {
+   "id": "obgyn",
+   "label": "OB/GYN"
+  },
+  {
+   "id": "urology",
+   "label": "Urology"
+  },
+  {
+   "id": "ophthalmology",
+   "label": "Ophthalmology"
+  },
+  {
+   "id": "ent",
+   "label": "ENT"
+  },
+  {
+   "id": "orthopedics",
+   "label": "Orthopedics"
+  },
+  {
+   "id": "pmr",
+   "label": "Physical Medicine & Rehab"
+  },
+  {
+   "id": "pediatrics",
+   "label": "Pediatrics"
+  },
+  {
+   "id": "general-surgery",
+   "label": "General Surgery"
+  },
+  {
+   "id": "cardiothoracic-vascular-surgery",
+   "label": "Cardiothoracic & Vascular Surgery"
+  },
+  {
+   "id": "geriatrics",
+   "label": "Geriatrics"
+  },
+  {
+   "id": "palliative-care",
+   "label": "Palliative Care"
+  },
+  {
+   "id": "neonatology",
+   "label": "Neonatology"
+  },
+  {
+   "id": "sports-medicine",
+   "label": "Sports Medicine"
+  },
+  {
+   "id": "plastic-surgery",
+   "label": "Plastic Surgery"
+  },
+  {
+   "id": "dentistry",
+   "label": "Dentistry"
+  },
+  {
+   "id": "emergency-medicine",
+   "label": "Emergency Medicine"
+  },
+  {
+   "id": "anesthesiology",
+   "label": "Anesthesiology"
+  }
+ ],
+ "tests": [
+  {
+   "id": "glucose",
+   "name": "Bedside Glucose"
+  },
+  {
+   "id": "peak-flow",
+   "name": "Peak Flow"
+  },
+  {
+   "id": "urine-hcg",
+   "name": "Urine β-hCG (pregnancy)"
+  },
+  {
+   "id": "ecg",
+   "name": "ECG (12-lead)"
+  },
+  {
+   "id": "strep-radt",
+   "name": "Rapid Strep Antigen"
+  },
+  {
+   "id": "flu-swab",
+   "name": "Rapid Influenza Swab"
+  },
+  {
+   "id": "covid-swab",
+   "name": "Rapid COVID-19 Swab"
+  },
+  {
+   "id": "pocus",
+   "name": "Bedside Ultrasound (POCUS)"
+  },
+  {
+   "id": "abg",
+   "name": "Arterial Blood Gas"
+  },
+  {
+   "id": "lactate",
+   "name": "Lactate"
+  },
+  {
+   "id": "cbc",
+   "name": "CBC w/ differential"
+  },
+  {
+   "id": "bmp",
+   "name": "Basic Metabolic Panel"
+  },
+  {
+   "id": "lft",
+   "name": "Liver Function (LFT)"
+  },
+  {
+   "id": "lipase",
+   "name": "Lipase"
+  },
+  {
+   "id": "coag",
+   "name": "Coagulation (PT/PTT/INR)"
+  },
+  {
+   "id": "bnp",
+   "name": "BNP"
+  },
+  {
+   "id": "dimer",
+   "name": "D-Dimer"
+  },
+  {
+   "id": "troponin",
+   "name": "High-sensitivity Troponin"
+  },
+  {
+   "id": "tsh",
+   "name": "TSH"
+  },
+  {
+   "id": "type-screen",
+   "name": "Type & Screen"
+  },
+  {
+   "id": "urine",
+   "name": "Urinalysis"
+  },
+  {
+   "id": "urine-cx",
+   "name": "Urine Culture"
+  },
+  {
+   "id": "blood-cx",
+   "name": "Blood Cultures (×2)"
+  },
+  {
+   "id": "utox",
+   "name": "Urine Toxicology Screen"
+  },
+  {
+   "id": "hba1c",
+   "name": "Hemoglobin A1c"
+  },
+  {
+   "id": "lipid",
+   "name": "Lipid Panel"
+  },
+  {
+   "id": "vit-d",
+   "name": "Vitamin D (25-OH)"
+  },
+  {
+   "id": "b12",
+   "name": "Vitamin B12 / Folate"
+  },
+  {
+   "id": "iron",
+   "name": "Iron Studies (Fe/TIBC/ferritin)"
+  },
+  {
+   "id": "ferritin",
+   "name": "Ferritin"
+  },
+  {
+   "id": "free-t4",
+   "name": "Free T4 / Free T3"
+  },
+  {
+   "id": "cortisol",
+   "name": "Morning Cortisol"
+  },
+  {
+   "id": "beta-hcg-q",
+   "name": "β-hCG (quantitative serum)"
+  },
+  {
+   "id": "psa",
+   "name": "PSA"
+  },
+  {
+   "id": "crp",
+   "name": "CRP"
+  },
+  {
+   "id": "esr",
+   "name": "ESR"
+  },
+  {
+   "id": "procal",
+   "name": "Procalcitonin"
+  },
+  {
+   "id": "hiv",
+   "name": "HIV 4th-gen Ag/Ab"
+  },
+  {
+   "id": "hep-b",
+   "name": "Hepatitis B Serology"
+  },
+  {
+   "id": "hep-c",
+   "name": "Hepatitis C Antibody"
+  },
+  {
+   "id": "rpr",
+   "name": "RPR / VDRL (syphilis)"
+  },
+  {
+   "id": "ana",
+   "name": "ANA"
+  },
+  {
+   "id": "rf",
+   "name": "Rheumatoid Factor"
+  },
+  {
+   "id": "anti-ccp",
+   "name": "Anti-CCP"
+  },
+  {
+   "id": "dsdna",
+   "name": "Anti-dsDNA"
+  },
+  {
+   "id": "c3-c4",
+   "name": "Complement C3 / C4"
+  },
+  {
+   "id": "stool-cx",
+   "name": "Stool Culture"
+  },
+  {
+   "id": "fobt",
+   "name": "Fecal Occult Blood"
+  },
+  {
+   "id": "calpro",
+   "name": "Fecal Calprotectin"
+  },
+  {
+   "id": "h-pylori",
+   "name": "H. pylori Stool Antigen"
+  },
+  {
+   "id": "lithium",
+   "name": "Lithium Level"
+  },
+  {
+   "id": "valproate",
+   "name": "Valproate Level"
+  },
+  {
+   "id": "cxr",
+   "name": "Chest X-Ray"
+  },
+  {
+   "id": "kub",
+   "name": "Abdominal X-Ray (KUB)"
+  },
+  {
+   "id": "xr-extrem",
+   "name": "Extremity X-Ray"
+  },
+  {
+   "id": "xr-spine",
+   "name": "Spine X-Ray"
+  },
+  {
+   "id": "xr-pelvis",
+   "name": "Pelvis X-Ray"
+  },
+  {
+   "id": "us-abdomen",
+   "name": "Abdominal Ultrasound"
+  },
+  {
+   "id": "us-pelvis",
+   "name": "Pelvic Ultrasound"
+  },
+  {
+   "id": "echo",
+   "name": "Cardiac Echo (TTE)"
+  },
+  {
+   "id": "ct-head",
+   "name": "CT Head (non-contrast)"
+  },
+  {
+   "id": "ct-chest",
+   "name": "CT Chest"
+  },
+  {
+   "id": "ct-angio",
+   "name": "CT Angiogram (chest, PE)"
+  },
+  {
+   "id": "ct-abdomen",
+   "name": "CT Abdomen / Pelvis"
+  },
+  {
+   "id": "ct-cspine",
+   "name": "CT Cervical Spine"
+  },
+  {
+   "id": "mri-brain",
+   "name": "MRI Brain"
+  },
+  {
+   "id": "mri-cspine",
+   "name": "MRI Cervical Spine"
+  },
+  {
+   "id": "mri-lspine",
+   "name": "MRI Lumbar Spine"
+  },
+  {
+   "id": "mri-abd",
+   "name": "MRI Abdomen (MRCP)"
+  },
+  {
+   "id": "dexa",
+   "name": "DEXA Bone Density"
+  },
+  {
+   "id": "mammogram",
+   "name": "Mammogram"
+  },
+  {
+   "id": "oct",
+   "name": "OCT (retina)"
+  },
+  {
+   "id": "visual-field",
+   "name": "Visual Field Test"
+  },
+  {
+   "id": "fundoscopy",
+   "name": "Dilated Fundoscopy"
+  },
+  {
+   "id": "audiometry",
+   "name": "Audiometry"
+  },
+  {
+   "id": "eeg",
+   "name": "EEG"
+  },
+  {
+   "id": "emg-ncs",
+   "name": "EMG / Nerve Conduction"
+  },
+  {
+   "id": "spirometry",
+   "name": "Pulmonary Function (PFT)"
+  },
+  {
+   "id": "pap-smear",
+   "name": "Pap / HPV Co-test"
+  },
+  {
+   "id": "skin-biopsy",
+   "name": "Skin Biopsy"
+  },
+  {
+   "id": "csf",
+   "name": "Lumbar Puncture / CSF Analysis"
+  },
+  {
+   "id": "tropical-serology",
+   "name": "Tropical Fever Serology (dengue, scrub typhus, leptospira)"
+  },
+  {
+   "id": "ceruloplasmin",
+   "name": "Ceruloplasmin / Copper Studies"
+  },
+  {
+   "id": "thyroid-ab",
+   "name": "Thyroid Antibodies (TRAb, anti-TPO)"
+  },
+  {
+   "id": "slit-skin-smear",
+   "name": "Slit-skin Smear (AFB)"
+  },
+  {
+   "id": "ascitic-fluid",
+   "name": "Ascitic Fluid Analysis"
+  },
+  {
+   "id": "sputum-afb",
+   "name": "Sputum AFB / GeneXpert"
+  },
+  {
+   "id": "peripheral-smear",
+   "name": "Peripheral Smear / Bone Marrow"
+  },
+  {
+   "id": "orthostatic-bp",
+   "name": "Lying-Standing BP (orthostatic)"
+  },
+  {
+   "id": "cognitive-screen",
+   "name": "Cognitive Screen (4AT / MMSE)"
+  },
+  {
+   "id": "airway-exam",
+   "name": "Airway Assessment (Mallampati, TMD, mouth opening)"
+  },
+  {
+   "id": "scat6",
+   "name": "SCAT6 Concussion Assessment"
+  },
+  {
+   "id": "pulp-test",
+   "name": "Dental Pulp Vitality Test (cold / EPT)"
+  },
+  {
+   "id": "wbct20",
+   "name": "20-min Whole Blood Clotting Test (20WBCT)"
+  },
+  {
+   "id": "tsb",
+   "name": "Serum Bilirubin (total / direct)"
+  },
+  {
+   "id": "ck",
+   "name": "Creatine Kinase (CK)"
+  },
+  {
+   "id": "cholinesterase",
+   "name": "Serum Cholinesterase"
+  },
+  {
+   "id": "tryptase",
+   "name": "Serum Mast-cell Tryptase"
+  },
+  {
+   "id": "wound-cx",
+   "name": "Wound Swab Gram Stain & Culture"
+  },
+  {
+   "id": "conj-swab",
+   "name": "Conjunctival Swab (Gram stain, culture, chlamydia PCR)"
+  },
+  {
+   "id": "oral-biopsy",
+   "name": "Oral Mucosal Biopsy"
+  },
+  {
+   "id": "iopa",
+   "name": "Intraoral Periapical X-ray (IOPA)"
+  },
+  {
+   "id": "opg",
+   "name": "OPG (panoramic dental X-ray)"
+  },
+  {
+   "id": "us-hip",
+   "name": "Ultrasound Hips (infant, Graf)"
+  },
+  {
+   "id": "us-msk",
+   "name": "MSK / Soft-tissue Ultrasound"
+  },
+  {
+   "id": "mri-msk",
+   "name": "MRI Joint / Limb (MSK)"
+  }
+ ],
+ "treatments": [
+  {
+   "id": "aspirin",
+   "name": "Aspirin 325mg PO"
+  },
+  {
+   "id": "nitro",
+   "name": "Nitroglycerin SL"
+  },
+  {
+   "id": "heparin",
+   "name": "Heparin drip"
+  },
+  {
+   "id": "cath-lab",
+   "name": "Activate cath lab"
+  },
+  {
+   "id": "tpa",
+   "name": "tPA (alteplase)"
+  },
+  {
+   "id": "epi-im",
+   "name": "Epinephrine 0.3mg IM"
+  },
+  {
+   "id": "antihistamine",
+   "name": "Diphenhydramine IV"
+  },
+  {
+   "id": "steroids-iv",
+   "name": "Methylprednisolone IV"
+  },
+  {
+   "id": "neb-albuterol",
+   "name": "Nebulized albuterol"
+  },
+  {
+   "id": "o2",
+   "name": "Supplemental O2"
+  },
+  {
+   "id": "iv-fluids",
+   "name": "IV fluids (NS bolus)"
+  },
+  {
+   "id": "abx-broad",
+   "name": "Broad-spectrum antibiotics"
+  },
+  {
+   "id": "analgesia",
+   "name": "Analgesia (morphine)"
+  },
+  {
+   "id": "ondansetron",
+   "name": "Ondansetron 4mg IV"
+  },
+  {
+   "id": "surgery-consult",
+   "name": "Surgery consult"
+  },
+  {
+   "id": "admit-icu",
+   "name": "Admit to ICU"
+  },
+  {
+   "id": "admit-floor",
+   "name": "Admit to floor"
+  },
+  {
+   "id": "observe",
+   "name": "Observation unit"
+  },
+  {
+   "id": "discharge",
+   "name": "Discharge home"
+  },
+  {
+   "id": "antivenom",
+   "name": "Anti-snake venom (polyvalent ASV) IV"
+  },
+  {
+   "id": "rabies-pep",
+   "name": "Rabies PEP (wound wash, vaccine, RIG)"
+  },
+  {
+   "id": "tetanus-prophylaxis",
+   "name": "Tetanus prophylaxis (Td)"
+  },
+  {
+   "id": "atropine",
+   "name": "Atropine IV, titrated to atropinisation"
+  },
+  {
+   "id": "iv-dextrose",
+   "name": "IV dextrose"
+  },
+  {
+   "id": "ors-zinc",
+   "name": "Oral rehydration (ORS) + zinc"
+  },
+  {
+   "id": "active-cooling",
+   "name": "Active cooling (cold-water immersion / evaporative)"
+  },
+  {
+   "id": "decontamination",
+   "name": "Decontamination (remove clothes, wash skin)"
+  },
+  {
+   "id": "wound-care",
+   "name": "Wound care (wash, debride, drain, dress)"
+  },
+  {
+   "id": "immobilise",
+   "name": "Immobilise (splint, brace, harness or crutches)"
+  },
+  {
+   "id": "rehab-plan",
+   "name": "Structured rehab / graded return-to-play plan"
+  },
+  {
+   "id": "dental-procedure",
+   "name": "Definitive dental treatment (RCT, extraction, scaling, drainage)"
+  },
+  {
+   "id": "kmc",
+   "name": "Kangaroo mother care (skin-to-skin)"
+  },
+  {
+   "id": "deprescribe",
+   "name": "Medication review and deprescribing"
+  },
+  {
+   "id": "counselling",
+   "name": "Counselling and shared decision-making"
+  },
+  {
+   "id": "clear-for-surgery",
+   "name": "Clear for surgery (with anaesthetic plan)"
+  },
+  {
+   "id": "defer-surgery",
+   "name": "Defer elective surgery and optimise"
+  }
+ ]
+}
