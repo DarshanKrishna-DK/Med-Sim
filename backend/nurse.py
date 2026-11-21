@@ -110,6 +110,21 @@ INTERACTIONS: list[tuple[list[str], list[str], str]] = [
 ]
 
 
+def _clean_recurrence(rec: Any) -> Optional[dict[str, Any]]:
+    """Validate and clamp {freq, count, interval}; None when absent or unusable."""
+    if not isinstance(rec, dict):
+        return None
+    freq = str(rec.get("freq", "")).upper()
+    if freq not in ("DAILY", "WEEKLY", "MONTHLY"):
+        return None
+    try:
+        count = max(1, min(12, int(rec.get("count", 1))))
+        interval = max(1, min(4, int(rec.get("interval", 1) or 1)))
+    except (TypeError, ValueError):
+        return None
+    return {"freq": freq, "count": count, "interval": interval}
+
+
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
@@ -253,12 +268,18 @@ class NurseState:
         stems = {re.split(r"[\s\-_0-9]", medication_id.lower())[0], re.split(r"[\s\-_0-9(]", name.lower())[0]}
         return any(len(s) >= 4 and s in said for s in stems)
 
-    def schedule_follow_up(self, inDays: Any, reason: str = "") -> dict[str, Any]:
+    def schedule_follow_up(self, inDays: Any, reason: str = "", recurrence: Any = None, mode: Any = None) -> dict[str, Any]:
         try:
             days = max(0, min(365, int(inDays)))
         except (TypeError, ValueError):
             return {"ok": False, "error": "inDays must be an integer"}
         self.follow_up = {"inDays": days, "reason": reason or "follow-up"}
+        rec = _clean_recurrence(recurrence)
+        if rec:
+            self.follow_up["recurrence"] = rec
+        m = str(mode or "").lower()
+        if m in ("visit", "call"):
+            self.follow_up["mode"] = m
         return {"ok": True, **self.follow_up}
 
     # --- real-world tools (network; never raise)
@@ -272,7 +293,7 @@ class NurseState:
         if tool == "check_allergies_and_interactions" and res.get("ok"):
             await self._real_drug_check(str(args.get("medicationId", "")), res)
         elif tool == "schedule_follow_up" and res.get("ok"):
-            self._calendar(res)
+            await self._calendar(res)
         return res
 
     async def _real_drug_check(self, med_id: str, res: dict[str, Any]) -> None:
@@ -311,11 +332,34 @@ class NurseState:
             "sources": ext.get("sources") or [],
         }
 
-    def _calendar(self, res: dict[str, Any]) -> None:
-        from integrations import calendar_invite, notify
+    async def _calendar(self, res: dict[str, Any]) -> None:
+        from datetime import datetime
+        from integrations import calendar_invite, followup_calls, gcal_script, notify
 
+        rec = res.get("recurrence")
+        is_call = res.get("mode") == "call" or bool(rec)
+        call_url: Optional[str] = None
+        if is_call:
+            try:
+                p = self.req.patient
+                rx = [{"medicationId": r["medicationId"],
+                       "name": self.meds[r["medicationId"]].name if r["medicationId"] in self.meds else r["medicationId"],
+                       "dose": r.get("dose", ""), "duration": r.get("duration", "")} for r in self.new_rx]
+                for r in self.req.prescriptionsSoFar:
+                    if isinstance(r, dict):
+                        rx.append({k: str(r.get(k, "")) for k in ("medicationId", "name", "dose", "duration")})
+                token = followup_calls.register_call({
+                    "caseId": self.req.caseId, "patientName": p.name, "age": p.age, "gender": p.gender,
+                    "chiefComplaint": p.chiefComplaint, "prescriptions": rx,
+                    "reason": res.get("reason", ""), "lang": langmod.norm_lang(self.req.lang)})
+                path = f"/call/{token}"
+                call_url = notify.absolute_url(path) or path
+            except Exception as e:  # noqa: BLE001
+                log.warning("follow-up call link failed: %s", type(e).__name__)
         try:
-            cal = calendar_invite.make_follow_up(self.req.caseId, self.req.patient.name, res["inDays"], res["reason"])
+            cal = calendar_invite.make_follow_up(
+                self.req.caseId, self.req.patient.name, res["inDays"], res["reason"],
+                recurrence=rec, call_url=call_url)
         except Exception as e:  # noqa: BLE001
             log.warning("calendar invite failed: %s", type(e).__name__)
             return
@@ -324,8 +368,25 @@ class NurseState:
             "googleCalendarUrl": cal.get("googleCalendarUrl"),
             "icsUrl": notify.absolute_url(cal["icsPath"]) or cal["icsPath"],
         }
+        if call_url:
+            res["calendar"]["callUrl"] = call_url
         if self.follow_up is not None:
             self.follow_up.update(startText=cal.get("startText"), googleCalendarUrl=cal.get("googleCalendarUrl"), icsPath=cal["icsPath"])
+            if call_url:
+                self.follow_up["callUrl"] = call_url
+        contact = (self.req.contact or "").strip()
+        try:
+            booked = await asyncio.wait_for(gcal_script.book_event(
+                cal["title"], cal.get("description", ""), datetime.fromisoformat(cal["start"]),
+                minutes=cal.get("minutes", 20), recurrence=rec,
+                guest_email=contact if "@" in contact else None), timeout=15.0)
+        except Exception as e:  # noqa: BLE001
+            log.warning("google calendar booking failed: %s", type(e).__name__)
+            booked = None
+        if booked and booked.get("ok"):
+            res["calendar"]["booked"] = {
+                "ok": True, "htmlLink": booked.get("htmlLink"),
+                "recurring": bool(rec), "seriesId": booked.get("seriesId")}
 
     async def send_to_patient(self, channel: str = "auto") -> dict[str, Any]:
         from integrations import calendar_invite, notify
@@ -419,8 +480,19 @@ def summarize(tool: str, args: dict[str, Any], res: dict[str, Any]) -> str:
     if tool == "prescribe":
         return f"Prescribed {res.get('name', args.get('medicationId'))} {res.get('dose', '')} x {res.get('duration', '')}".strip()
     if tool == "schedule_follow_up":
-        when = (res.get("calendar") or {}).get("startText")
-        return f"Follow-up in {res['inDays']} days: {res['reason']}" + (f" ({when}, calendar invite ready)" if when else "")
+        cal = res.get("calendar") or {}
+        when = cal.get("startText")
+        rec = res.get("recurrence")
+        text = f"Follow-up in {res['inDays']} days: {res['reason']}"
+        if rec:
+            unit = {"DAILY": "day", "WEEKLY": "week", "MONTHLY": "month"}[rec["freq"]]
+            every = "" if rec["interval"] == 1 else f"{rec['interval']} "
+            text += f", repeating every {every}{unit}{'s' if rec['interval'] > 1 else ''} x {rec['count']}"
+        if res.get("mode") == "call" or rec:
+            text += " (remote call with Nurse Asha)"
+        if when:
+            text += f" ({when}, " + ("added to Google Calendar" if (cal.get("booked") or {}).get("ok") else "calendar invite ready") + ")"
+        return text
     if tool == "send_to_patient":
         return f"Sent to the patient by {res.get('channel')} ({res.get('to')}): " + ", ".join(res.get("medications") or [])
     if tool == "record_to_ehr":
@@ -451,9 +523,16 @@ TOOL_SPECS: list[dict[str, Any]] = [
             "required": ["medicationId", "dose", "duration"]}}},
     {"type": "function", "function": {
         "name": "schedule_follow_up",
-        "description": "Schedule a follow-up visit.",
+        "description": "Schedule a follow-up and put it in the doctor's Google Calendar. Use recurrence for repeating check-ins "
+                       "(e.g. weekly for a month) and mode call for a remote voice call with Nurse Asha instead of a clinic visit.",
         "parameters": {"type": "object", "properties": {
-            "inDays": {"type": "integer"}, "reason": {"type": "string"}}, "required": ["inDays", "reason"]}}},
+            "inDays": {"type": "integer"}, "reason": {"type": "string"},
+            "recurrence": {"type": "object", "properties": {
+                "freq": {"type": "string", "enum": ["daily", "weekly", "monthly"]},
+                "count": {"type": "integer", "minimum": 1, "maximum": 12},
+                "interval": {"type": "integer", "minimum": 1, "maximum": 4}}, "required": ["freq", "count"]},
+            "mode": {"type": "string", "enum": ["visit", "call"]}},
+            "required": ["inDays", "reason"]}}},
     {"type": "function", "function": {
         "name": "send_to_patient",
         "description": "Send the patient their prescription (with a Murf voice-prescription audio link in their language) "
@@ -472,7 +551,10 @@ SYSTEM_PROMPT = (
     "find_in_catalog, order tests with order_test, run check_allergies_and_interactions before prescribe, then prescribe "
     "or schedule_follow_up. check_allergies_and_interactions also queries real public drug databases (NIH RxNorm/RxClass "
     "and openFDA labels): if it reports a source-backed conflict, hold the drug and name the source briefly (e.g. "
-    "'the FDA label warns...'). If the doctor asks to send, share, WhatsApp, SMS or email the prescription or follow-up "
+    "'the FDA label warns...'). For repeating follow-ups (\'weekly check-in calls for a month\', \'every 2 weeks, 3 times\') pass recurrence "
+    "{freq, count, interval}; for phone, video or remote check-ins pass mode call (a remote voice call with Nurse Asha), "
+    "otherwise mode visit. Follow-ups are added to the doctor's Google Calendar automatically. "
+    "If the doctor asks to send, share, WhatsApp, SMS or email the prescription or follow-up "
     "to the patient, call send_to_patient (after any prescribe or schedule_follow_up in the same request). If a tool fails or a drug is refused for allergy, adapt: say so and (only if the doctor "
     "named a class or indication) pick a safe alternative from the catalog; otherwise just hold it.\n"
     "- Never invent results, ids, or doses beyond tool outputs and the catalog.\n"
@@ -672,3 +754,15 @@ async def notify_status():
     from integrations import notify
 
     return {"channels": notify.configured_channels(), "telegram": await notify.telegram_bot_info()}
+
+
+@router.get("/agent/followup-call/{token}")
+async def followup_call(token: str):
+    """Case snapshot for the remote Asha follow-up call page."""
+    from fastapi import HTTPException
+    from integrations import followup_calls
+
+    snap = followup_calls.get_call(token)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return snap
