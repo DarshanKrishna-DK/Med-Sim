@@ -16,13 +16,14 @@ import json
 import logging
 import re
 import secrets
+import unicodedata
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from llm_provider import chat, strip_think
-from nurse import ALLERGY_CLASSES, _norm
+from nurse import ALLERGY_CLASSES
 import lang as langmod
 
 log = logging.getLogger("medsim.coach")
@@ -169,16 +170,55 @@ def parse_model_json(text: str) -> Optional[dict[str, Any]]:
 # ── deterministic rules (no LLM) ───────────────────────────────────────────
 
 _NEGATION = re.compile(r"\b(no|not|none|nkda|denies|deny|never)\b")
+# The same in the Indian languages, as whole words (allergy text may be in any script).
+_NEGATION_NATIVE = {
+    "नहीं", "कोई नहीं", "नाही", "नाहीत", "ಇಲ್ಲ", "ಇಲ್ಲಾ", "இல்லை", "இல்ல", "లేదు", "లేవు", "নেই", "না", "nahi", "nahin", "illa", "illai", "ledu", "nei",
+}
+# Allergy classes named in native script, as patients and translated charts write them.
+NATIVE_ALLERGENS: dict[str, tuple[str, ...]] = {
+    "penicillin": ("पेनिसिलिन", "पेनिसिलीन", "एमोक्सिसिलिन", "अमोक्सिसिलिन", "अमॉक्सिसिलिन", "ऑगमेंटिन", "ಪೆನಿಸಿಲಿನ್", "ಅಮಾಕ್ಸಿಸಿಲಿನ್", "ಅಮೋಕ್ಸಿಸಿಲಿನ್", "பெனிசிலின்",
+                   "அமோக்சிசிலின்", "పెన్సిలిన్", "పెనిసిలిన్", "అమోక్సిసిలిన్", "পেনিসিলিন", "অ্যামোক্সিসিলিন", "অ্যামক্সিসিলিন"),
+    "sulfa": ("सल्फा", "ಸಲ್ಫಾ", "சல்ஃபா", "சல்பா", "సల్ఫా", "সালফা", "সালফার"),
+    "nsaid": ("आइबुप्रोफेन", "इबुप्रोफेन", "डाइक्लोफेनाक", "ब्रुफेन", "कॉम्बिफ्लाम", "ಐಬುಪ್ರೊಫೆನ್", "ಬ್ರೂಫೆನ್", "ಡೈಕ್ಲೋಫೆನಾಕ್", "இபுப்ரோஃபென்", "இபுப்ரோபென்", "டைக்ளோஃபெனாக்",
+              "ఐబుప్రోఫెన్", "డైక్లోఫెనాక్", "আইবুপ্রোফেন", "ডাইক্লোফেনাক", "दर्द की गोली", "पेनकिलर", "पेन किलर", "ಪೇನ್ ಕಿಲ್ಲರ್", "ನೋವಿನ ಮಾತ್ರೆ", "வலி மாத்திரை", "నొప్పి మాత్ర", "ব্যথার ওষুধ"),
+    "aspirin": ("एस्पिरिन", "ॲस्पिरिन", "ಆಸ್ಪಿರಿನ್", "ஆஸ்பிரின்", "ஆஸ்பிரின்", "ఆస్పిరిన్", "অ্যাসপিরিন"),
+    "cephalosporin": ("सेफालोस्पोरिन", "सेफ्ट्रियाक्सोन", "सेफिक्सिम", "ಸೆಫಲೋಸ್ಪೊರಿನ್", "ಸೆಫ್ಟ್ರಿಯಾಕ್ಸೋನ್", "செஃப்ட்ரியாக்சோன்", "సెఫ్ట్రియాక్సోన్", "সেফট্রিয়াক্সোন", "সেফিক্সিম"),
+    "macrolide": ("एज़िथ्रोमाइसिन", "एजिथ्रोमाइसिन", "ಅಜಿಥ್ರೊಮೈಸಿನ್", "அசித்ரோமைசின்", "అజిత్రోమైసిన్", "অ্যাজিথ্রোমাইসিন"),
+    "fluoroquinolone": ("सिप्रोफ्लोक्सासिन", "ಸಿಪ್ರೊಫ್ಲೋಕ್ಸಾಸಿನ್", "சிப்ரோஃப்ளோக்சசின்", "సిప్రోఫ్లోక్ససిన్", "সিপ্রোফ্লক্সাসিন"),
+    "codeine": ("कोडीन", "ट्रामाडोल", "ಕೋಡೀನ್", "கோடீன்", "కోడీన్", "কোডিন"),
+    "morphine": ("मॉर्फिन", "मार्फिन", "ಮಾರ್ಫಿನ್", "மார்ஃபின்", "మార్ఫిన్", "মরফিন"),
+}
+_ALLERGY_WORD = re.compile(r"allerg|reaction|rash|एलर्जी|ॲलर्जी|अॅलर्जी|ಅಲರ್ಜಿ|அலர்ஜி|ஒவ்வாமை|అలెర్జీ|అలర్జీ|অ্যালার্জি|এলার্জি", re.IGNORECASE)
+
+
+def _norm(s: str) -> str:
+    """Lower case words of any script (nurse._norm keeps ASCII only, which lost
+    allergy text written in Hindi, Kannada and so on)."""
+    folded = unicodedata.normalize("NFC", (s or "").lower())
+    folded = "".join(ch if ch.isalnum() or 0x0900 <= ord(ch) <= 0x0DFF and unicodedata.category(ch) != "Po" else " " for ch in folded)
+    return re.sub(r"\s+", " ", folded).strip()
+
+
+def _fold(s: str) -> str:
+    """Nukta and joiner differences ("ज़" / "ज") must not hide an allergy."""
+    return re.sub("[\u093c\u09bc\u200c\u200d]", "", unicodedata.normalize("NFD", s))
+
+
+def _mentions(sent: str, cls: str, members: list[str]) -> bool:
+    if cls in sent or any(m in sent for m in members):
+        return True
+    folded = _fold(sent)
+    return any(_fold(_norm(n)) in folded for n in NATIVE_ALLERGENS.get(cls, ()))
 
 
 def _allergy_sentences(p: CoachPatient) -> list[str]:
     raw = [p.allergies or ""]
-    raw += [qa.answer for qa in p.anamnesis if "allerg" in f"{qa.question} {qa.answer}".lower()]
+    raw += [qa.answer for qa in p.anamnesis if _ALLERGY_WORD.search(f"{qa.question} {qa.answer}")]
     out: list[str] = []
     for chunk in raw:
-        for sent in re.split(r"[.;\n]|\bbut\b", chunk or "", flags=re.IGNORECASE):
+        for sent in re.split(r"[.;\n\u0964]|\bbut\b", chunk or "", flags=re.IGNORECASE):
             s = _norm(sent)
-            if s and not _NEGATION.search(s):
+            if s and not _NEGATION.search(s) and not set(s.split()) & _NEGATION_NATIVE:
                 out.append(s)
     return out
 
@@ -190,9 +230,8 @@ def allergy_conflict(p: CoachPatient, drug: str) -> Optional[str]:
         return None
     for sent in _allergy_sentences(p):
         for cls, members in ALLERGY_CLASSES.items():
-            if cls in sent or any(m in sent for m in members):
-                if any(m in d for m in members):
-                    return cls
+            if _mentions(sent, cls, members) and _mentions(d, cls, members):
+                return cls
     return None
 
 
@@ -430,9 +469,20 @@ EXPLAIN_SYSTEM = (
 )
 
 
-def _fallback_answer(alert: dict[str, Any]) -> str:
+_EXPLAIN_DEFAULT = {
+    "en": "I flagged this because it could put the patient at risk. Let's review it together.",
+    "hi": "मैंने इसे इसलिए बताया क्योंकि इससे मरीज़ को ख़तरा हो सकता है। आइए साथ में देखते हैं।",
+    "kn": "ಇದರಿಂದ ರೋಗಿಗೆ ಅಪಾಯ ಆಗಬಹುದು ಅಂತ ಹೇಳಿದೆ. ಒಟ್ಟಿಗೆ ನೋಡೋಣ.",
+    "ta": "இதனால் நோயாளிக்கு ஆபத்து வரலாம் என்பதால் சொன்னேன். சேர்ந்து பார்க்கலாம்.",
+    "te": "దీనివల్ల రోగికి ప్రమాదం ఉండొచ్చని చెప్పాను. కలిసి చూద్దాం.",
+    "mr": "यामुळे रुग्णाला धोका होऊ शकतो म्हणून सांगितलं. एकत्र पाहूया.",
+    "bn": "এতে রোগীর ঝুঁকি হতে পারে বলে জানিয়েছি। চলুন একসঙ্গে দেখি।",
+}
+
+
+def _fallback_answer(alert: dict[str, Any], lang: Optional[str] = None) -> str:
     base = " ".join(x for x in (_clean(alert.get("explanation")), _clean(alert.get("suggestion"))) if x)
-    return _words(base or "I flagged this because it could put the patient at risk. Let's review it together.", 80)
+    return _words(base or _EXPLAIN_DEFAULT[langmod.norm_lang(lang)], 80)
 
 
 @router.post("/agent/coach/explain", response_model=CoachExplainResponse)
@@ -455,7 +505,7 @@ async def coach_explain(req: CoachExplainRequest) -> CoachExplainResponse:
         max_tokens=300,
     )
     answer = _words(strip_think(content or ""), 80) if content else ""
-    return CoachExplainResponse(answer=answer or _fallback_answer(a))
+    return CoachExplainResponse(answer=answer or _fallback_answer(a, req.lang))
 
 
 # ── "How am I doing, Asha?" check-in ───────────────────────────────────────
@@ -491,15 +541,44 @@ HINT_SYSTEM = (
 )
 
 
+# Asha's check-in when the model is unavailable: (no history yet, no exam yet, no tests yet, all three done).
+HINT_LINES: dict[str, tuple[str, str, str, str]] = {
+    "en": ("We've only just started, doctor. Take a fuller history first: when it began, what makes it better or worse, and anything else going on.",
+           "Good history so far. Have you examined the patient yet? Pick the body system that fits the complaint.",
+           "You've taken a history and examined. Which investigations would confirm or rule out your leading idea?",
+           "You have history, an exam and some results. Look at which results are abnormal and ask yourself what single diagnosis explains them."),
+    "hi": ("अभी तो शुरुआत है डॉक्टर। पहले हिस्ट्री पूरी लीजिए: कब से है, किससे बढ़ता या घटता है, और क्या तकलीफ़ है।",
+           "हिस्ट्री अच्छी ली है। मरीज़ की जाँच की क्या? तकलीफ़ से जुड़ा बॉडी सिस्टम चुनिए।",
+           "हिस्ट्री और जाँच हो गई। आपका मुख्य शक पक्का करने या हटाने के लिए कौन से टेस्ट चाहिए?",
+           "हिस्ट्री, जाँच और कुछ रिपोर्ट आपके पास हैं। देखिए कौन सी रिपोर्ट असामान्य हैं और कौन सा एक डायग्नोसिस सब समझाता है।"),
+    "kn": ("ಈಗಷ್ಟೇ ಶುರು ಮಾಡಿದ್ದೀವಿ ಡಾಕ್ಟರ್. ಮೊದಲು ಹಿಸ್ಟರಿ ಪೂರ್ತಿ ತಗೊಳ್ಳಿ: ಯಾವಾಗ ಶುರುವಾಯ್ತು, ಯಾವುದರಿಂದ ಜಾಸ್ತಿ ಅಥವಾ ಕಡಿಮೆ ಆಗುತ್ತೆ, ಬೇರೆ ಏನು ತೊಂದರೆ ಇದೆ.",
+           "ಹಿಸ್ಟರಿ ಚೆನ್ನಾಗಿ ತಗೊಂಡಿದ್ದೀರಿ. ರೋಗಿಯನ್ನ ಪರೀಕ್ಷೆ ಮಾಡಿದ್ರಾ? ತೊಂದರೆಗೆ ಹೊಂದುವ ಭಾಗ ಆರಿಸಿ.",
+           "ಹಿಸ್ಟರಿ, ಪರೀಕ್ಷೆ ಆಯ್ತು. ನಿಮ್ಮ ಮುಖ್ಯ ಅನುಮಾನ ಖಚಿತ ಮಾಡೋಕೆ ಯಾವ ಟೆಸ್ಟ್ ಬೇಕು?",
+           "ಹಿಸ್ಟರಿ, ಪರೀಕ್ಷೆ, ಕೆಲವು ರಿಪೋರ್ಟ್ ಇವೆ. ಯಾವ ರಿಪೋರ್ಟ್ ಅಸಹಜ ಇದೆ ನೋಡಿ, ಎಲ್ಲವನ್ನೂ ವಿವರಿಸುವ ಒಂದು ಡಯಾಗ್ನೋಸಿಸ್ ಯಾವುದು ಅಂತ ಯೋಚಿಸಿ."),
+    "ta": ("இப்போதான் ஆரம்பிச்சிருக்கோம் டாக்டர். முதல்ல ஹிஸ்டரி முழுசா எடுங்க: எப்போ ஆரம்பிச்சது, எதனால கூடுது குறையுது, வேற என்ன தொந்தரவு.",
+           "ஹிஸ்டரி நல்லா எடுத்தீங்க. நோயாளியை பரிசோதனை பண்ணீங்களா? தொந்தரவுக்கு பொருந்தும் உறுப்பைத் தேர்ந்தெடுங்க.",
+           "ஹிஸ்டரியும் பரிசோதனையும் முடிஞ்சது. உங்க முக்கிய சந்தேகத்தை உறுதி பண்ண எந்த டெஸ்ட் வேணும்?",
+           "ஹிஸ்டரி, பரிசோதனை, சில ரிப்போர்ட் இருக்கு. எது இயல்பா இல்லைன்னு பார்த்து, எல்லாத்தையும் விளக்கும் ஒரு டயக்னோசிஸ் எதுன்னு யோசிங்க."),
+    "te": ("ఇప్పుడే మొదలుపెట్టాం డాక్టర్. ముందు హిస్టరీ పూర్తిగా తీసుకోండి: ఎప్పుడు మొదలైంది, దేనివల్ల పెరుగుతుంది తగ్గుతుంది, ఇంకేం ఇబ్బంది ఉంది.",
+           "హిస్టరీ బాగా తీసుకున్నారు. రోగిని పరీక్షించారా? సమస్యకు సరిపోయే భాగాన్ని ఎంచుకోండి.",
+           "హిస్టరీ, పరీక్ష అయ్యాయి. మీ ప్రధాన అనుమానాన్ని నిర్ధారించడానికి ఏ టెస్టులు కావాలి?",
+           "హిస్టరీ, పరీక్ష, కొన్ని రిపోర్టులు ఉన్నాయి. ఏవి అసాధారణంగా ఉన్నాయో చూసి, అన్నిటినీ వివరించే ఒకే డయాగ్నోసిస్ ఏదో ఆలోచించండి."),
+    "mr": ("आत्ताच सुरुवात झाली आहे डॉक्टर. आधी हिस्ट्री पूर्ण घ्या: कधीपासून आहे, कशाने वाढतं किंवा कमी होतं, आणखी काय त्रास आहे.",
+           "हिस्ट्री छान घेतली. रुग्णाची तपासणी केली का? त्रासाशी जुळणारी सिस्टीम निवडा.",
+           "हिस्ट्री आणि तपासणी झाली. तुमचा मुख्य संशय पक्का करायला कोणत्या टेस्ट हव्यात?",
+           "हिस्ट्री, तपासणी आणि काही रिपोर्ट आहेत. कोणते रिपोर्ट असामान्य आहेत ते बघा आणि सगळं समजावणारं एक डायग्नोसिस कोणतं ते विचार करा."),
+    "bn": ("সবে শুরু করেছি ডাক্তারবাবু। আগে পুরো হিস্ট্রি নিন: কবে থেকে, কীসে বাড়ে বা কমে, আর কী অসুবিধা আছে।",
+           "হিস্ট্রি ভালো নিয়েছেন। রোগীকে পরীক্ষা করেছেন কি? অসুবিধার সঙ্গে মেলে এমন সিস্টেম বেছে নিন।",
+           "হিস্ট্রি আর পরীক্ষা হয়েছে। আপনার মূল সন্দেহ নিশ্চিত করতে কোন টেস্ট লাগবে?",
+           "হিস্ট্রি, পরীক্ষা আর কিছু রিপোর্ট আছে। কোন রিপোর্ট অস্বাভাবিক দেখুন, আর কোন একটা ডায়াগনোসিস সবটা বোঝায় ভাবুন।"),
+}
+
+
 def fallback_hint(req: CoachHintRequest) -> CoachHintResponse:
     e = req.encounterSoFar
-    if not e.askedHistory:
-        return CoachHintResponse(verdict="partly", hint="We've only just started, doctor. Take a fuller history first: when it began, what makes it better or worse, and anything else going on.")
-    if not e.examsPerformed:
-        return CoachHintResponse(verdict="partly", hint="Good history so far. Have you examined the patient yet? Pick the body system that fits the complaint.")
-    if not e.orderedTests:
-        return CoachHintResponse(verdict="partly", hint="You've taken a history and examined. Which investigations would confirm or rule out your leading idea?")
-    return CoachHintResponse(verdict="partly", hint="You have history, an exam and some results. Look at which results are abnormal and ask yourself what single diagnosis explains them.")
+    lines = HINT_LINES[langmod.norm_lang(req.lang)]
+    step = 0 if not e.askedHistory else 1 if not e.examsPerformed else 2 if not e.orderedTests else 3
+    return CoachHintResponse(verdict="partly", hint=lines[step])
 
 
 @router.post("/agent/coach/hint", response_model=CoachHintResponse)

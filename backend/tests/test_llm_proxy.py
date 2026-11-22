@@ -199,6 +199,35 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(self._sse_text(r), "")
         self.assertFalse(calls)
 
+    def test_one_silenced_order_does_not_silence_the_next_question(self):
+        msgs = [{"role": "system", "content": "You are a human patient named Ravi, a 52-year-old man."},
+                {"role": "assistant", "content": "Chest pain, doctor."},
+                {"role": "user", "content": "Nurse, order a CBC"}]
+        r = self.post({"messages": msgs, "stream": True})
+        self.assertEqual(self._sse_text(r), "")
+        self.assertFalse(self.seen)
+        msgs += [{"role": "assistant", "content": ""}, {"role": "user", "content": "How long have you had it?"}]
+        r = self.post({"messages": msgs, "stream": True})
+        self.assertEqual(r.content, SSE)
+        sent = json.loads(self.seen[-1].content)["messages"]
+        self.assertEqual([m["content"] for m in sent if m["role"] == "user"], ["How long have you had it?"])
+
+    def test_reply_to_a_department_question_is_not_for_the_patient(self):
+        import intent
+        intent.reset()
+        self.addCleanup(intent.reset)
+        intent.bind_session("ch-9", case_id="c9", patient_name="Ravi")
+        llm_proxy.bind_session(self.tok, "ch-9")
+        body = {"messages": [{"role": "user", "content": "No, she is not pregnant"}], "stream": True}
+        self.assertEqual(self.post(body).content, SSE)
+        intent.note_context({"pendingQuestion": {"role": "radiology", "ref": "r1"}}, channel="ch-9")
+        self.assertEqual(self._sse_text(self.post(body)), "")
+
+    def test_sessions_without_a_patient_are_never_silenced(self):
+        llm_proxy.bind_session(self.tok, "ch-rad", patient=False)
+        r = self.post({"messages": [{"role": "user", "content": "Vikram, what does the x-ray show?"}], "stream": True})
+        self.assertEqual(r.content, SSE)
+
     def test_voice_start_proxy_vs_direct(self):
         req = {"caseId": "c1", "systemPrompt": "sp", "initialLine": "hi", "gender": "M"}
         hdr = {"Origin": "http://localhost:5173"}

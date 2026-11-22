@@ -9,6 +9,7 @@ import type { Lang } from '../game/lang';
 import { withLanguage } from './language.ts';
 import { getProfile } from '../game/profile.ts';
 import { addressLine, humanRules } from './humanVoice.ts';
+import { RADIOLOGIST_HELLO, radiologistNextFilm } from './lines.ts';
 
 export const RADIOLOGIST = {
   name: 'Dr. Vikram Rao',
@@ -18,8 +19,7 @@ export const RADIOLOGIST = {
   caseId: 'radiologist',
 };
 
-export const RADIOLOGIST_GREETING =
-  'Come in, come in. I am Doctor Vikram Rao. Pick a film, look at it properly, then describe it to me in order, the way you would report it. Take your time.';
+export const radiologistGreeting = (lang: Lang): string => RADIOLOGIST_HELLO[lang] ?? RADIOLOGIST_HELLO.en;
 
 function nameOf(name?: string | null): string {
   if (name !== undefined) return name ?? '';
@@ -85,7 +85,6 @@ export function buildRadiologistCasePrompt(c: RadCase, lang: Lang = 'en', studen
 }
 
 /** What the consultant says when a new film goes up. */
-export function filmIntroLine(c: RadCase): string {
-  const who = `${c.patient.name}, ${c.patient.age}, from ${c.patient.place}`;
-  return `Next film. ${c.study} for ${who}. Read the history on your panel, then tell me what you see.`;
+export function filmIntroLine(c: RadCase, lang: Lang = 'en'): string {
+  return radiologistNextFilm(lang, c.study, `${c.patient.name}, ${c.patient.age}`, c.patient.place);
 }

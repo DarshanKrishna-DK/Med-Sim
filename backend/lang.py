@@ -1,8 +1,16 @@
-"""Session language (en / hi / kn): locale mapping, Murf voices, filler phrases and
+"""Session language (en hi kn ta te mr bn): locale mapping, Murf voices, filler phrases and
 prompt language blocks shared by the voice, nurse, coach and teacher routes.
 
 Voice data comes from the live Murf voice list (GET /v1/speech/voices?model=FALCON,
-2026-11-21): every voice below lists the target locale in `supportedLocales`.
+2026-11-21, rechecked for falcon-2.1 on 2026-11-23): every voice below lists the
+target locale in `supportedLocales`.
+
+Language of a spoken line, in one place:
+  speech_lang(text, requested)   which voice and locale read a line aloud (majority script)
+  turn_lang(text, session)       language one transcript turn is in
+  natural_retry_line(lang)       lang comes from llm_proxy.conversation_lang: the session
+                                 language, unless the doctor's last two turns were both in
+                                 another language (the same rule the personas follow)
 """
 
 from __future__ import annotations
@@ -10,6 +18,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
+import re
 from typing import Any, Optional
 
 log = logging.getLogger("medsim.lang")
@@ -28,35 +38,39 @@ SCRIPT_RANGES = {
 # Patient voice pools per language. English and Hindi share the en-IN pool
 # (all of those voices list hi-IN), so a patient keeps the same voice when the
 # language is switched. Kannada needs voices that list kn-IN.
+# The nurse's and the pharmacist's voices are never in a patient pool. Male staff
+# voices (STAFF_VOICES) cannot all be kept out of the Indic pools: Murf has too few
+# male voices there (Bengali has three in total), so staff_voice() takes the
+# patient's voice as `avoid` and steps aside where a spare exists.
 PATIENT_VOICE_POOLS: dict[str, dict[str, list[str]]] = {
     "en": {
-        "M": ["en-IN-aarav", "en-IN-nikhil", "en-IN-samar", "en-IN-abhinav", "en-IN-eashwar"],
+        "M": ["en-IN-aarav", "en-IN-nikhil", "en-IN-abhinav", "en-IN-eashwar"],
         "F": ["en-IN-priya", "en-IN-pooja", "en-IN-anusha", "en-IN-isha", "en-IN-arohi", "en-IN-alia"],
     },
     "hi": {
-        "M": ["en-IN-aarav", "en-IN-nikhil", "en-IN-samar", "en-IN-abhinav", "en-IN-eashwar"],
+        "M": ["en-IN-aarav", "en-IN-nikhil", "en-IN-abhinav", "en-IN-eashwar"],
         "F": ["en-IN-priya", "en-IN-pooja", "en-IN-anusha", "en-IN-isha", "en-IN-arohi", "en-IN-alia"],
     },
     "kn": {
         "M": ["en-IN-nikhil", "en-IN-samar", "hi-IN-chirag", "hi-IN-pranav"],
-        "F": ["en-IN-pooja", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "kn-IN-harshitha"],
+        "F": ["en-IN-pooja", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya"],
     },
     # Verified live (Murf voices API, FALCON, 2026-11-21): each lists the locale in supportedLocales.
     "ta": {
         "M": ["en-IN-samar", "hi-IN-chirag", "hi-IN-pranav", "ta-IN-karthikeyan"],
-        "F": ["en-IN-pooja", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna"],
+        "F": ["en-IN-pooja", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya"],
     },
     "te": {
         "M": ["en-IN-samar", "hi-IN-chirag", "hi-IN-pranav"],
-        "F": ["en-IN-pooja", "en-IN-alia", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "hi-IN-ayushi"],
+        "F": ["en-IN-pooja", "en-IN-alia", "hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-ayushi"],
     },
     "mr": {
         "M": ["en-IN-samar", "en-IN-abhinav", "hi-IN-chirag", "hi-IN-pranav", "mr-IN-prathamesh"],
-        "F": ["hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "mr-IN-prajakta"],
+        "F": ["hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya"],
     },
     "bn": {
         "M": ["hi-IN-chirag", "hi-IN-pranav", "bn-IN-subhankar"],
-        "F": ["hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya", "hi-IN-rachna", "bn-IN-debarati"],
+        "F": ["hi-IN-poonam", "hi-IN-neeta", "hi-IN-jaya"],
     },
 }
 
@@ -65,6 +79,43 @@ NURSE_VOICES = {
     "en": "en-IN-anisha", "hi": "en-IN-anisha", "kn": "kn-IN-harshitha",
     "ta": "en-IN-anisha", "te": "en-IN-anisha", "mr": "mr-IN-prajakta", "bn": "bn-IN-debarati",
 }
+
+# Department voices for /voice/tts: first choice per language, distinct from the nurse
+# and from each other in all seven languages. Pharmacist Meera (F), Lab Officer Dev (M),
+# Radiologist Vikram (M), Examiner Kulkarni (M, the viva examiner's voice).
+# MURF_<ROLE>_VOICE overrides English, MURF_<ROLE>_VOICE_<LANG> any language
+# (for example MURF_LAB_VOICE_KN). Gaps: Tamil and Telugu have one spare male voice,
+# Bengali none, so a Bengali male patient can share the voice of one male department.
+STAFF_VOICES: dict[str, dict[str, str]] = {
+    "pharmacist": {lg: "hi-IN-rachna" for lg in LANGS},
+    "radiology": {lg: "hi-IN-chirag" for lg in LANGS},
+    "examiner": {lg: "hi-IN-pranav" for lg in LANGS},
+    "lab": {**{lg: "en-IN-samar" for lg in LANGS}, "bn": "bn-IN-subhankar"},
+}
+STAFF_ROLES = tuple(STAFF_VOICES)
+_MALE_SPARES = {
+    "en": ["en-IN-nikhil", "en-IN-abhinav"], "hi": ["en-IN-nikhil", "hi-IN-aman"], "kn": ["en-IN-nikhil", "pa-IN-harman"],
+    "ta": ["ta-IN-karthikeyan"], "te": ["mr-IN-prathamesh"], "mr": ["mr-IN-prathamesh", "en-IN-abhinav"], "bn": [],
+}
+_FEMALE_SPARES = ["hi-IN-neeta", "hi-IN-jaya"]
+
+
+def staff_voice(role: str, lang: Optional[str], avoid: Optional[str] = None) -> str:
+    """Murf voice of a department. `avoid` is the patient's voice in this encounter."""
+    lg = norm_lang(lang)
+    env = f"MURF_{role.upper()}_VOICE"
+    override = os.environ.get(f"{env}_{lg.upper()}", "").strip() or (os.environ.get(env, "").strip() if lg == "en" else "")
+    if override:
+        return override
+    first = STAFF_VOICES[role][lg]
+    if avoid != first:
+        return first
+    taken = {nurse_voice(lg), *(v[lg] for v in STAFF_VOICES.values())}
+    for v in (_FEMALE_SPARES if role == "pharmacist" else _MALE_SPARES[lg]):
+        if v != avoid and v not in taken:
+            return v
+    return first
+
 
 FILLERS: dict[str, list[str]] = {
     "en": ["Hmm...", "Haan, doctor...", "Umm, let me think...", "Achha...", "One second, doctor...",
@@ -155,7 +206,8 @@ def failure_message(lang: Optional[str]) -> str:
 
 
 def natural_retry_line(lang: Optional[str], rng: Any = None) -> str:
-    """A short in-character 'say that again?' line, varied per call."""
+    """A short in-character 'say that again?' line, varied per call. Callers pass
+    llm_proxy.conversation_lang(messages), never just the script of the last turn."""
     import random
 
     return (rng or random).choice(NATURAL_RETRY_LINES[norm_lang(lang)])
@@ -168,7 +220,7 @@ _HI_RULES = (
     "for Hindi words). Common English medical loanwords are natural in Hindi speech and allowed, for example "
     "BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. "
     "Keep sentences short and conversational, the way a person in India really talks to a doctor. "
-    "Address the doctor respectfully as \"आप\". Always reply in Hindi, even when the doctor mixes in "
+    "Address the doctor respectfully as \"आप\". Reply in Hindi by default, even when the doctor mixes in "
     "English or Kannada words."
 )
 _KN_RULES = (
@@ -176,7 +228,7 @@ _KN_RULES = (
     "for Kannada words). Common English medical loanwords are natural in spoken Kannada and allowed, for "
     "example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. "
     "Keep sentences short and conversational, the way a person in Karnataka really talks to a doctor. "
-    "Address the doctor respectfully as \"ನೀವು\". Always reply in Kannada, even when the doctor mixes in "
+    "Address the doctor respectfully as \"ನೀವು\". Reply in Kannada by default, even when the doctor mixes in "
     "English or Hindi words."
 )
 
@@ -187,7 +239,7 @@ def _rules(name: str, script: str, region: str, you: str) -> str:
         f"for {name} words). Common English medical loanwords are natural in spoken {name} and allowed, for "
         "example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. "
         f"Keep sentences short and conversational, the way a person in {region} really talks to a doctor. "
-        f"Address the doctor respectfully as \"{you}\". Always reply in {name}, even when the doctor mixes in "
+        f"Address the doctor respectfully as \"{you}\". Reply in {name} by default, even when the doctor mixes in "
         "English or Hindi words."
     )
 
@@ -226,10 +278,14 @@ _ROLE_TAIL = {
 }
 
 
+# Same text in src/voice/language.ts (a test compares them). Voices read any Indian
+# script whatever their locale, but stumble badly on romanised Hindi or Kannada, so
+# every language is written in its own script.
 MIXED_SPEECH = (
-    "MIXED LANGUAGES: The doctor may mix languages inside one sentence (Hinglish, Kannada with English and Hindi, Tamil or Telugu with English), in any script or in Roman letters, and speech-to-text may garble or half-transcribe it. Understand the meaning whatever the mix and answer what they meant. Never say you did not understand and never comment on their language. "
+    "MIXED LANGUAGES: The doctor may mix two or three languages inside one sentence (Hinglish, Kannada with English and Hindi, Tamil or Telugu with English), in any script or in Roman letters, and speech-to-text may garble or half-transcribe it. Understand the meaning whatever the mix and answer what they meant. Never say you did not understand and never comment on their language. "
+    "REPLYING: Answer in the session language by default. If the doctor has clearly switched, meaning their last two turns in a row are mostly in another Indian language or in English, follow them and answer in that language until they switch again; one mixed or foreign sentence is not a switch. If the doctor mixes languages, a natural light mix in your reply is fine. Write each language in its own script, because a voice reads it aloud, and never write whole Indian-language sentences in Roman letters. Keep medical terms recognisable: BP, sugar, ECG, X-ray, test and medicine names. "
 )
-MIXED_SPEECH_EN = MIXED_SPEECH + "Reply in simple Indian English (a common word like haan or accha is fine)."
+MIXED_SPEECH_EN = MIXED_SPEECH + "The session language is English: reply in simple Indian English (a common word like haan or accha is fine)."
 
 
 def language_block(lang: Optional[str], *, female: bool = False, role: str = "patient") -> str:
@@ -271,8 +327,52 @@ def has_script(text: str, lang: str) -> bool:
     return any(lo <= ord(ch) <= hi for ch in text)
 
 
+def script_lang(text: str, hint: Optional[str] = None) -> Optional[str]:
+    """Language of the main Indian script in `text` when it carries a real share of the
+    letters (15%), else None. Devanagari is Marathi for a Marathi hint or Marathi words."""
+    counts: dict[str, int] = {}
+    letters = 0
+    for ch in text or "":
+        cp = ord(ch)
+        if ch.isalpha() or 0x0900 <= cp <= 0x0CFF:
+            letters += 1
+        for lg in ("hi", "bn", "ta", "te", "kn"):
+            lo, hi = SCRIPT_RANGES[lg]
+            if lo <= cp <= hi:
+                counts[lg] = counts.get(lg, 0) + 1
+    if not counts or sum(counts.values()) < 0.15 * letters:
+        return None
+    best = max(counts, key=lambda k: counts[k])
+    if best == "hi":
+        marathi = "ळ" in text or re.search(r"(?:^|\s)(?:आहे|आहेत|आणि|तुम्ही|तुम्हाला|मला|नाही|काय|कधी|झालं|होतं|करा|द्या)(?=$|[\s,.?!।])", text)
+        if norm_lang(hint) == "mr" or ((hint is None or norm_lang(hint) != "hi") and marathi):
+            return "mr"
+    return best
+
+
+def speech_lang(text: str, requested: Optional[str] = None) -> str:
+    """Voice language for a line: the requested one, unless the line is really written in
+    another Indian script (an English fallback in a Kannada session keeps the Kannada voice)."""
+    return script_lang(text, requested) or norm_lang(requested)
+
+
+_ENGLISH_WORDS = frozenset(
+    "the you is are was were do does did have has had how what when where why which who any your it in for and to of my on with since "
+    "please can could would let me tell about that this there not".split())
+
+
+def turn_lang(text: str, session: Optional[str] = None) -> Optional[str]:
+    """Language one transcript turn is in; None when it cannot tell (noise, one word, Roman Hindi)."""
+    by_script = script_lang(text, session)
+    if by_script:
+        return by_script
+    words = re.findall(r"[a-z']+", (text or "").lower())
+    hits = sum(w in _ENGLISH_WORDS for w in words)
+    return "en" if hits >= 2 and hits >= 0.25 * len(words) else None
+
+
 async def translate_line(text: str, lang: Optional[str]) -> str:
-    """Translate a short opening line to hi/kn with one cheap LLM call (cached).
+    """Translate a short opening line to the session language with one cheap LLM call (cached).
     On any failure returns the original text so the call never blocks."""
     lg = norm_lang(lang)
     if lg == "en" or not text.strip():

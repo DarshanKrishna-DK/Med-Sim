@@ -106,7 +106,7 @@ class LangUnitTests(unittest.TestCase):
             b = lang.language_block(lg, female=True)
             self.assertIn(script, b)
             self.assertIn("BP, sugar, test", b)
-            self.assertIn("Always reply in", b)
+            self.assertIn(f"Reply in {lang.LANG_NAMES[lg]} by default", b)
             self.assertIn("MIXED LANGUAGES", b)
             self.assertIn("JSON", lang.language_block(lg, role="coach"))
             self.assertIn("lesson", lang.language_block(lg, role="teacher"))
@@ -160,7 +160,7 @@ class LangUnitTests(unittest.TestCase):
         self.assertIn("Devanagari", hi)
         self.assertIn("feminine Hindi", hi)
         self.assertIn("BP, sugar, test", hi)
-        self.assertIn("Always reply in Hindi", hi)
+        self.assertIn("Reply in Hindi by default", hi)
         self.assertIn("masculine Hindi", lang.language_block("hi", female=False))
         kn = lang.language_block("kn")
         self.assertIn("Kannada script", kn)
@@ -234,6 +234,97 @@ class LangUnitTests(unittest.TestCase):
 
         self.assertTrue(lang.has_script(nurse._fallback_confirmation(St(), [], "hi"), "hi"))
         self.assertTrue(lang.has_script(nurse._fallback_confirmation(St(), [], "kn"), "kn"))
+
+
+class StaffVoiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._old = {k: v for k, v in os.environ.items() if k.startswith("MURF_")}
+        for k in self._old:
+            os.environ.pop(k)
+
+    def tearDown(self) -> None:
+        for k in [k for k in os.environ if k.startswith("MURF_")]:
+            os.environ.pop(k)
+        os.environ.update(self._old)
+
+    def test_staff_voices_are_distinct_and_support_the_locale(self) -> None:
+        for lg in lang.LANGS:
+            voices = [lang.nurse_voice(lg), *(lang.staff_voice(r, lg) for r in lang.STAFF_ROLES)]
+            self.assertEqual(len(set(voices)), 5, f"{lg}: {voices}")
+            ok = {"hi": HI_OK | {"hi-IN-rachna", "hi-IN-chirag", "hi-IN-pranav"}, "kn": KN_OK, **NEW_LANGS}.get(lg)
+            for v in voices if ok else ():
+                self.assertIn(v, ok, f"{v} not verified for {lg}")
+
+    def test_nurse_and_pharmacist_are_never_a_patient(self) -> None:
+        for lg in lang.LANGS:
+            for pool in lang.PATIENT_VOICE_POOLS[lg].values():
+                self.assertNotIn(lang.nurse_voice(lg), pool, lg)
+                self.assertNotIn(lang.staff_voice("pharmacist", lg), pool, lg)
+                self.assertGreaterEqual(len(pool), 2)
+
+    def test_staff_voice_steps_aside_for_the_patient(self) -> None:
+        for lg in lang.LANGS:
+            for role in lang.STAFF_ROLES:
+                patient = lang.STAFF_VOICES[role][lg]
+                v = lang.staff_voice(role, lg, avoid=patient)
+                if lg == "bn" and role != "pharmacist":
+                    continue  # documented gap: Murf has three male Bengali voices
+                self.assertNotEqual(v, patient, f"{role} {lg}")
+                others = [lang.staff_voice(r, lg) for r in lang.STAFF_ROLES if r != role]
+                self.assertNotIn(v, [lang.nurse_voice(lg), *others])
+
+    def test_env_overrides(self) -> None:
+        os.environ["MURF_LAB_VOICE"] = "en-IN-x"
+        os.environ["MURF_LAB_VOICE_KN"] = "kn-IN-x"
+        self.assertEqual(lang.staff_voice("lab", "en"), "en-IN-x")
+        self.assertEqual(lang.staff_voice("lab", "kn"), "kn-IN-x")
+        self.assertEqual(lang.staff_voice("lab", "ta"), "en-IN-samar")
+
+    def test_majority_script_picks_the_voice_language(self) -> None:
+        req = lambda **k: voice.tts_voice_and_locale(voice.VoiceTtsRequest(**k))  # noqa: E731
+        self.assertEqual(req(text="Okay doctor"), ("en-IN-anisha", "en-IN"))
+        self.assertEqual(req(text="Okay doctor", lang="kn"), ("kn-IN-harshitha", "kn-IN"))
+        self.assertEqual(req(text="ECG और CBC order कर दिया है", locale="en-IN")[1], "hi-IN")
+        self.assertEqual(req(text="ಸರಿ ಡಾಕ್ಟರ್, ECG ಕಳಿಸಿದೆ", lang="hi")[1], "kn-IN")
+        self.assertEqual(req(text="ठीक आहे डॉक्टर", lang="mr")[1], "mr-IN")
+        self.assertEqual(req(text="ठीक आहे, मी पाठवते")[1], "mr-IN")
+        self.assertEqual(req(text="Sending the CBC and the LFT to the lab now, haan ठीक", lang="en")[1], "en-IN")
+        self.assertEqual(req(text="Release.", voice="pharmacist"), ("hi-IN-rachna", "en-IN"))
+        self.assertEqual(req(text="রিপোর্ট তৈরি", voice="lab"), ("bn-IN-subhankar", "bn-IN"))
+
+    def test_speech_and_turn_language(self) -> None:
+        self.assertEqual(lang.speech_lang("", "ta"), "ta")
+        self.assertEqual(lang.turn_lang("how long have you had it", "hi"), "en")
+        self.assertIsNone(lang.turn_lang("kab se dard hai", "hi"))
+        self.assertIsNone(lang.turn_lang("", "hi"))
+        self.assertEqual(lang.turn_lang("ನೋವು ಇದೆ", "hi"), "kn")
+
+
+class SharedPromptTests(unittest.TestCase):
+    def test_mixed_speech_matches_the_browser_copy(self) -> None:
+        ts = (_B.parent / "src" / "voice" / "language.ts").read_text(encoding="utf-8")
+        for half in lang.MIXED_SPEECH.split("REPLYING:"):
+            self.assertIn(half.strip(), ts)
+
+    def test_spoken_lines_cover_every_language(self) -> None:
+        import agent_runtime
+        import agent_toolsets  # noqa: F401
+        import followup_tools
+
+        tables = [agent_runtime.DEFAULT_FALLBACK, followup_tools.FALLBACK, followup_tools.EMERGENCY_FALLBACK,
+                  *followup_tools.FILLERS.values(), agent_runtime.get("viva-examiner").fallback, coach._EXPLAIN_DEFAULT]
+        for kind in ("receptionist", "teacher"):
+            tables += agent_runtime.get(kind).fillers.values()
+        for t in tables:
+            self.assertEqual(set(t), set(lang.LANGS), t)
+            for lg, line in t.items():
+                if lg != "en":
+                    self.assertTrue(lang.has_script(line, lg), f"{lg}: {line}")
+        for lg, line in followup_tools.EMERGENCY_FALLBACK.items():
+            self.assertIn("108", line, lg)
+        for lg, lines in coach.HINT_LINES.items():
+            self.assertEqual(len(lines), 4, lg)
+        self.assertEqual(set(coach.HINT_LINES), set(lang.LANGS))
 
 
 class VoiceLocaleTests(unittest.TestCase):
@@ -333,7 +424,7 @@ class VoiceLocaleTests(unittest.TestCase):
         self.assertEqual(self.sent[-1]["locale"], "kn-IN")
         self.assertEqual(self.sent[-1]["voiceId"], "kn-IN-harshitha")
         self.client.post("/voice/tts", headers=HDR, json={"text": "Okay doctor"})
-        self.assertEqual(self.sent[-1]["locale"], "en-US")
+        self.assertEqual(self.sent[-1]["locale"], "en-IN")
         self.assertEqual(self.sent[-1]["voiceId"], "en-IN-anisha")
 
 

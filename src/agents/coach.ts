@@ -13,8 +13,9 @@ import { TESTS } from '../data/tests';
 import { MEDICATIONS } from '../data/medications';
 import { POLYCLINIC_DIAGNOSIS_LABELS } from '../data/polyclinicPatients';
 import { getExistingConversation } from '../voice/conversationStore';
-import { alertsFromNurseRun } from './coachRules';
+import { alertsFromNurseRun, HINT_RX } from './coachRules';
 import { TREATMENTS } from '../data/treatments';
+import { COACH_FAILED, COACH_LOOKING } from '../voice/lines';
 
 const LOG = '[medsim:coach]';
 const TIMEOUT_MS = 10000;
@@ -211,11 +212,13 @@ export async function requestHint(): Promise<void> {
   const caseId = p.case.id;
   const ctl = new AbortController();
   const timer = window.setTimeout(() => ctl.abort(), TIMEOUT_MS + 4000);
-  let speak: typeof import('./nurseAgent').speakAsNurse | null = null;
+  // One check-in, one answer: the "let me look" ack is dropped if the hint is
+  // ready first, and the hint is spoken once however it was asked for.
+  const id = `hint-${Date.now().toString(36)}`;
+  let say: typeof import('../voice/speech').say | null = null;
   try {
-    const speakAsNurse = (await import('./nurseAgent')).speakAsNurse;
-    speak = speakAsNurse;
-    void speakAsNurse('Let me have a look, doctor.');
+    say = (await import('../voice/speech')).say;
+    void say({ speaker: 'nurse', priority: 'ack', lang: s.lang, ref: id, dedupeMs: 3000, dropIfStale: 3000, text: COACH_LOOKING[s.lang] });
     const r = await fetch('/agent/coach/hint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -235,10 +238,11 @@ export async function requestHint(): Promise<void> {
     if (!r.ok) throw new Error(`/agent/coach/hint ${r.status}`);
     const data = (await r.json()) as { verdict?: string; hint?: string };
     const cur = store.getState().polyclinic.patient;
-    if (!data.hint || !cur || cur.case.id !== caseId) return;
+    if (!cur || cur.case.id !== caseId) return;
+    if (!data.hint) throw new Error('empty hint');
     const verdict = data.verdict ?? 'partly';
     store.pushCoachAlert({
-      id: `hint-${Date.now().toString(36)}`,
+      id,
       caseId,
       severity: verdict === 'off_track' ? 'warning' : 'info',
       title: HINT_TITLE[verdict] ?? 'Check-in',
@@ -248,10 +252,12 @@ export async function requestHint(): Promise<void> {
       source: 'hint',
       createdAt: Date.now(),
     });
-    void speakAsNurse(data.hint);
+    void say({ speaker: 'nurse', priority: 'result', lang: s.lang, ref: id, key: id, text: data.hint });
   } catch (err) {
     console.debug(LOG, 'hint skipped:', err instanceof Error ? err.message : err);
-    if (speak) void speak("Sorry doctor, I couldn't check just now. Ask me again in a moment.");
+    if (store.getState().polyclinic.patient?.case.id === caseId) {
+      void say?.({ speaker: 'nurse', priority: 'result', lang: s.lang, ref: id, dropIfStale: 8000, text: COACH_FAILED[s.lang] });
+    }
   } finally {
     window.clearTimeout(timer);
     hintBusy = false;
@@ -260,7 +266,5 @@ export async function requestHint(): Promise<void> {
 
 /** Check-in phrases: "how am I doing", "am I on the right track", "any hints". */
 export function isHintRequest(text: string): boolean {
-  return /\b(how am i doing|how'?m i doing|am i on (the )?(right )?track|am i doing (this |it )?right|on track|any (hints?|tips|suggestions?|ideas?|advice)|(give me|need) a (hint|tip|clue)|hint please|what am i missing|what(?:'s| is)? next|what (?:should|do|can) i do (?:next|now)|what now|next step|i'?m stuck|i am stuck|help me|i need help|suggest (?:something|what)|kya main sahi|kya karu+n?|ab kya karu+n?|aage kya)\b/i.test(
-    text,
-  );
+  return HINT_RX.test(text);
 }

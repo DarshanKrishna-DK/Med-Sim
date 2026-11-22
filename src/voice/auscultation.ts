@@ -4,13 +4,14 @@
 // where we have one; every other sound is synthesised with the Web Audio API
 // from a short procedurally generated buffer (lub-dub with or without murmur
 // noise, vesicular vs bronchial breath noise, wheeze tone, crackle clicks).
-// The doctor's mic is muted while a clip plays so it never reaches the
-// patient's speech recognition.
+// While a clip plays it owns the room's audio (staff lines wait) and the
+// doctor's mic is held, without touching the doctor's own mute.
 
 import { useSyncExternalStore } from 'react';
 import type { ExamSound } from '../game/types';
-import { POLYCLINIC_BED_INDEX } from '../game/store';
-import { ensureAudioContext, getExistingConversation } from './conversationStore';
+import { store } from '../game/store';
+import { ensureAudioContext } from './conversationStore';
+import { acquireAudio } from './speech';
 
 /** Recorded clips under public/assets/sounds/. Anything missing is synthesised. */
 const CLIP_FILES: Partial<Record<ExamSound, string>> = {
@@ -61,6 +62,18 @@ export function stopAuscultation() {
   stopCurrent?.();
 }
 
+// Leaving the patient or the room stops the clip.
+let seated = store.getState().polyclinic.patient?.case.id ?? null;
+let onScreen = store.getState().screen;
+store.subscribe(() => {
+  const s = store.getState();
+  const id = s.polyclinic.patient?.case.id ?? null;
+  if (id === seated && s.screen === onScreen) return;
+  seated = id;
+  onScreen = s.screen;
+  stopAuscultation();
+});
+
 /** Play (or, if it is already playing, stop) one auscultation sound. Must be
  *  called from a click so the browser allows audio. Never throws. */
 export async function toggleAuscultation(sound: ExamSound): Promise<void> {
@@ -68,32 +81,43 @@ export async function toggleAuscultation(sound: ExamSound): Promise<void> {
   stopAuscultation();
   if (same) return;
 
-  const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
-  const wasMuted = conv?.isMicMuted() ?? false;
-  conv?.setMicMuted(true);
+  const release = acquireAudio('stethoscope', { onPreempt: () => stopAuscultation() });
   setPlaying(sound);
 
   let finished = false;
   const finish = () => {
     if (finished) return;
     finished = true;
-    stopCurrent = null;
-    if (!wasMuted) conv?.setMicMuted(false);
+    if (stopCurrent === stopEarly || stopCurrent === stopActive) stopCurrent = null;
+    release();
     if (playing === sound) setPlaying(null);
+  };
+  // Stopping while the file is still loading must end it too.
+  let stopActive: (() => void) | null = null;
+  const stopEarly = () => finish();
+  stopCurrent = stopEarly;
+  const setStop = (fn: () => void) => {
+    stopActive = fn;
+    stopCurrent = fn;
   };
 
   const url = CLIP_FILES[sound];
-  if (url && (await playFile(url, finish))) return;
+  if (url && (await playFile(url, finish, setStop, () => finished))) return;
   if (finished) return;
   try {
-    playSynth(sound, finish);
+    playSynth(sound, finish, setStop);
   } catch (err) {
     console.warn('[medsim:stethoscope] synth failed:', err);
     finish();
   }
 }
 
-function playFile(url: string, finish: () => void): Promise<boolean> {
+function playFile(
+  url: string,
+  finish: () => void,
+  setStop: (fn: () => void) => void,
+  isOver: () => boolean,
+): Promise<boolean> {
   return new Promise((resolve) => {
     const audio = new Audio(url);
     audio.volume = 0.9;
@@ -104,7 +128,7 @@ function playFile(url: string, finish: () => void): Promise<boolean> {
       audio.pause();
       finish();
     };
-    stopCurrent = stop;
+    setStop(stop);
     audio.addEventListener('ended', stop, { once: true });
     audio.addEventListener('error', () => {
       window.clearTimeout(cap);
@@ -112,7 +136,11 @@ function playFile(url: string, finish: () => void): Promise<boolean> {
       else finish();
     }, { once: true });
     audio.play().then(
-      () => { started = true; resolve(true); },
+      () => {
+        started = true;
+        if (isOver()) audio.pause(); // stopped before the first sample
+        resolve(true);
+      },
       () => { window.clearTimeout(cap); resolve(false); },
     );
   });
@@ -122,7 +150,7 @@ function playFile(url: string, finish: () => void): Promise<boolean> {
 
 const DURATION_S = 6;
 
-function playSynth(sound: ExamSound, finish: () => void) {
+function playSynth(sound: ExamSound, finish: () => void, setStop: (fn: () => void) => void) {
   const ctx = ensureAudioContext();
   const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * DURATION_S), ctx.sampleRate);
   renderSound(sound, buffer.getChannelData(0), ctx.sampleRate);
@@ -136,7 +164,7 @@ function playSynth(sound: ExamSound, finish: () => void) {
     src.disconnect();
     finish();
   };
-  stopCurrent = stop;
+  setStop(stop);
   src.onended = stop;
   src.start();
 }

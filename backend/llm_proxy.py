@@ -9,6 +9,10 @@ Agora docs (custom LLM): endpoint must accept OpenAI chat-completions requests
 (`stream` defaults to true) and answer with `text/event-stream` chunks ending in
 `data: [DONE]`. `llm.vendor` accepts `custom` per the /join reference.
 
+Turns the doctor speaks to the nurse, a department, the coach or an observer are
+decided by intent.route (the same function POST /voice/route serves): the patient
+gets an empty reply, and those turns are kept out of the history sent upstream.
+
 Also here: per-agent bearer tokens and the optional cloudflared quick tunnel
 that gives Agora's cloud an HTTPS URL to reach this backend.
 """
@@ -33,6 +37,7 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+import intent
 import lang as langmod
 from llm_provider import configured_providers
 
@@ -54,6 +59,9 @@ _tokens: dict[str, float] = {}
 # token -> what the agent is, e.g. {"kind": "followup", "callToken": ..., "callId": ...}.
 # Tokens without meta are patient sessions (plain pass-through).
 _token_meta: dict[str, dict[str, Any]] = {}
+# token -> {"channel", "patient"} of a patient session. Kept apart from meta: a token
+# without meta is what makes a session a plain patient pass-through.
+_token_session: dict[str, dict[str, Any]] = {}
 _tokens_lock = threading.Lock()
 
 
@@ -91,6 +99,7 @@ def mint_token(meta: Optional[dict[str, Any]] = None) -> str:
         for t in [t for t, exp in _tokens.items() if exp < now]:
             del _tokens[t]
             _token_meta.pop(t, None)
+            _token_session.pop(t, None)
         _tokens[tok] = now + TOKEN_TTL_S
         if meta:
             _token_meta[tok] = dict(meta)
@@ -104,6 +113,19 @@ def token_meta(candidate: str) -> Optional[dict[str, Any]]:
     with _tokens_lock:
         meta = _token_meta.get(candidate)
     return dict(meta) if meta else None
+
+
+def bind_session(token: str, channel: str, *, patient: bool = True) -> None:
+    """Remember which channel a pass-through token belongs to, and whether a patient
+    speaks there (the reading-room radiologist also uses a plain token)."""
+    with _tokens_lock:
+        if token in _tokens:
+            _token_session[token] = {"channel": channel, "patient": patient}
+
+
+def token_session(candidate: str) -> dict[str, Any]:
+    with _tokens_lock:
+        return dict(_token_session.get(candidate) or {})
 
 
 # Agora agent id -> its LLM bearer token, so /voice/context can update the ctx
@@ -213,75 +235,73 @@ def sanitize_messages(messages: Any) -> list[dict[str, Any]]:
     return merged
 
 
-def build_upstream_body(payload: dict[str, Any], cfg: dict[str, str]) -> dict[str, Any]:
+def build_upstream_body(payload: dict[str, Any], cfg: dict[str, str], messages: Any = None) -> dict[str, Any]:
     body = {k: payload[k] for k in _ALLOWED_FIELDS if k in payload and payload[k] is not None}
-    body["messages"] = sanitize_messages(payload.get("messages"))
+    body["messages"] = sanitize_messages(payload.get("messages") if messages is None else messages)
     body["model"] = cfg["model"]  # never trust the client's model
     return body
 
 
-# ---------------------------------------------------------------- nurse-addressed turns
+# ---------------------------------------------------------------- staff-addressed turns
 
-# The doctor talking to Nurse Asha ("Nurse, order a CBC", "Asha, how am I doing?")
-# is handled by the nurse agent in the browser. The patient must stay silent, so
-# those turns get an empty reply here instead of going to the LLM.
-_NURSE_ADDRESS = re.compile(
-    r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha)\W+){0,2}"
-    r"(?:nurse|sister|staff nurse|a{1,2}sha|नर्स|आशा|सिस्टर|दीदी|ನರ್ಸ್|ಆಶಾ|ಸಿಸ್ಟರ್|ನರ್ಸ|நர்ஸ்|ஆஷா|சிஸ்டர்|నర్స్|ఆశా|సిస్టర్|নার্স|আশা|সিস্টার)(?![a-z])",
-    re.IGNORECASE,
-)
-# Same lead-in, but only the unambiguous titles (used when the patient is named Asha).
-_NURSE_TITLE = re.compile(
-    r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha)\W+){0,2}"
-    r"(?:nurse|sister|staff nurse|नर्स|सिस्टर|ನರ್ಸ್|ಸಿಸ್ಟರ್|நர்ஸ்|నర్స్|নার্স)(?![a-z])",
-    re.IGNORECASE,
-)
-_NURSE_ANYWHERE = re.compile(r"\b(?:nurse a{1,2}sha|sister a{1,2}sha|how am i doing,? a{1,2}sha)\b", re.IGNORECASE)
-# How src/voice/patientPersona.ts names the patient: "You are Asha, a 34-year-old ...",
-# "You are a human patient named Asha, ..." or "You are the mother of Asha, a 6-year-old ...".
-_PATIENT_IS_ASHA = re.compile(
-    r"\byou are (?:a human patient named |the \w+ of )?a{1,2}sha\b|\byour name is a{1,2}sha\b", re.IGNORECASE)
+# The doctor talking to Nurse Asha, a department or the faculty member is answered
+# elsewhere, so the patient must stay silent. The decision is made on the RAW last
+# user message: merging turns first made one silenced order silence the patient forever.
 
 
-# "Invite Darshan to observe", "call Darshan to watch", "ask Darshan to join": the
-# doctor asking Asha to phone an observer (src/observer/contacts.ts parses the same
-# lines). A bare "invite <name>" counts on its own; "call/ask <name>" needs the
-# "to observe/watch/join" tail, so "call me if it gets worse" still reaches the patient.
-_OBS_NAME = (
-    r"(?!(?:you|your|me|us|him|her|them|the|a|an|my|our|someone|somebody|back)\b)[a-z][a-z'.-]*"
-    r"(?:\s+(?!to\b|please\b|now\b)[a-z][a-z'.-]*)?"
-)
-_OBSERVER_CMD = re.compile(
-    r"^\W*(?:(?:ok(?:ay)?|so|and|right|alright|hello|hi|hey|accha|achha|please|can you|could you|would you)\W+){0,3}"
-    r"(?:(?:nurse|sister|a{1,2}sha)\W+)?(?:(?:please|can you|could you|would you)\W+){0,2}"
-    r"(?:(?:invite|add|bring|loop in)\s+" + _OBS_NAME + r"(?:\s+(?:as|to|for|into|in|please|now|too)\b.*)?\W*$"
-    r"|(?:ask|call|ring|phone|get|have)\s+" + _OBS_NAME
-    + r"\b.*\b(?:observ\w*|watch\w*|join\w*|sit in|listen\w*|session|consultation)\b)",
-    re.IGNORECASE,
-)
+def last_user_text(messages: Any) -> str:
+    """Text of the newest message when it is the doctor's, else ''."""
+    if not isinstance(messages, list):
+        return ""
+    last = next((m for m in reversed(messages) if isinstance(m, dict)), None)
+    if not last or last.get("role") != "user":
+        return ""
+    return _text_of(last.get("content"))[0].strip()
+
+
+def _system_text(messages: Any) -> str:
+    for m in messages if isinstance(messages, list) else []:
+        if isinstance(m, dict) and m.get("role") in ("system", "developer"):
+            return _text_of(m.get("content"))[0]
+    return ""
+
+
+def routing_context(messages: Any, channel: str = "") -> dict[str, Any]:
+    """What the router needs: the patient's name plus any pending department question."""
+    ctx = intent.session_context(channel) if channel else {}
+    if not ctx.get("patientName"):
+        ctx["patientName"] = intent.persona_name(_system_text(messages))
+    return ctx
 
 
 def addressed_to_observer_call(text: str) -> bool:
-    return bool(_OBSERVER_CMD.search((text or "").strip()))
+    return intent.route_rules(text).target == "observer"
 
 
-def _patient_named_asha(messages: list[dict[str, Any]]) -> bool:
-    first = next((m for m in messages if m.get("role") in ("system", "developer")), None)
-    return bool(first and _PATIENT_IS_ASHA.search(str(first.get("content") or "")))
+def addressed_to_nurse(messages: Any) -> bool:
+    """Rules only: True when the newest message is for somebody other than the patient."""
+    text = last_user_text(messages)
+    return bool(text) and intent.route_rules(text, context=routing_context(messages)).silent
 
 
-def addressed_to_nurse(messages: list[dict[str, Any]]) -> bool:
-    """True when the newest message is the doctor speaking to the nurse."""
-    if not messages or messages[-1].get("role") != "user":
-        return False
-    text = str(messages[-1].get("content") or "").strip()
-    if not text:
-        return False
-    if _NURSE_ANYWHERE.search(text) or addressed_to_observer_call(text):
-        return True
-    # A patient (or child) called Asha: a bare leading "Asha" is the doctor talking to them.
-    lead = _NURSE_TITLE if _patient_named_asha(messages) else _NURSE_ADDRESS
-    return bool(lead.search(text))
+def strip_staff_turns(messages: Any, context: dict[str, Any], channel: str = "") -> list[Any]:
+    """History without the turns the patient did not answer because they were for staff.
+    A turn that got a spoken reply stays, so the dialogue keeps alternating."""
+    if not isinstance(messages, list):
+        return []
+    base = {"patientName": context.get("patientName")}  # old turns: no pending question applies
+    out: list[Any] = []
+    last = len(messages) - 1
+    for i, m in enumerate(messages):
+        if isinstance(m, dict) and m.get("role") == "user" and i != last:
+            text = _text_of(m.get("content"))[0].strip()
+            nxt = messages[i + 1]
+            replied = isinstance(nxt, dict) and nxt.get("role") == "assistant" and bool(
+                _text_of(nxt.get("content"))[0].strip() or nxt.get("tool_calls"))
+            if text and not replied and (intent.was_silenced(channel, text) or intent.route_rules(text, context=base).silent):
+                continue
+        out.append(m)
+    return out
 
 
 def sse_chunk(cid: str, model: str, delta: dict[str, Any], finish: Optional[str] = None) -> str:
@@ -328,17 +348,27 @@ _SPOKEN_LANG = re.compile(r"everyday spoken (" + "|".join(_LANG_NAMES) + r")\b")
 
 
 def conversation_lang(messages: Any) -> str:
-    """Best guess at the language the patient should answer in: the script of the
-    doctor's newest turn, else the LANGUAGE block in the system prompt, else en."""
-    msgs = sanitize_messages(messages)
-    system = next((str(m.get("content") or "") for m in msgs if m["role"] in ("system", "developer")), "")
+    """Language the patient should answer in, by the rule the personas follow
+    (lang.MIXED_SPEECH): the session language, unless the doctor's last two spoken turns
+    were both in another one. Without a language block in the prompt (old sessions) the
+    newest turn decides. Blank noise turns and turns for staff do not count."""
+    msgs = messages if isinstance(messages, list) else []
+    system = _system_text(msgs)
     hit = _SPOKEN_LANG.search(system)
-    prompt_lang = _LANG_NAMES[hit.group(1)] if hit else "en"
-    last_user = next((str(m.get("content") or "") for m in reversed(msgs) if m["role"] == "user"), "")
-    for lg in ("kn", "ta", "te", "bn", "hi"):
-        if langmod.has_script(last_user, lg):
-            # Hindi and Marathi share Devanagari: trust the prompt to split them.
-            return "mr" if lg == "hi" and prompt_lang == "mr" else lg
+    prompt_lang = _LANG_NAMES[hit.group(1)] if hit else ("en" if "session language is English" in system else None)
+    turns: list[str] = []
+    for m in reversed(msgs):
+        if isinstance(m, dict) and m.get("role") == "user":
+            text = _text_of(m.get("content"))[0].strip()
+            if text and text != PLACEHOLDER and not intent.route_rules(text).silent:
+                turns.append(text)
+        if len(turns) == 2:
+            break
+    langs = [langmod.turn_lang(t, prompt_lang) for t in turns]
+    if prompt_lang is None:
+        return (langs[0] if langs else None) or "en"
+    if len(langs) == 2 and langs[0] and langs[0] == langs[1]:
+        return langs[0]
     return prompt_lang
 
 
@@ -397,14 +427,25 @@ async def patient_chat_completions(request: Request):
 
         if agent_runtime.is_registered(meta.get("kind")):
             return await agent_runtime.handle(payload, meta, cfgs[0]["model"])
-    if addressed_to_nurse(sanitize_messages(payload.get("messages"))):
-        log.info("doctor addressed the nurse; patient stays silent")
-        return _silent_reply(payload.get("stream", True) is not False, cfgs[0]["model"])
-
     stream = payload.get("stream", True) is not False
+    sess = token_session(bearer)
+    channel = str(sess.get("channel") or "")
+    raw = payload.get("messages")
+    messages: Any = raw
+    if sess.get("patient", "radiologist" not in _system_text(raw)[:400].lower()):
+        ctx = routing_context(raw, channel)
+        text = last_user_text(raw)
+        if text:
+            r = await intent.route(text, context=ctx, llm_cap_s=intent.PROXY_LLM_CAP_S)
+            if r.silent:
+                log.info("turn is for %s (%s, %s); patient stays silent", r.target, r.action, r.via)
+                intent.mark_silenced(channel, text)
+                return _silent_reply(stream, cfgs[0]["model"])
+        messages = strip_staff_turns(raw, ctx, channel)
+
     client = _client_factory()
     for cfg in cfgs:
-        body = build_upstream_body(payload, cfg)
+        body = build_upstream_body(payload, cfg, messages)
         headers = {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
         for attempt in range(2):
             retry = attempt == 1

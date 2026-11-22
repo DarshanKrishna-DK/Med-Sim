@@ -3,48 +3,32 @@
 
 import type { Lang } from '../game/lang';
 
-const HI =
-  'LANGUAGE: Speak natural, everyday spoken Hindi, written in Devanagari script only (never Roman letters for Hindi words). ' +
-  'Common English medical loanwords are natural in Hindi speech and allowed, for example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. ' +
-  'Keep sentences short and conversational, the way a person in India really talks to a doctor. ' +
-  'Address the doctor respectfully as "आप". Always reply in Hindi, even when the doctor mixes in English or Kannada words.';
+/** Rules for one language. Each block must name its own language (tested): never copy and paste these. */
+function rules(name: string, script: string, region: string, you: string, others: string): string {
+  return (
+    `LANGUAGE: Speak natural, everyday spoken ${name}, written in ${script} only (never Roman letters for ${name} words). ` +
+    `Common English medical loanwords are natural in spoken ${name} and allowed, for example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. ` +
+    `Keep sentences short and conversational, the way a person in ${region} really talks to a doctor. ` +
+    `Address the doctor respectfully as "${you}". Reply in ${name} by default, even when the doctor mixes in ${others} words.`
+  );
+}
 
-const KN =
-  'LANGUAGE: Speak natural, everyday spoken Kannada, written in Kannada script only (never Roman letters for Kannada words). ' +
-  'Common English medical loanwords are natural in spoken Kannada and allowed, for example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. ' +
-  'Keep sentences short and conversational, the way a person in Karnataka really talks to a doctor. ' +
-  'Address the doctor respectfully as "ನೀವು". Always reply in Hindi, even when the doctor mixes in English or Kannada words.';
+const LANG_RULES: Record<Exclude<Lang, 'en'>, string> = {
+  hi: rules('Hindi', 'Devanagari script', 'India', 'आप', 'English or Kannada'),
+  kn: rules('Kannada', 'Kannada script', 'Karnataka', 'ನೀವು', 'English or Hindi'),
+  ta: rules('Tamil', 'Tamil script', 'Tamil Nadu', 'நீங்கள்', 'English or Hindi'),
+  te: rules('Telugu', 'Telugu script', 'Andhra Pradesh or Telangana', 'మీరు', 'English or Hindi'),
+  mr: rules('Marathi', 'Devanagari script', 'Maharashtra', 'तुम्ही', 'English or Hindi'),
+  bn: rules('Bengali', 'Bengali script', 'West Bengal', 'আপনি', 'English or Hindi'),
+};
 
-const TA =
-  'LANGUAGE: Speak natural, everyday spoken Tamil, written in Tamil script only (never Roman letters for Tamil words). ' +
-  'Common English medical loanwords are natural in spoken Tamil and allowed, for example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. ' +
-  'Keep sentences short and conversational, the way a person in Tamil Nadu really talks to a doctor. ' +
-  'Address the doctor respectfully as "நீங்கள்". Always reply in Kannada, even when the doctor mixes in English or Hindi words.';
-
-const TE =
-  'LANGUAGE: Speak natural, everyday spoken Telugu, written in Telugu script only (never Roman letters for Telugu words). ' +
-  'Common English medical loanwords are natural in spoken Telugu and allowed, for example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. ' +
-  'Keep sentences short and conversational, the way a person in Andhra Pradesh or Telangana really talks to a doctor. ' +
-  'Address the doctor respectfully as "మీరు". Always reply in Tamil, even when the doctor mixes in English or Hindi words.';
-
-const MR =
-  'LANGUAGE: Speak natural, everyday spoken Marathi, written in Devanagari script only (never Roman letters for Marathi words). ' +
-  'Common English medical loanwords are natural in spoken Marathi and allowed, for example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. ' +
-  'Keep sentences short and conversational, the way a person in Maharashtra really talks to a doctor. ' +
-  'Address the doctor respectfully as "तुम्ही". Always reply in Telugu, even when the doctor mixes in English or Hindi words.';
-
-const BN =
-  'LANGUAGE: Speak natural, everyday spoken Bengali, written in Bengali script only (never Roman letters for Bengali words). ' +
-  'Common English medical loanwords are natural in spoken Bengali and allowed, for example BP, sugar, test, report, tablet, injection, X-ray, ECG, doctor, hospital. ' +
-  'Keep sentences short and conversational, the way a person in West Bengal really talks to a doctor. ' +
-  'Address the doctor respectfully as "আপনি". Always reply in Marathi, even when the doctor mixes in English or Hindi words.';
-
-const LANG_RULES: Record<Exclude<Lang, 'en'>, string> = { hi: HI, kn: KN, ta: TA, te: TE, mr: MR, bn: BN };
-
-/** Always on: people mix languages mid-sentence and speech-to-text garbles it. Mirrors backend/lang.py. */
+/** Always on: people mix languages mid-sentence and speech-to-text garbles it.
+ *  Same text as MIXED_SPEECH in backend/lang.py (a test compares them). Murf reads any
+ *  Indian script whatever the locale, but stumbles on romanised Hindi or Kannada. */
 export const MIXED_SPEECH =
-  'MIXED LANGUAGES: The doctor may mix languages inside one sentence (Hinglish, Kannada with English and Hindi, Tamil or Telugu with English), in any script or in Roman letters, and speech-to-text may garble or half-transcribe it. Understand the meaning whatever the mix and answer what they meant. Never say you did not understand and never comment on their language. ';
-export const MIXED_SPEECH_EN = MIXED_SPEECH + 'Reply in simple Indian English (a common word like haan or accha is fine).';
+  'MIXED LANGUAGES: The doctor may mix two or three languages inside one sentence (Hinglish, Kannada with English and Hindi, Tamil or Telugu with English), in any script or in Roman letters, and speech-to-text may garble or half-transcribe it. Understand the meaning whatever the mix and answer what they meant. Never say you did not understand and never comment on their language. ' +
+  'REPLYING: Answer in the session language by default. If the doctor has clearly switched, meaning their last two turns in a row are mostly in another Indian language or in English, follow them and answer in that language until they switch again; one mixed or foreign sentence is not a switch. If the doctor mixes languages, a natural light mix in your reply is fine. Write each language in its own script, because a voice reads it aloud, and never write whole Indian-language sentences in Roman letters. Keep medical terms recognisable: BP, sugar, ECG, X-ray, test and medicine names. ';
+export const MIXED_SPEECH_EN = MIXED_SPEECH + 'The session language is English: reply in simple Indian English (a common word like haan or accha is fine).';
 
 /** Language block appended to a persona prompt: mixed-speech understanding always,
  *  plus the output-language rules for a non-English session. */
@@ -55,7 +39,7 @@ export function languageBlock(lang: Lang, opts: { female?: boolean; role?: 'pati
   parts.push(
     role === 'teacher'
       ? 'Speak the whole lesson in this language. Medical terms may stay in English where doctors in India normally say them in English.'
-      : 'Your very first line and every reply must follow this language rule, even though the instructions above are written in English. No translations and no English duplicate of the same sentence.  Keep the natural hesitations and short replies described above, but in this language.',
+      : 'Your very first line and every reply must follow this language rule, even though the instructions above are written in English. No translations and no English duplicate of the same sentence. Keep the natural hesitations and short replies described above, but in this language.',
   );
   if (lang === 'hi') {
     parts.push(

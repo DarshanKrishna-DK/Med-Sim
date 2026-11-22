@@ -139,3 +139,16 @@ export function activeAlert(alerts: readonly CoachAlert[]): CoachAlert | null {
   }
   return null;
 }
+
+const END = String.raw`(?=\s*(?:[?.!,;]|$|please|for me|for this|here|now|nurse|asha|sister|didi|on (?:this|what)))`;
+/** "How am I doing", "am I on the right track", "any hints": a check-in with
+ *  Asha. Anchored: "any ideas what causes it?", "help me understand the pain"
+ *  and "next step, order a CBC" are not hints. */
+export const HINT_RX = new RegExp(
+  String.raw`\b(?:how am i doing|how'?m i doing|am i on (?:the )?(?:right )?track|am i doing (?:this |it )?right` +
+    String.raw`|any (?:hints?|tips?|suggestions?|ideas?|advice)${END}|(?:give me|need|want) (?:a |some )?(?:hints?|tips?|clues?|suggestions?)${END}|hint please` +
+    String.raw`|what am i missing|am i missing (?:something|anything)|what(?:'s| is) next${END}|what(?:'s| is) (?:the|my) next step|what (?:should|do|can) i do (?:next|now)|what now${END}` +
+    String.raw`|i'?m stuck|i am stuck|help me(?: out)?${END}|i need (?:some |your )?help${END}|suggest (?:something|what)` +
+    String.raw`|kya main sahi|kya karu+n?|ab kya karu+n?|aage kya kar\w*)\b|^\W*(?:the )?next step\W*$`,
+  'i',
+);

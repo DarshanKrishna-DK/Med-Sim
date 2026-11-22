@@ -5,7 +5,7 @@ Endpoints
   POST /voice/stop     leave (idempotent)
   POST /voice/speak    make the agent say a line (farewell)
   POST /voice/context  replace the agent's LLM system messages (update API)
-  POST /voice/tts      Murf Falcon MP3 (in-room nurse voice)
+  POST /voice/tts      Murf Falcon MP3 (nurse, department and backup patient voices)
 
 Verified against docs.agora.io OpenAPI (rest-api.en.yaml):
   join   POST /v2/projects/{appid}/join
@@ -36,6 +36,7 @@ from pydantic import BaseModel
 
 from agora_token import RtcTokenBuilder, Role_Publisher
 from llm_provider import require_provider
+import intent
 import observer
 import llm_proxy
 import lang as langmod
@@ -275,6 +276,9 @@ class VoiceStartRequest(BaseModel):
     gender: Literal["M", "F"] = "M"
     locale: Optional[str] = None
     avatar: Optional[bool] = None
+    # Patient sessions: the BAND encounter this call belongs to, so /voice/route and the
+    # LLM proxy share one routing context.
+    encounterId: Optional[str] = None
     # Autonomous agents (receptionist / teacher / viva-examiner): what their
     # server-side tools may act on, e.g. {assignmentCode, knownCodes, profile}.
     # Whitelisted and size-limited per kind in agent_runtime.clean_ctx.
@@ -284,6 +288,8 @@ class VoiceStartRequest(BaseModel):
 # Sessions whose live agent runs its own tools inside our custom LLM endpoint
 # (agent_runtime / agent_toolsets). Needs the proxy route (PUBLIC_URL or tunnel).
 AUTONOMOUS_CASES = ("receptionist", "teacher", viva.VIVA_CASE_ID)
+# Sessions with no patient in them: the doctor addressing "radiology" there is normal talk.
+NON_PATIENT_CASES = (*AUTONOMOUS_CASES, "radiologist", "followup-call")
 
 
 class VoiceStartResponse(BaseModel):
@@ -420,6 +426,13 @@ async def start_agent_session(
     observer.register_session(channel, user_uid, req.caseId, AGENT_UID)
     llm = body["properties"]["llm"]
     tools_enabled: Optional[bool] = None
+    if not llm_token_meta:
+        patient = req.caseId not in NON_PATIENT_CASES
+        if llm.get("vendor") == "custom":
+            llm_proxy.bind_session(str(llm.get("api_key") or ""), channel, patient=patient)
+        if patient:
+            intent.bind_session(channel, case_id=req.caseId, encounter_id=req.encounterId or "",
+                                patient_name=intent.persona_name(req.systemPrompt))
     if agent_kind:
         tools_enabled = llm.get("vendor") == "custom"
         if tools_enabled:
@@ -550,24 +563,31 @@ async def voice_context(req: VoiceContextRequest):
 
 class VoiceTtsRequest(BaseModel):
     text: str
-    voice: Literal["nurse", "M", "F"] = "nurse"
+    voice: Literal["nurse", "pharmacist", "lab", "radiology", "examiner", "M", "F"] = "nurse"
     locale: Optional[str] = None
+    # Language the line is written in (en hi kn ta te mr bn); wins over locale.
+    lang: Optional[str] = None
     # Backup voice engine: pass the case id + speaker gender to get the same
     # pooled Murf voice the Agora path (/voice/start) would use for this case.
+    # For a department voice they only say which patient voice to stay clear of.
     caseId: Optional[str] = None
     gender: Optional[Literal["M", "F"]] = None
 
 
 def tts_voice_and_locale(req: VoiceTtsRequest) -> tuple[str, str]:
-    """(Murf voiceId, locale) for a /voice/tts request. With caseId the voice
+    """(Murf voiceId, locale) for a /voice/tts request. The language is `lang` (or
+    `locale`) unless the text is mainly in another Indian script: an English fallback
+    line and a Kannada one both get a voice that can read them. With caseId the voice
     matches build_join_body's pick for the same case, gender and language."""
-    lang = langmod.norm_lang(req.locale)
+    lang = langmod.speech_lang(req.text, req.lang or req.locale)
+    locale = langmod.locale_for(lang)
+    if req.voice in langmod.STAFF_ROLES:
+        avoid = _voice_for(req.gender, req.caseId, lang) if req.caseId and req.gender else None
+        return langmod.staff_voice(req.voice, lang, avoid), locale
     if req.caseId and req.voice != "nurse" or req.gender:
         kind = req.gender or (req.voice if req.voice in ("M", "F") else "M")
-        return _voice_for(kind, req.caseId or None, lang), langmod.locale_for(lang)
-    voice_id = _voice_for(req.voice, None, lang)
-    locale = ("en-US" if req.voice == "nurse" else "en-IN") if lang == "en" else langmod.locale_for(lang)
-    return voice_id, locale
+        return _voice_for(kind, req.caseId or None, lang), locale
+    return _voice_for(req.voice, None, lang), locale
 
 
 @router.post("/voice/tts")

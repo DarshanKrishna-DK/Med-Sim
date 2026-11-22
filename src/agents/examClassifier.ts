@@ -73,9 +73,60 @@ const KN_PARTS: Array<[ExamSystem, RegExp]> = [
   ['msk', /(ಕೀಲು|ಮಂಡಿ|ಸೊಂಟ|ಬೆನ್ನು|ಭುಜ)/],
 ];
 
+// Tamil, Telugu, Marathi, Bengali: an examining verb said by the doctor ("I'll
+// look", "let me press") or asked of the nurse ("check the BP").
+const MORE_LANGS: Array<{ verb: RegExp; parts: Array<[ExamSystem, RegExp]> }> = [
+  {
+    verb: /(பார்க்கிறேன்|பார்க்கறேன்|பாக்குறேன்|பார்க்கலாம்|பாருங்க|பரிசோதி|செக் (?:பண்|செய்)|அழுத்தி|கேட்கிறேன்|எடுங்க)/,
+    parts: [
+      ['vitals', /(பிபி|நாடி|ரத்த அழுத்த|பல்ஸ்|பிரஷர்)/],
+      ['cardio', /(இதயம்|இதய|ஹார்ட்)/],
+      ['resp', /(நெஞ்சு|மார்பு|நுரையீரல்|மூச்சு)/],
+      ['abdomen', /(வயிறு|வயிற்ற)/],
+      ['eye', /(கண்)/],
+      ['ent', /(தொண்டை|காது|மூக்கு|வாய்)/],
+    ],
+  },
+  {
+    verb: /(చూస్తాను|చూస్తా|చూడండి|చూద్దాం|పరీక్షి|చెక్ (?:చేస్|చేయ)|నొక్కి|వింటాను)/,
+    parts: [
+      ['vitals', /(బీపీ|బిపి|నాడి|పల్స్|రక్తపోటు)/],
+      ['cardio', /(గుండె)/],
+      ['resp', /(ఛాతీ|ఊపిరితిత్తు|శ్వాస)/],
+      ['abdomen', /(పొట్ట|కడుపు)/],
+      ['eye', /(కన్ను|కళ్ళు|కళ్లు)/],
+      ['ent', /(గొంతు|చెవి|ముక్కు|నోరు)/],
+    ],
+  },
+  {
+    verb: /(तपास(?:तो|ते|ा|ून|ू)|बघ(?:तो|ते|ा|ू)|दाब(?:तो|ते|ून)|ऐक(?:तो|ते)|मोज(?:ा|तो|ते)|चेक कर(?:ा|तो|ते))/,
+    parts: [
+      ['vitals', /(बीपी|नाडी|रक्तदाब)/],
+      ['cardio', /(हृदय)/],
+      ['resp', /(छाती|फुफ्फुस|श्वास)/],
+      ['abdomen', /(पोट)/],
+      ['eye', /(डोळ)/],
+      ['ent', /(घसा|कान|नाक|तोंड)/],
+    ],
+  },
+  {
+    verb: /(দেখছি|দেখি|দেখব|দেখুন|পরীক্ষা কর|মাপুন|মাপছি|চেক কর|টিপে|শুনছি|শুনব)/,
+    parts: [
+      ['vitals', /(প্রেসার|বিপি|নাড়ি|পালস|রক্তচাপ)/],
+      ['cardio', /(হৃদ|হার্ট)/],
+      ['resp', /(বুক|ফুসফুস|শ্বাস)/],
+      ['abdomen', /(পেট)/],
+      ['eye', /(চোখ)/],
+      ['ent', /(গলা|কান|নাক|মুখ)/],
+    ],
+  },
+];
+/** "Trouble hearing", "have you looked at": the patient is being asked. */
+const NATIVE_HISTORY = /दिक्कत|तकलीफ|परेशानी|समस्या|ತೊಂದರೆ|பிரச்சனை|సమస్య|ఇబ్బంది|त्रास|সমস্যা|অসুবিধা|[?？]\s*$/;
+
 // Test / drug words: "check the chest X-ray" is an order for the nurse, not an exam.
 const ORDER_WORDS =
-  /\b(x-?ray|cxr|ecg|ekg|echo(?:cardiogram)?|ultrasound|usg|scan|ct|mri|cbc|fbc|blood (?:test|sugar|work)|bloods|labs?|urine|culture|swab|troponin|report|results?|tablets?|mg|prescri\w*|order\w*)\b|एक्स-?रे|एक्सरे|अल्ट्रासाउंड|ईसीजी|रिपोर्ट|खून|टेस्ट|ಎಕ್ಸ್-?ರೇ|ಸ್ಕ್ಯಾನ್|ರಿಪೋರ್ಟ್|ರಕ್ತ|ಟೆಸ್ಟ್/i;
+  /\b(x-?ray|cxr|ecg|ekg|echo(?:cardiogram)?|ultrasound|usg|scan|ct|mri|cbc|fbc|blood (?:test|sugar|work)|bloods|labs?|urine|culture|swab|troponin|report|results?|tablets?|dawa|dawai|goli|mg|prescri\w*|order\w*)\b|एक्स-?रे|एक्सरे|अल्ट्रासाउंड|ईसीजी|रिपोर्ट|खून|टेस्ट|ಎಕ್ಸ್-?ರೇ|ಸ್ಕ್ಯಾನ್|ರಿಪೋರ್ಟ್|ರಕ್ತ|ಟೆಸ್ಟ್/i;
 
 // Looser English phrasings: "have a look in the throat", "let me feel the
 // tummy", "take her BP", "quick listen to the chest", "look in throat".
@@ -110,12 +161,14 @@ function firstMatch(parts: Array<[ExamSystem, RegExp]>, text: string): ExamSyste
 export function classifyExam(text: string): ExamSystem | null {
   const t = text.trim();
   if (t.length < 4 || ORDER_WORDS.test(t)) return null;
+  if (/^\W*(?:ok(?:ay)?\W+)?(?:can|could|do) you (?:feel|hear|see|smell|move)\b/i.test(t)) return null;
   if (HISTORY_Q.test(t) && !/^\W*(?:ok(?:ay)?\W+)?(?:can|could|may) i\b/i.test(t)) return null;
   if (EN_VERB.test(t) || EN_VERB_LOOSE.test(t)) {
     const sys = firstMatch(EN_PARTS, t);
     if (sys) return sys;
   }
   if (/\b(general|systemic|full|physical) exam(?:ination)?\b/i.test(t)) return 'general';
+  if (NATIVE_HISTORY.test(t)) return null;
   if (HI_VERB.test(t)) {
     const sys = firstMatch(HI_PARTS, t);
     if (sys) return sys;
@@ -126,6 +179,11 @@ export function classifyExam(text: string): ExamSystem | null {
   }
   if (KN_VERB.test(t)) {
     const sys = firstMatch(KN_PARTS, t);
+    if (sys) return sys;
+  }
+  for (const l of MORE_LANGS) {
+    if (!l.verb.test(t)) continue;
+    const sys = firstMatch(l.parts, t);
     if (sys) return sys;
   }
   return null;

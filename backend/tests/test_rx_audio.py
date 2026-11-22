@@ -84,7 +84,7 @@ class RxAudioTests(unittest.TestCase):
             self.assertEqual(r.status_code, 200, r.text)
             d = r.json()
             self.assertEqual(d["lang"], lg)
-            self.assertEqual(d["locale"], lang.locale_for(lg) if lg != "en" else "en-US")
+            self.assertEqual(d["locale"], lang.locale_for(lg))
             self.assertEqual(d["mime"], "audio/mpeg")
             self.assertEqual(d["voiceId"], lang.nurse_voice(lg))
             self.assertTrue(base64.b64decode(d["audioBase64"]).startswith(b"ID3"))

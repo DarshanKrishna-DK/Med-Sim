@@ -57,6 +57,11 @@ Executor = Callable[[str, dict[str, Any], dict[str, Any]], Awaitable[dict[str, A
 DEFAULT_FALLBACK = {
     "en": "Give me a second... okay, say that once more?",
     "hi": "एक सेकंड... हाँ, एक बार फिर बोलिए?",
+    "kn": "ಒಂದು ಸೆಕೆಂಡ್... ಹಾಂ, ಇನ್ನೊಂದ್ಸಲ ಹೇಳಿ?",
+    "ta": "ஒரு நொடி... சரி, இன்னொரு தடவை சொல்லுங்க?",
+    "te": "ఒక్క సెకను... సరే, ఇంకోసారి చెప్పండి?",
+    "mr": "एक सेकंद... हो, पुन्हा एकदा सांगा?",
+    "bn": "এক সেকেন্ড... হ্যাঁ, আরেকবার বলুন?",
 }
 
 # Prepended to every toolset's addendum: voice replies stay short and human.
@@ -202,7 +207,7 @@ def _clip(value: Any, n: int) -> str:
 
 
 def _pick(table: dict[str, str], lang: str) -> str:
-    return table.get(lang) or table.get("en") or DEFAULT_FALLBACK["en"]
+    return table.get(lang) or DEFAULT_FALLBACK.get(lang) or table.get("en") or DEFAULT_FALLBACK["en"]
 
 
 async def run_tool(ts: AgentToolset, tctx: dict[str, Any], name: str, raw_args: Any) -> dict[str, Any]:
@@ -328,7 +333,8 @@ async def run_turn(ts: AgentToolset, payload: dict[str, Any], meta: dict[str, An
     return fallback
 
 
-def sse_response(cid: str, model: str, work: Callable[[Callable[[str], Awaitable[None]]], Awaitable[str]]) -> StreamingResponse:
+def sse_response(cid: str, model: str, work: Callable[[Callable[[str], Awaitable[None]]], Awaitable[str]],
+                 lang: str = "en") -> StreamingResponse:
     """Stream filler lines as they come, then the final text, as OpenAI chunks ending in [DONE]."""
 
     async def gen():
@@ -342,7 +348,7 @@ def sse_response(cid: str, model: str, work: Callable[[Callable[[str], Awaitable
                 await queue.put(await work(filler))
             except Exception as e:  # noqa: BLE001
                 log.warning("agent turn crashed: %s", type(e).__name__)
-                await queue.put(DEFAULT_FALLBACK["en"])
+                await queue.put(_pick(DEFAULT_FALLBACK, lang))
             finally:
                 await queue.put(None)
 
@@ -375,7 +381,7 @@ async def handle(payload: dict[str, Any], meta: dict[str, Any], model: str) -> R
     async def turn(filler):
         return _no_dashes(await run_turn(ts, payload, meta, filler))
 
-    return sse_response(cid, model, turn)
+    return sse_response(cid, model, turn, tool_ctx(meta)["lang"])
 
 
 def _no_dashes(text: str) -> str:

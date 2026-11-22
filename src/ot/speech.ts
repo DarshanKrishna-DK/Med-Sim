@@ -5,6 +5,7 @@
 // problem is always heard promptly.
 
 import { LANG_LOCALE, type Lang } from '../game/lang';
+import { fetchTts, playCapped } from '../voice/speechPlayer';
 import type { Speaker } from './scenarios';
 
 const VOICE: Record<Speaker, Record<string, string>> = {
@@ -24,6 +25,7 @@ interface Item {
 const queue: Item[] = [];
 let busy = false;
 let current: HTMLAudioElement | null = null;
+let loading: AbortController | null = null;
 let generation = 0;
 let onSpeaking: ((s: Speaker | null) => void) | null = null;
 
@@ -34,29 +36,26 @@ export function setOTSpeakingListener(fn: ((s: Speaker | null) => void) | null) 
 
 async function playOne(item: Item, gen: number): Promise<void> {
   let url: string | null = null;
+  let audio: HTMLAudioElement | null = null;
+  const ctl = new AbortController();
+  loading = ctl;
   try {
-    const r = await fetch('/voice/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: item.text, locale: LANG_LOCALE[item.lang], ...VOICE[item.speaker] }),
-    });
-    if (!r.ok || gen !== generation) return;
-    url = URL.createObjectURL(await r.blob());
-    const audio = new Audio(url);
+    const blob = await fetchTts({ text: item.text, locale: LANG_LOCALE[item.lang], ...VOICE[item.speaker] }, { signal: ctl.signal, timeoutMs: 8000 });
+    if (gen !== generation) return;
+    url = URL.createObjectURL(blob);
+    audio = new Audio(url);
     current = audio;
     onSpeaking?.(item.speaker);
-    await new Promise<void>((resolve) => {
-      const done = () => resolve();
-      audio.addEventListener('ended', done, { once: true });
-      audio.addEventListener('error', done, { once: true });
-      audio.play().catch(done);
-      window.setTimeout(done, 15000);
-    });
+    await playCapped(audio, 15000); // the cap pauses it, not just the wait
   } catch {
     /* TTS unavailable: the bubble still shows the line */
   } finally {
-    current = null;
-    onSpeaking?.(null);
+    if (loading === ctl) loading = null;
+    // A cancelled line must not clear the one that replaced it.
+    if (audio && current === audio) {
+      current = null;
+      onSpeaking?.(null);
+    }
     if (url) URL.revokeObjectURL(url);
   }
 }
@@ -71,7 +70,7 @@ async function pump() {
     const item = queue.shift()!;
     await playOne(item, gen);
   }
-  busy = false;
+  if (gen === generation) busy = false; // a newer pump owns the flag
 }
 
 export function speakOT(text: string, speaker: Speaker, lang: Lang) {
@@ -87,6 +86,8 @@ export function cancelOTSpeech() {
   generation += 1;
   queue.length = 0;
   busy = false;
+  loading?.abort();
+  loading = null;
   try {
     current?.pause();
   } catch {

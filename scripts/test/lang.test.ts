@@ -5,6 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { LANGS, LANG_LABEL, LANG_LOCALE, LANG_NAME, QUICK_LANGS, langOfText, normLang } from '../../src/game/lang.ts';
 import { languageBlock, withLanguage } from '../../src/voice/language.ts';
@@ -56,13 +57,40 @@ test('English gets only the mixed-speech rule; hi and kn name their script', () 
   const hi = withLanguage('base', 'hi', { female: true });
   assert.match(hi, /Devanagari/);
   assert.match(hi, /feminine Hindi/);
-  assert.match(hi, /Always reply in Hindi/);
+  assert.match(hi, /Reply in Hindi by default/);
   assert.match(hi, /MIXED LANGUAGES/);
   assert.match(languageBlock('hi', { female: false }), /masculine Hindi/);
   const kn = withLanguage('base', 'kn');
   assert.match(kn, /Kannada script/);
   assert.doesNotMatch(kn, /feminine Hindi/);
   assert.match(languageBlock('kn', { role: 'teacher' }), /whole lesson/);
+});
+
+test('each language block names only its own language', () => {
+  for (const l of LANGS) {
+    if (l === 'en') continue;
+    for (const opts of [{}, { female: true }, { role: 'teacher' as const }]) {
+      const rule = languageBlock(l, opts).split('\n')[0];
+      assert.match(rule, new RegExp(`everyday spoken ${LANG_NAME[l]}\\b`), l);
+      assert.match(rule, new RegExp(`Reply in ${LANG_NAME[l]} by default`), l);
+      for (const other of LANGS) {
+        if (other !== l) assert.doesNotMatch(rule, new RegExp(`[Rr]eply in ${LANG_NAME[other]}\\b`), `${l} block says ${other}`);
+      }
+    }
+  }
+});
+
+test('personas follow a lasting language switch, understand mixes and never contradict the language rule', () => {
+  for (const l of LANGS) {
+    const b = languageBlock(l);
+    assert.match(b, /last two turns in a row/, l);
+    assert.match(b, /Never say you did not understand/, l);
+    assert.match(b, /Keep medical terms recognisable/, l);
+  }
+  const src = readFileSync(new URL('../../src/voice/patientPersona.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /spoken English only/);
+  assert.doesNotMatch(src, /just say "I don't understand"/);
+  assert.match(src, /NOT FOR YOU/);
 });
 
 test('new Indian languages name their script and Marathi has gendered verbs', () => {

@@ -38,6 +38,13 @@ import { voiceMetrics } from './voiceMetrics';
 import { streamClaude, type ChatMessage } from './claude';
 import { decodeRtmJson, mergeTurnText, parseAgentMessage, type AgentRtmMessage } from './transcriptParser';
 import { startAgentEventPoller, type AgentEvent } from '../agents/agentEvents';
+import { normLang, type Lang } from '../game/lang';
+import { ContextNotes } from './contextNotes';
+import { farewellLine } from './lines';
+import { acquireRoomAudio, holdMic, isMicHeld, isStaffEcho, noteDoctorSpeech, onMicHold, requestSpeechCancel } from './speechBus';
+import { patientHears } from './router';
+import { normWords } from './speechText';
+import type { Handled } from './doctorUtterance';
 
 const LOG = '[medsim:voice]';
 
@@ -48,13 +55,6 @@ const FALLBACK_INITIAL: { role: 'assistant'; content: string } = {
   role: 'assistant',
   content: 'Hi doc.',
 };
-
-const FAREWELL_LINES = [
-  'Okay, thank you so much, doctor. Goodbye.',
-  'Thanks, doctor. Take care.',
-  'Alright... thank you. Bye now.',
-  'Okay. Thanks for your help, doctor. Bye.',
-];
 
 export type ConversationStatus =
   | 'uninitialized'
@@ -247,9 +247,12 @@ AgoraRTC.onAutoplayFailed = () => {
   window.addEventListener('keydown', resume, { once: true });
 };
 
-function normWords(s: string): string {
-  return s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
-}
+/** Level above which the agent's track counts as audible speech. */
+const AUDIBLE_LEVEL = 0.03;
+/** Local microphone RMS above which the doctor counts as talking. */
+const DOCTOR_RMS = 0.06;
+/** A turn can arrive as several finals: wait this long for the rest of it. */
+const TURN_SETTLE_MS = 700;
 
 type AgentState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'silent';
 
@@ -263,18 +266,26 @@ export class Conversation {
   private micTrack: IMicrophoneAudioTrack | null = null;
   private remoteAudio: IRemoteAudioTrack | null = null;
   private avatarAudioOn = false;
+  private avatarAudio: IRemoteAudioTrack | null = null;
   private avatarVideo: IRemoteVideoTrack | null = null;
   private avatarListeners = new Set<(t: IRemoteVideoTrack | null) => void>();
   private session: VoiceStartResponse | null = null;
   private disposed = false;
-  private micMuted = false;
+  /** The user's own choice. Holds (staff voice, stethoscope) are separate, see
+   *  speechBus: the mic is live only when neither closes it. */
+  private userMuted = false;
+  private micChain: Promise<void> = Promise.resolve();
+  private stopMicHold: (() => void) | null = null;
+  private farewellRelease: (() => void) | null = null;
+  private patientDucked = false;
+  private vad: { track: MediaStreamTrack; src: MediaStreamAudioSourceNode; node: AnalyserNode; buf: Float32Array<ArrayBuffer> } | null = null;
 
   private audioCtx: AudioContext;
   private smoothedAmp = 0;
 
   private systemPrompt: string;
   private basePrompt: string;
-  private contextNotes: string[] = [];
+  private contextNotes: ContextNotes;
   private initialMessage: { role: 'assistant'; content: string };
   private voiceGender: 'M' | 'F';
   private caseId: string;
@@ -301,9 +312,8 @@ export class Conversation {
   private hasAgentStateFeed = false;
   private agentState: AgentState = 'idle';
 
-  // Nurse prefilter debounce, a user turn can arrive as several finals.
-  private nurseTimer: number | null = null;
-  private nurseCandidate = '';
+  /** The doctor's turn waiting for its last segment before it is routed. */
+  private pendingTurn: { text: string; turnId: string | null; timer: number } | null = null;
   /** Normalised typed messages sent over RTM, awaiting a possible echo. */
   private pendingTyped: string[] = [];
 
@@ -327,6 +337,12 @@ export class Conversation {
     this.startBody = options.startBody ?? null;
     this.stopUrl = options.stopUrl ?? '/voice/stop';
     this.agentContext = options.agentContext ?? null;
+
+    this.contextNotes = new ContextNotes({
+      push: (block) => this.pushPrompt(block),
+      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+      clearTimeout: (h) => window.clearTimeout(h as number),
+    });
 
     const restored = this.loadMessages();
     this.messages = restored && restored.length > 0 ? restored : [this.initialMessage];
@@ -446,27 +462,126 @@ export class Conversation {
     }
   }
 
-  /** Mute/unmute the doctor's mic without changing conversation status.
-   *  Used while the nurse TTS plays so it isn't transcribed as the doctor. */
+  /** The user's own mute (not a temporary hold while staff speak). */
   isMicMuted(): boolean {
-    return this.micMuted;
+    return this.userMuted;
   }
 
+  /** The user muted or unmuted themselves. Survives every staff line,
+   *  stethoscope clip and voice prescription. */
   setMicMuted(muted: boolean) {
-    this.micMuted = muted;
-    if (this.micTrack) this.micTrack.setMuted(muted).catch(() => undefined);
+    this.userMuted = muted;
+    if (muted) this.stopVad(); // muted means nothing listens, not even locally
+    void this.applyMic();
   }
 
-  /** Append a note to the patient persona (e.g. "The nurse just drew blood
-   *  for a CBC") and push the updated prompt to the live agent. Also
-   *  updates the prompt used by the typed-chat path. */
+  /** Bring the track in line with "user muted OR held", one change at a time. */
+  private applyMic(): Promise<void> {
+    this.micChain = this.micChain.then(async () => {
+      const track = this.micTrack;
+      if (!track) return;
+      try {
+        const closed = this.userMuted || isMicHeld();
+        await track.setMuted(closed);
+        // init() may have closed the raw track before the SDK knew about it.
+        if (!closed && !track.muted) track.getMediaStreamTrack().enabled = true;
+      } catch (err) {
+        console.warn(LOG, 'mic mute failed:', err);
+      }
+    });
+    return this.micChain;
+  }
+
+  // ── signals for the speech arbiter ────────────────────────────
+
+  /** The patient's voice is coming out of the speakers right now. */
+  isPatientSpeaking(): boolean {
+    if (!this.session) return false;
+    if (this.hasAgentStateFeed ? this.agentState === 'speaking' : this.status === 'speaking') return true;
+    if (!this.remoteAudio) return false;
+    try {
+      return this.remoteAudio.getVolumeLevel() > AUDIBLE_LEVEL;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Ask the agent to stop talking (same RTM message as Agora's toolkit). */
+  interruptPatient(): void {
+    const { rtm, session } = this;
+    if (!rtm || !session) return;
+    rtm
+      .publish(String(session.agentUid), JSON.stringify({ customType: 'message.interrupt' }), {
+        channelType: 'USER',
+        customType: 'message.interrupt',
+      })
+      .catch((err: unknown) => console.warn(LOG, 'interrupt failed:', err));
+  }
+
+  /** Silence the patient's audio while an urgent staff line must be heard. */
+  duckPatient(on: boolean): void {
+    this.patientDucked = on;
+    for (const t of [this.remoteAudio, this.avatarAudio]) {
+      try {
+        t?.setVolume(on ? 0 : 100);
+      } catch {
+        /* track gone */
+      }
+    }
+  }
+
+  /** Local voice activity while the published mic is held, for barge-in. Never
+   *  runs while the user has muted themselves. */
+  isDoctorTalking(): boolean {
+    if (this.userMuted || !isMicHeld() || !this.micTrack) return false;
+    try {
+      if (!this.vad) {
+        const track = this.micTrack.getMediaStreamTrack().clone();
+        track.enabled = true; // the original is disabled by the hold
+        const src = this.audioCtx.createMediaStreamSource(new MediaStream([track]));
+        const node = this.audioCtx.createAnalyser();
+        node.fftSize = 1024;
+        src.connect(node);
+        this.vad = { track, src, node, buf: new Float32Array(node.fftSize) };
+      }
+      const { node, buf } = this.vad;
+      node.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      return Math.sqrt(sum / buf.length) > DOCTOR_RMS;
+    } catch {
+      return false;
+    }
+  }
+
+  private stopVad() {
+    const v = this.vad;
+    if (!v) return;
+    this.vad = null;
+    try {
+      v.src.disconnect();
+      v.track.stop();
+    } catch {
+      /* noop */
+    }
+  }
+
+  /** Append a note to the patient persona ("The doctor has ordered some
+   *  tests") and push the updated prompt to the live agent. Also updates the
+   *  prompt used by the typed-chat path. Notes are coalesced and bounded, and
+   *  never carry results or verdicts (contextNotes.ts). */
   async appendContextNote(note: string): Promise<void> {
-    const clean = note.trim();
-    if (!clean) return;
-    this.contextNotes.push(clean);
-    this.systemPrompt =
-      `${this.basePrompt}\n\nWHAT HAS HAPPENED DURING THIS VISIT (you are aware of these; mention them naturally only if relevant):\n` +
-      this.contextNotes.map((n) => `- ${n}`).join('\n');
+    await this.contextNotes.add(note);
+  }
+
+  /** Prompt with every note so far, even one not pushed yet. */
+  private promptNow(): string {
+    const block = this.contextNotes.block();
+    return block ? `${this.basePrompt}\n\n${block}` : this.basePrompt;
+  }
+
+  private async pushPrompt(block: string): Promise<void> {
+    this.systemPrompt = block ? `${this.basePrompt}\n\n${block}` : this.basePrompt;
     const agentId = this.getAgentId();
     if (!agentId) return;
     try {
@@ -505,7 +620,11 @@ export class Conversation {
 
   private handleUserTranscription(msg: Extract<AgentRtmMessage, { kind: 'user' }>) {
     const { text } = msg;
+    // A staff voice that leaked back through the mic is not the doctor.
+    const echo = isStaffEcho(text);
+    if (!echo) noteDoctorSpeech(); // barge-in: staff stop or duck
     if (!msg.final) {
+      if (echo) return;
       this.listeners.onSubtitle?.({ who: 'you', text, partial: true });
       if (this.status !== 'listening') this.setStatus('listening');
       return;
@@ -517,6 +636,7 @@ export class Conversation {
       this.pendingTyped.splice(echoAt, 1);
       return;
     }
+    if (echo) return;
     const full = this.upsertTurnMessage('user', msg.turnId, text);
     this.listeners.onSubtitle?.({ who: 'you', text: full });
     this.saveMessages();
@@ -524,7 +644,7 @@ export class Conversation {
     if (!this.hasAgentStateFeed || this.agentState !== 'speaking') {
       this.setStatus('thinking', 'Thinking…');
     }
-    this.scheduleNurseCheck(full);
+    this.scheduleRouting(full, msg.turnId);
   }
 
   private handleAgentTranscription(msg: Extract<AgentRtmMessage, { kind: 'assistant' }>) {
@@ -583,35 +703,45 @@ export class Conversation {
     }
   }
 
-  private scheduleNurseCheck(text: string) {
-    this.nurseCandidate = text;
-    if (this.nurseTimer !== null) window.clearTimeout(this.nurseTimer);
-    this.nurseTimer = window.setTimeout(() => {
-      this.nurseTimer = null;
-      const utterance = this.nurseCandidate;
-      this.nurseCandidate = '';
-      if (this.disposed || !utterance) return;
-      if (this.caseId === RECEPTIONIST_SESSION) {
-        // Tool-enabled Priya acts on her own inside the call; the keyword
-        // trigger is only the fallback when the proxy route is unavailable.
-        if (this.isToolEnabled()) return;
-        return void runReceptionFromSession(utterance, 'voice');
-      }
-      if (!this.clinicalAgents) return;
-      // Dynamic import breaks the conversation ↔ nurseAgent ↔ store cycle.
-      void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach'), import('../observer/observerCall')])
-        .then(([ex, m, coach, obs]) => {
-          // "Invite Darshan to observe": Asha phones the observer, not a nurse order.
-          if (obs.maybeHandleObserverCommand(utterance)) return;
-          if (coach.isHintRequest(utterance)) return void coach.requestHint();
-          // Anything said to the nurse goes to her LLM, which decides the intent.
-          if (m.isAddressedToNurse(utterance)) return void m.runNurseAction(utterance, 'voice');
-          // An exam request ("let me check your abdomen") is not a nurse order.
-          if (ex.maybeRunExamFromSpeech(utterance)) return;
-          if (m.looksLikeOrder(utterance)) void m.runNurseAction(utterance, 'voice');
-        })
-        .catch((err) => console.warn(LOG, 'nurse agent load failed:', err));
-    }, 700);
+  /** Let a segmented turn settle, then route it once. A new turn routes the
+   *  previous one at once instead of replacing it. */
+  private scheduleRouting(text: string, turnId: string | null) {
+    const prev = this.pendingTurn;
+    if (prev) {
+      window.clearTimeout(prev.timer);
+      if (prev.turnId !== turnId || turnId === null) void this.routeTurn(prev.text, prev.turnId);
+    }
+    const timer = window.setTimeout(() => {
+      this.pendingTurn = null;
+      void this.routeTurn(text, turnId);
+    }, TURN_SETTLE_MS);
+    this.pendingTurn = { text, turnId, timer };
+  }
+
+  private async routeTurn(text: string, turnId: string | null): Promise<void> {
+    if (this.disposed || !text) return;
+    if (this.caseId === RECEPTIONIST_SESSION) {
+      // Tool-enabled Priya acts on her own inside the call; the keyword
+      // trigger is only the fallback when the proxy route is unavailable.
+      if (!this.isToolEnabled()) runReceptionFromSession(text, 'voice');
+      return;
+    }
+    if (!this.clinicalAgents) return;
+    // Turn numbers restart with every agent, so the agent is part of the id.
+    const h = await this.route(text, 'voice', turnId === null ? null : `${this.getAgentId() ?? ''}:${turnId}`);
+    // Not for the patient: without a state feed nothing else ends "thinking".
+    if (h && !patientHears(h.route) && !this.hasAgentStateFeed && this.status === 'thinking') this.setStatus('ready');
+  }
+
+  /** Dynamic import breaks the conversation, nurse agent and store cycle. */
+  private async route(text: string, source: 'voice' | 'typed', turnId: string | null): Promise<Handled | null> {
+    try {
+      const m = await import('./doctorUtterance');
+      return await m.handleDoctorUtterance(text, source, { turnId });
+    } catch (err) {
+      console.warn(LOG, 'routing failed:', err);
+      return null;
+    }
   }
 
   // ── lifecycle ────────────────────────────────────────────────
@@ -620,6 +750,7 @@ export class Conversation {
     if (this.status !== 'uninitialized' || this.disposed) return;
     this.setStatus('loading');
     installUnloadHook();
+    this.stopMicHold ??= onMicHold(() => void this.applyMic());
 
     try {
       this.listeners.onProgress?.('Starting voice agent…');
@@ -704,11 +835,14 @@ export class Conversation {
               pendingAutoplay.delete(this.remoteAudio);
             }
             this.avatarAudioOn = true;
+            this.avatarAudio = track;
+            if (this.patientDucked) track.setVolume(0);
             pendingAutoplay.add(track);
             track.play();
             return;
           }
           this.remoteAudio = track;
+          if (this.patientDucked) track.setVolume(0);
           if (this.avatarAudioOn) return;
           pendingAutoplay.add(track);
           track.play();
@@ -747,8 +881,12 @@ export class Conversation {
       const mic = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
       this.micTrack = mic;
       if (this.disposed) return this.teardown();
+      // Closed from the first packet when the user is muted or staff are
+      // talking (a reconnect in the middle of a line).
+      if (this.userMuted || isMicHeld()) mic.getMediaStreamTrack().enabled = false;
       await rtc.publish([mic]);
-      if (this.micMuted) await mic.setMuted(true);
+      await this.applyMic();
+      if (this.disposed) return this.teardown();
 
       this.listeners.onProgress?.('Live.');
       this.setStatus('ready');
@@ -778,10 +916,8 @@ export class Conversation {
   /** Back-compat. Real-time means the mic is always live; this unmutes it. */
   async startListening() {
     if (this.status === 'uninitialized') return;
-    this.micMuted = false;
-    if (this.micTrack) {
-      try { await this.micTrack.setMuted(false); } catch { /* noop */ }
-    }
+    this.userMuted = false;
+    await this.applyMic();
   }
 
   /** Back-compat no-op. The agent decides turn boundaries via VAD. */
@@ -791,8 +927,7 @@ export class Conversation {
 
   cancel() {
     // Best-effort: mute mic. Real-time has no abort we own client-side.
-    this.micMuted = true;
-    if (this.micTrack) this.micTrack.setMuted(true).catch(() => undefined);
+    this.setMicMuted(true);
     this.setStatus('ready');
   }
 
@@ -800,14 +935,27 @@ export class Conversation {
    *  TTS and resolve once the audio has finished (7 s hard cap). Falls back
    *  to a subtitle-only goodbye when voice isn't connected. */
   async sayFarewell(): Promise<void> {
-    const line = FAREWELL_LINES[Math.floor(Math.random() * FAREWELL_LINES.length)];
+    const lang: Lang = normLang(this.locale?.slice(0, 2));
+    const line = farewellLine(lang, this.voiceGender);
     this.setStatus('thinking', 'Saying goodbye…');
 
-    // Stop the doctor's mic so the farewell can't trigger another turn.
-    this.micMuted = true;
-    if (this.micTrack) {
-      try { await this.micTrack.setMuted(true); } catch { /* noop */ }
+    // Nobody else speaks over the goodbye, and the doctor's mic is held (not
+    // muted) until this conversation is torn down, so it can't start a turn.
+    requestSpeechCancel('consultation ended');
+    if (!this.farewellRelease) {
+      const releaseRoom = acquireRoomAudio('farewell');
+      const releaseMic = holdMic();
+      this.farewellRelease = () => {
+        releaseMic();
+        releaseRoom();
+      };
     }
+    if (this.pendingTurn) {
+      window.clearTimeout(this.pendingTurn.timer);
+      this.pendingTurn = null;
+    }
+    this.duckPatient(false);
+    await this.applyMic();
 
     const agentId = this.getAgentId();
     if (agentId && this.rtc) {
@@ -876,15 +1024,14 @@ export class Conversation {
     const viaLiveAgent = !!(this.rtm && this.session && opts?.speak !== false);
     if (this.caseId === RECEPTIONIST_SESSION && !(viaLiveAgent && this.isToolEnabled())) runReceptionFromSession(clean, 'typed');
     if (this.clinicalAgents) {
-      void Promise.all([import('../agents/examAgent'), import('../agents/nurseAgent'), import('../agents/coach'), import('../observer/observerCall')])
-        .then(([ex, m, coach, obs]) => {
-          if (obs.maybeHandleObserverCommand(clean)) return;
-          if (coach.isHintRequest(clean)) return void coach.requestHint();
-          if (m.isAddressedToNurse(clean)) return void m.runNurseAction(clean, 'typed');
-          if (ex.maybeRunExamFromSpeech(clean)) return;
-          if (m.looksLikeOrder(clean)) void m.runNurseAction(clean, 'typed');
-        })
-        .catch(() => undefined);
+      const handled = await this.route(clean, 'typed', null);
+      if (this.disposed) return;
+      // Said to staff, so the patient has nothing to answer. An examination is
+      // said to the patient too.
+      if (handled && !patientHears(handled.route)) {
+        this.setStatus('ready');
+        return;
+      }
     }
 
     const session = this.session;
@@ -906,7 +1053,7 @@ export class Conversation {
     const controller = new AbortController();
     let assistantText = '';
     try {
-      for await (const token of streamClaude(this.systemPrompt, this.messages, controller.signal)) {
+      for await (const token of streamClaude(this.promptNow(), this.messages, controller.signal)) {
         assistantText += token;
       }
     } catch (err: any) {
@@ -946,10 +1093,17 @@ export class Conversation {
       this.stopEvents();
       this.stopEvents = null;
     }
-    if (this.nurseTimer !== null) {
-      window.clearTimeout(this.nurseTimer);
-      this.nurseTimer = null;
+    if (this.pendingTurn) {
+      window.clearTimeout(this.pendingTurn.timer);
+      this.pendingTurn = null;
     }
+    this.stopVad();
+    this.stopMicHold?.();
+    this.stopMicHold = null;
+    this.farewellRelease?.();
+    this.farewellRelease = null;
+    this.patientDucked = false;
+    this.avatarAudio = null;
     if (this.micTrack) {
       try { this.micTrack.close(); } catch { /* noop */ }
       this.micTrack = null;
@@ -984,7 +1138,11 @@ export class Conversation {
   }
 
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
+    // Hang-up, End, next patient, language switch: staff stop mid-word too.
+    if (this.clinicalAgents) requestSpeechCancel('conversation ended');
+    this.contextNotes.close();
     this.teardown();
     this.setStatus('uninitialized');
   }

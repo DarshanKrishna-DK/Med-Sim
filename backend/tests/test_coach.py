@@ -179,5 +179,32 @@ class CoachTests(unittest.TestCase):
         self.assertNotIn(chr(0x2014), json.dumps(out, ensure_ascii=False))
 
 
+class NativeAllergyTests(unittest.TestCase):
+    """Allergy text in native script used to be stripped to nothing (nurse._norm keeps ASCII)."""
+
+    def test_native_script_allergies_conflict(self):
+        for text in ("पेनिसिलिन से एलर्जी है", "ಪೆನಿಸಿಲಿನ್ ಅಲರ್ಜಿ ಇದೆ", "பெனிசிலின் அலர்ஜி இருக்கு", "పెన్సిలిన్ అలెర్జీ ఉంది", "পেনিসিলিনে অ্যালার্জি আছে",
+                     "पेनिसिलिनची ॲलर्जी आहे"):
+            p = coach.CoachPatient(anamnesis=[{"question": "Any allergies?", "answer": text}])
+            self.assertEqual(coach.allergy_conflict(p, "Amoxicillin 500mg"), "penicillin", text)
+            self.assertIsNone(coach.allergy_conflict(p, "Paracetamol 500mg"), text)
+
+    def test_native_negation(self):
+        for text in ("पेनिसिलिन से एलर्जी नहीं है", "ಪೆನಿಸಿಲಿನ್ ಅಲರ್ಜಿ ಇಲ್ಲ", "பெனிசிலின் அலர்ஜி இல்லை", "పెన్సిలిన్ అలెర్జీ లేదు", "পেনিসিলিনে অ্যালার্জি নেই"):
+            self.assertIsNone(coach.allergy_conflict(coach.CoachPatient(allergies=text), "Amoxicillin"), text)
+
+    def test_norm_keeps_letters(self):
+        self.assertEqual(coach._norm("Co-Amoxiclav 625!"), "co amoxiclav 625")
+        self.assertEqual(coach._norm("ಪೆನಿಸಿಲಿನ್, ಅಲರ್ಜಿ."), "ಪೆನಿಸಿಲಿನ್ ಅಲರ್ಜಿ")
+
+    def test_fallback_lines_follow_the_session_language(self):
+        import lang
+        for lg in lang.LANGS:
+            req = coach.CoachHintRequest(lang=lg)
+            hint = coach.fallback_hint(req).hint
+            self.assertEqual(lang.script_lang(hint, lg) or "en", lg)
+            self.assertEqual(lang.script_lang(coach._fallback_answer({}, lg), lg) or "en", lg)
+
+
 if __name__ == "__main__":
     unittest.main()
