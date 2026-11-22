@@ -8,6 +8,9 @@
 .ar-role--radiology { --ar: #ffa36b; }
 .ar-role--examiner { --ar: #f59bc0; }
 .ar-role--faculty { --ar: #ffd76a; }
+.ar-role--teacher { --ar: #8fd6b8; }
+.ar-role--reception { --ar: #ffb347; }
+.ar-role--theatre { --ar: #7fd3dc; }
 
 /* ── dock: the left column runs to the bottom, above the observer button ── */
 
@@ -334,9 +337,9 @@
 }
 
 .aroom-scroll {
-  /* Gives way to the tray first: what needs the doctor stays readable. */
-  flex: 1 1000 auto;
-  min-height: 120px;
+  /* The conversation is the point: it never drops below half of the column. */
+  flex: 1 1 50%;
+  min-height: 50%;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -345,6 +348,7 @@
 
 .aroom-tray {
   flex: 0 1 auto;
+  max-height: 50%;
   min-height: 64px;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -1183,4 +1187,9 @@
   .aroom-track .is-now::before {
     animation: none;
   }
+}
+
+.aroom-denied {
+  color: var(--ar-gold, #ffd76a);
+  font-weight: 600;
 }

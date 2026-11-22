@@ -1765,7 +1765,9 @@ select.input {
 .encounter {
   position: fixed;
   inset: 0;
+  /* clip, not hidden: focusing an input must not scroll the whole room away */
   overflow: hidden;
+  overflow: clip;
   background: var(--scene-bg);
 }
 

@@ -354,6 +354,7 @@ function HoldCard({ room, d, osce }: { room: RoomState; d: Delegation; osce: boo
   const { busy, error, run } = useAction();
   const [asked, setAsked] = useState(false);
   const who = facultyPresent(room) ? facultyName(room) : 'faculty';
+  const denied = [...room.faculty].reverse().find((f) => f.action === 'deny' && (!f.ref || f.ref === d.ref));
   return (
     <article className="aroom-card aroom-card--hold" aria-label={`On hold: ${d.label}`}>
       <p className="aroom-card-head">
@@ -376,7 +377,11 @@ function HoldCard({ room, d, osce }: { room: RoomState; d: Delegation; osce: boo
       )}
       {v.suggestion && !osce && <p className="aroom-card-text aroom-suggest">Pharmacy suggests {v.suggestion}</p>}
       <p className="aroom-card-actions">
-        {asked ? (
+        {denied ? (
+          <span role="status" className="aroom-denied">
+            {denied.name || who} said no. Choose another drug.
+          </span>
+        ) : asked ? (
           <span role="status">Asked {who}. Waiting for a human decision.</span>
         ) : (
           <button
@@ -581,9 +586,15 @@ function Messages({ room }: { room: RoomState }) {
     const el = end.current?.closest<HTMLElement>('.aroom-scroll') ?? null;
     box.current = el;
     if (!el) return;
+    // Only the reader can let go of the bottom: our own scrolling and arriving
+    // messages fire scroll events too, and must not count as reading back.
+    const atBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    const letGo = () => window.setTimeout(() => (stick.current = atBottom()), 120);
     const onScroll = () => {
-      stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+      if (atBottom()) stick.current = true;
     };
+    const user = ['wheel', 'touchmove', 'pointerup', 'keyup'] as const;
+    user.forEach((t) => el.addEventListener(t, letGo, { passive: true }));
     el.addEventListener('scroll', onScroll, { passive: true });
     // The tray above grows and shrinks; keep the last message in view.
     const ro = new ResizeObserver(() => {
@@ -591,6 +602,7 @@ function Messages({ room }: { room: RoomState }) {
     });
     ro.observe(el);
     return () => {
+      user.forEach((t) => el.removeEventListener(t, letGo));
       el.removeEventListener('scroll', onScroll);
       ro.disconnect();
     };
