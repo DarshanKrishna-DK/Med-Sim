@@ -188,7 +188,7 @@ function CeilingLights() {
       {pos.map(([x, z]) => (
         <mesh key={`${x}${z}`} position={[x, ROOM.h - 0.012, z]}>
           <boxGeometry args={[1.2, 0.025, 0.6]} />
-          <meshStandardMaterial color="#ffffff" emissive="#fff6ea" emissiveIntensity={2.6} toneMapped={false} />
+          <meshStandardMaterial color="#ffffff" emissive="#fff6ea" emissiveIntensity={1.5} toneMapped={false} />
         </mesh>
       ))}
       <pointLight position={[-1.3, 2.6, -4.2]} intensity={6} distance={8} decay={1.6} color="#fff3e2" />

@@ -296,14 +296,14 @@ export function CorridorScreen() {
           onIncline={() => setDpr((d) => Math.min(1.25, d + 0.1))}
         />
         <Suspense fallback={null}>
-          <WorldEnvironment intensity={0.5} />
+          <WorldEnvironment intensity={0.3} />
           <CorridorWorld runtime={runtime} doorFx={doorFx} onDoorClick={onDoorClick} reflections={quality === 'high'} />
           <TeacherPortal active={atPortal} onClick={onPortalClick} />
           <ThirdPersonPlayer runtime={runtime} colliders={WORLD_COLLIDERS} rig={CAMERA_RIG} />
           <DoorProbe runtime={runtime} onChange={setActive} />
           <PortalProbe runtime={runtime} onChange={setAtPortal} />
           <ReceptionProbe runtime={runtime} onChange={setAtDesk} />
-          <PostFX quality={quality} />
+          <PostFX quality={quality} bloomThreshold={1.15} bloomIntensity={0.3} />
         </Suspense>
       </Canvas>
 

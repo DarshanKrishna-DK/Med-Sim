@@ -22,7 +22,17 @@ export type FxQuality = 'high' | 'low';
 
 /** Subtle post: AO for contact grounding, bloom on emissive panels only,
  *  a soft vignette, ACES filmic at the end. */
-export function PostFX({ quality = 'high', exposure = 1 }: { quality?: FxQuality; exposure?: number }) {
+export function PostFX({
+  quality = 'high',
+  exposure = 1,
+  bloomThreshold = 1.0,
+  bloomIntensity = 0.45,
+}: {
+  quality?: FxQuality;
+  exposure?: number;
+  bloomThreshold?: number;
+  bloomIntensity?: number;
+}) {
   const { gl } = useThree();
   useEffect(() => {
     gl.toneMappingExposure = exposure;
@@ -34,7 +44,7 @@ export function PostFX({ quality = 'high', exposure = 1 }: { quality?: FxQuality
       ) : (
         <></>
       )}
-      <Bloom mipmapBlur luminanceThreshold={1.0} luminanceSmoothing={0.2} intensity={0.45} radius={0.7} />
+      <Bloom mipmapBlur luminanceThreshold={bloomThreshold} luminanceSmoothing={0.2} intensity={bloomIntensity} radius={0.7} />
       <Vignette offset={0.3} darkness={0.48} />
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
     </EffectComposer>

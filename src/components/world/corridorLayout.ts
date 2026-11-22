@@ -30,7 +30,7 @@ export type WingId = 'medicine' | 'surgical' | 'diagnostics';
 export const WINGS: Record<WingId, { label: string; color: string; series: number }> = {
   medicine: { label: 'Medicine Wing', color: '#3f7cc4', series: 100 },
   surgical: { label: 'Surgical, Women & Children', color: '#2f9c8a', series: 200 },
-  diagnostics: { label: 'Diagnostics & Critical Care', color: '#d08a2c', series: 300 },
+  diagnostics: { label: 'Diagnostics & Critical Care', color: '#9a6be0', series: 300 },
 };
 
 export interface Department {

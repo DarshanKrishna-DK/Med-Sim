@@ -29,12 +29,13 @@ export const FONT_MED = '/assets/fonts/inter-500.woff';
 export const FONT_HEAVY = '/assets/fonts/inter-800.woff';
 
 const M = {
-  wall: '#e8e5de',
-  wallLobby: '#ece8df',
+  wall: '#c9d0d8',
+  wallLobby: '#e2dfd8',
   skirting: '#4a4f57',
   rail: '#b9c3cc',
   railWood: '#a77b52',
   leaf: '#c9a77d',
+  leafSoon: '#8c929a',
   frame: '#cfd5dc',
   steel: '#b8bec6',
   navy: '#15233c',
@@ -55,14 +56,14 @@ export function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext
 
 export function makeCeilingTex() {
   return canvasTex(256, 256, (g) => {
-    g.fillStyle = '#efeeea';
+    g.fillStyle = '#b6bdc6';
     g.fillRect(0, 0, 256, 256);
     for (let i = 0; i < 2400; i++) {
-      const v = 225 + Math.random() * 25;
-      g.fillStyle = `rgba(${v},${v},${v - 4},0.55)`;
+      const v = 158 + Math.random() * 30;
+      g.fillStyle = `rgba(${v - 4},${v},${v + 8},0.55)`;
       g.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 1.5);
     }
-    g.fillStyle = '#c9cbcd';
+    g.fillStyle = '#868e98';
     g.fillRect(0, 0, 256, 5);
     g.fillRect(0, 0, 5, 256);
   });
@@ -149,29 +150,29 @@ function DoorHeader({ door }: { door: DoorSpec }) {
   const ready = useSignFontsReady();
   const tex = useMemo(() => {
     const hi = hindiLabel(door.dept.id);
-    return canvasTex(768, 134, (g) => {
+    return canvasTex(768, 160, (g) => {
       g.fillStyle = '#15233c';
-      g.fillRect(0, 0, 768, 134);
+      g.fillRect(0, 0, 768, 160);
       g.fillStyle = WINGS[door.dept.wing].color;
-      g.fillRect(0, 0, 768, 8);
+      g.fillRect(0, 0, 768, 14);
       g.textAlign = 'center';
       g.fillStyle = '#ffffff';
       const en = door.dept.label.toUpperCase();
-      g.font = '800 ' + (en.length > 24 ? 34 : 46) + 'px Inter, system-ui, sans-serif';
-      g.fillText(en, 384, hi ? 62 : 82, 740);
+      g.font = '800 ' + (en.length > 24 ? 40 : en.length > 16 ? 50 : 58) + 'px Inter, system-ui, sans-serif';
+      g.fillText(en, 384, hi ? 78 : 106, 744);
       if (hi) {
-        g.font = '600 36px "Noto Sans Devanagari", "Nirmala UI", sans-serif';
-        g.fillStyle = '#cdd7e6';
-        g.fillText(hi, 384, 114, 740);
+        g.font = '700 44px "Noto Sans Devanagari", "Nirmala UI", sans-serif';
+        g.fillStyle = '#e6edf8';
+        g.fillText(hi, 384, 140, 744);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [door, ready]);
   useEffect(() => () => tex.dispose(), [tex]);
   return (
-    <mesh position={[0, 2.5, 0.036]}>
-      <planeGeometry args={[1.93, 0.33]} />
-      <meshStandardMaterial map={tex} roughness={0.45} />
+    <mesh position={[0, 2.54, 0.036]}>
+      <planeGeometry args={[1.93, 0.4]} />
+      <meshStandardMaterial color="#000000" emissive="#ffffff" emissiveMap={tex} emissiveIntensity={0.85} roughness={0.6} toneMapped={false} />
     </mesh>
   );
 }
@@ -195,6 +196,9 @@ const [BracketI, Bracket] = createInstances();
 const [PanelI, Panel] = createInstances();
 const [WainI, Wain] = createInstances();
 const [StripeI, Stripe] = createInstances();
+const [WashI, Wash] = createInstances();
+const [GlowI, Glow] = createInstances();
+const [HeadStripI, HeadStrip] = createInstances();
 
 export interface DoorFx {
   open: number;
@@ -215,6 +219,7 @@ function Door({
   const textGroup = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const built = !!door.dept.clinic || !!door.dept.special;
+  const wing = WINGS[door.dept.wing].color;
   const wp = useMemo(() => new THREE.Vector3(door.x, 1.5, door.z), [door]);
 
   useFrame((_, dt) => {
@@ -225,39 +230,43 @@ function Door({
       r += Math.sin(fx.shake * 70) * 0.02 * Math.min(1, fx.shake * 2.5);
     }
     if (pivot.current) pivot.current.rotation.y = r;
-    if (textGroup.current) textGroup.current.visible = camera.position.distanceToSquared(wp) < 26 * 26;
+    if (textGroup.current) textGroup.current.visible = camera.position.distanceToSquared(wp) < 34 * 34;
   });
 
   return (
     <group position={[door.x, 0, door.z]} rotation={[0, door.rotY, 0]}>
       <Recess position={[0, 1.07, 0.012]} color={built ? '#3b3229' : '#15181d'} />
-      <Jamb position={[-0.62, 1.1, 0.05]} />
-      <Jamb position={[0.62, 1.1, 0.05]} />
+      <Jamb position={[-0.62, 1.1, 0.05]} color={built ? pale(wing, 0.35) : M.frame} />
+      <Jamb position={[0.62, 1.1, 0.05]} color={built ? pale(wing, 0.35) : M.frame} />
+      <Glow position={[-0.62, 1.1, 0.108]} color={wing} />
+      <Glow position={[0.62, 1.1, 0.108]} color={wing} />
+      <HeadStrip position={[0, 2.745, 0.042]} color={wing} />
+      {built && <Wash position={[0, 0.012, 0.95]} rotation={[-Math.PI / 2, 0, 0]} color={WASH_COLOR} />}
       <Head position={[0, 2.215, 0.05]} />
       <group ref={pivot} position={[-0.55, 0, 0.055]}>
-        <Leaf position={[0.55, 1.055, 0]} />
+        <Leaf position={[0.55, 1.055, 0]} color={built ? M.leaf : M.leafSoon} />
         <Kick position={[0.55, 0.14, 0.002]} />
         <Lever position={[0.98, 1.02, 0.045]} />
         <Lever position={[0.98, 1.02, -0.045]} />
         {built ? <GlassLit position={[0.78, 1.45, 0]} /> : <GlassDark position={[0.78, 1.45, 0]} />}
       </group>
-      <Header position={[0, 2.5, 0.02]} color="#15233c" />
-      <Plate position={[0.98, 1.55, 0.012]} />
-      <Led position={[1.13, 1.64, 0.024]} color={built ? '#5dff7a' : '#ffb02e'} />
+      <Header position={[0, 2.54, 0.02]} color="#15233c" />
+      <Plate position={[1.07, 1.57, 0.012]} />
+      <Led position={[1.31, 1.75, 0.024]} color={built ? '#5dff7a' : '#ffb02e'} />
       <Dispenser position={[-0.95, 1.25, 0.05]} />
       <group ref={textGroup}>
         <DoorHeader door={door} />
-        <Text font={FONT_HEAVY} position={[0.85, 1.6, 0.024]} fontSize={0.1} anchorX="left" anchorY="middle" color="#ffffff">
+        <Text font={FONT_HEAVY} position={[0.82, 1.67, 0.024]} fontSize={0.16} anchorX="left" anchorY="middle" color="#ffffff">
           {door.room}
         </Text>
         <Text
           font={FONT_MED}
-          position={[0.79, 1.47, 0.024]}
-          fontSize={0.038}
+          position={[0.82, 1.47, 0.024]}
+          fontSize={0.058}
           anchorX="left"
           anchorY="middle"
           color={built ? '#9fe3b0' : '#ffc46b'}
-          letterSpacing={0.08}
+          letterSpacing={0.04}
         >
           {built ? (door.dept.special === 'operation-theatre' ? 'THEATRE OPEN' : door.dept.special ? 'READING ROOM' : 'CLINIC OPEN') : 'COMING SOON'}
         </Text>
@@ -279,6 +288,23 @@ function Door({
   );
 }
 
+const WASH_COLOR = '#ffdca8';
+const washTex = canvasTex(128, 128, (g) => {
+  const gr = g.createLinearGradient(0, 0, 0, 128);
+  gr.addColorStop(0, 'rgba(255,255,255,1)');
+  gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 128, 128);
+  g.globalCompositeOperation = 'destination-out';
+  const gx = g.createLinearGradient(0, 0, 128, 0);
+  gx.addColorStop(0, 'rgba(0,0,0,1)');
+  gx.addColorStop(0.3, 'rgba(0,0,0,0)');
+  gx.addColorStop(0.7, 'rgba(0,0,0,0)');
+  gx.addColorStop(1, 'rgba(0,0,0,1)');
+  g.fillStyle = gx;
+  g.fillRect(0, 0, 128, 128);
+});
+
 function DoorInstances({ children }: { children: React.ReactNode }) {
   return (
     <RecessI frustumCulled={false} limit={40} receiveShadow>
@@ -286,13 +312,13 @@ function DoorInstances({ children }: { children: React.ReactNode }) {
       <meshStandardMaterial roughness={0.9} />
       <JambI frustumCulled={false} limit={80} castShadow receiveShadow>
         <boxGeometry args={[0.08, 2.2, 0.1]} />
-        <meshStandardMaterial color={M.frame} metalness={0.5} roughness={0.35} />
+        <meshStandardMaterial color="#ffffff" metalness={0.3} roughness={0.35} />
         <HeadI frustumCulled={false} limit={40} castShadow>
           <boxGeometry args={[1.32, 0.07, 0.1]} />
           <meshStandardMaterial color={M.frame} metalness={0.5} roughness={0.35} />
           <LeafI frustumCulled={false} limit={40} castShadow receiveShadow>
             <boxGeometry args={[1.1, 2.11, 0.05]} />
-            <meshStandardMaterial color={M.leaf} roughness={0.5} metalness={0} />
+            <meshStandardMaterial color="#ffffff" roughness={0.5} metalness={0} />
             <KickI frustumCulled={false} limit={40}>
               <boxGeometry args={[1.06, 0.26, 0.056]} />
               <meshStandardMaterial color={M.steel} metalness={0.85} roughness={0.32} />
@@ -306,10 +332,10 @@ function DoorInstances({ children }: { children: React.ReactNode }) {
                     <boxGeometry args={[0.2, 0.75, 0.056]} />
                     <meshStandardMaterial color="#1c2733" roughness={0.08} metalness={0.2} />
                     <HeaderI frustumCulled={false} limit={40}>
-                      <boxGeometry args={[1.95, 0.34, 0.03]} />
+                      <boxGeometry args={[1.95, 0.42, 0.03]} />
                       <meshStandardMaterial roughness={0.45} />
                       <PlateI frustumCulled={false} limit={40}>
-                        <boxGeometry args={[0.44, 0.3, 0.02]} />
+                        <boxGeometry args={[0.62, 0.42, 0.02]} />
                         <meshStandardMaterial color={M.navy} roughness={0.4} />
                         <LedI frustumCulled={false} limit={40}>
                           <boxGeometry args={[0.035, 0.035, 0.01]} />
@@ -317,7 +343,19 @@ function DoorInstances({ children }: { children: React.ReactNode }) {
                           <DispenserI frustumCulled={false} limit={40} castShadow>
                             <boxGeometry args={[0.12, 0.24, 0.09]} />
                             <meshStandardMaterial color="#f3f4f5" roughness={0.35} />
-                            {children}
+                            <WashI frustumCulled={false} limit={40} renderOrder={2}>
+                              <planeGeometry args={[1.9, 1.5]} />
+                              <meshBasicMaterial map={washTex} transparent blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} opacity={0.85} />
+                              <GlowI frustumCulled={false} limit={80}>
+                                <boxGeometry args={[0.03, 2.2, 0.03]} />
+                                <meshBasicMaterial toneMapped={false} />
+                                <HeadStripI frustumCulled={false} limit={40}>
+                                  <boxGeometry args={[1.95, 0.05, 0.03]} />
+                                  <meshBasicMaterial toneMapped={false} />
+                                  {children}
+                                </HeadStripI>
+                              </GlowI>
+                            </WashI>
                           </DispenserI>
                         </LedI>
                       </PlateI>
@@ -355,7 +393,7 @@ function wingAt(z: number): WingId {
 }
 
 function pale(hex: string, k: number) {
-  return '#' + new THREE.Color(hex).lerp(new THREE.Color('#f4f2ec'), k).getHexString();
+  return '#' + new THREE.Color(hex).lerp(new THREE.Color('#e4e8ee'), k).getHexString();
 }
 
 function WallDressing() {
@@ -374,7 +412,7 @@ function WallDressing() {
         const zc = (r.z0 + r.z1) / 2;
         const color = WINGS[wingAt(zc)].color;
         rails.push(<Rail key={`r${k}`} position={[wx - side * 0.075, 0.92, zc]} scale={[1, 1, len]} />);
-        wains.push(<Wain key={`w${k}`} position={[wx - side * 0.011, 0.5, zc]} scale={[1, 1, len]} color={pale(color, 0.72)} />);
+        wains.push(<Wain key={`w${k}`} position={[wx - side * 0.011, 0.5, zc]} scale={[1, 1, len]} color={pale(color, 0.78)} />);
         stripes.push(<Stripe key={`s${k}`} position={[wx - side * 0.012, 1.36, zc]} scale={[1, 1, len]} color={color} />);
         const nb = Math.max(2, Math.round(len / 1.2) + 1);
         for (let i = 0; i < nb; i++) {
@@ -405,8 +443,8 @@ function WallDressing() {
         {items.wains}
       </WainI>
       <StripeI frustumCulled={false} limit={80}>
-        <boxGeometry args={[0.024, 0.07, 1]} />
-        <meshStandardMaterial roughness={0.5} />
+        <boxGeometry args={[0.024, 0.11, 1]} />
+        <meshBasicMaterial toneMapped={false} />
         {items.stripes}
       </StripeI>
     </>
@@ -468,9 +506,9 @@ function Floor({ reflections }: { reflections: boolean }) {
           blur={[500, 180]}
           resolution={256}
           mixBlur={1}
-          mixStrength={0.9}
+          mixStrength={0.55}
           mixContrast={1}
-          mirror={0.5}
+          mirror={0.3}
           depthScale={0}
           metalness={0}
         />
@@ -535,10 +573,21 @@ function Shell() {
       {/* skirting */}
       <Box p={[-CORRIDOR_HALF_W + 0.008, 0.06, END_Z / 2]} s={[0.016, 0.12, L]} color={M.skirting} rough={0.5} />
       <Box p={[CORRIDOR_HALF_W - 0.008, 0.06, END_Z / 2]} s={[0.016, 0.12, L]} color={M.skirting} rough={0.5} />
+      {/* wing-coloured floor guide lines along both walls */}
+      {(['medicine', 'surgical', 'diagnostics'] as WingId[]).map((w) => {
+        const z0 = w === 'medicine' ? -0.15 : wingStartZ(w);
+        const z1 = w === 'diagnostics' ? END_Z : w === 'medicine' ? wingStartZ('surgical') : wingStartZ('diagnostics');
+        return [-1, 1].map((side) => (
+          <mesh key={w + side} position={[side * (CORRIDOR_HALF_W - 0.22), 0.006, (z0 + z1) / 2]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.07, z0 - z1]} />
+            <meshBasicMaterial color={WINGS[w].color} toneMapped={false} />
+          </mesh>
+        ));
+      })}
       {/* corridor ceiling */}
       <mesh position={[0, CEILING_H, END_Z / 2]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[CORRIDOR_HALF_W * 2, L]} />
-        <meshStandardMaterial map={corrCeil} roughness={0.95} />
+        <meshStandardMaterial map={corrCeil} roughness={1} color="#e4e8ed" />
       </mesh>
 
       {/* end wall with a full-width window */}
@@ -590,7 +639,7 @@ function Shell() {
       </group>
       <mesh position={[0, LOBBY_CEILING_H, LOBBY_FRONT_Z / 2]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[LOBBY_HALF_W * 2, LOBBY_FRONT_Z]} />
-        <meshStandardMaterial map={lobbyCeil} roughness={0.95} />
+        <meshStandardMaterial map={lobbyCeil} roughness={1} color="#ffffff" />
       </mesh>
     </>
   );
@@ -608,7 +657,7 @@ function CeilingPanels() {
   return (
     <PanelI frustumCulled={false} limit={PANEL_POS.length}>
       <boxGeometry args={[1.2, 0.025, 0.6]} />
-      <meshStandardMaterial color="#ffffff" emissive="#fff6ea" emissiveIntensity={2.6} toneMapped={false} />
+      <meshStandardMaterial color="#ffffff" emissive="#fff6ea" emissiveIntensity={1.3} toneMapped={false} />
       {PANEL_POS.map((p, i) => (
         <Panel key={i} position={p} />
       ))}
@@ -620,7 +669,7 @@ function CeilingPanels() {
  *  player: real falloff where it matters, constant shader cost. */
 function LightPool({ runtime, count = 4 }: { runtime: PlayerRuntime; count?: number }) {
   const refs = useRef<Array<THREE.PointLight | null>>([]);
-  const anchors = useMemo(() => PANEL_POS.map((p) => new THREE.Vector3(p[0], p[1] - 0.25, p[2])), []);
+  const anchors = useMemo(() => PANEL_POS.map((p) => new THREE.Vector3(p[0], p[1] > 3.5 ? p[1] - 1.1 : 2.1, p[2])), []);
   useFrame(() => {
     const pos = runtime.pos;
     const sorted = anchors
@@ -635,7 +684,7 @@ function LightPool({ runtime, count = 4 }: { runtime: PlayerRuntime; count?: num
   return (
     <>
       {Array.from({ length: count }, (_, i) => (
-        <pointLight key={i} ref={(l) => (refs.current[i] = l)} intensity={7} distance={9} decay={1.6} color="#fff3e2" />
+        <pointLight key={i} ref={(l) => (refs.current[i] = l)} intensity={4.5} distance={9} decay={2} color="#fff3e2" />
       ))}
     </>
   );
@@ -659,7 +708,7 @@ function FollowSun({ runtime }: { runtime: PlayerRuntime }) {
   return (
     <directionalLight
       ref={light}
-      intensity={0.9}
+      intensity={0.6}
       color="#fff4e6"
       castShadow
       shadow-mapSize-width={1024}
@@ -679,18 +728,20 @@ function FollowSun({ runtime }: { runtime: PlayerRuntime }) {
 // ───────────────────────── signage ─────────────────────────
 
 function HangingSign({ z, lines }: { z: number; lines: Array<{ text: string; color: string }> }) {
-  const h = 0.2 + lines.length * 0.16;
-  const drop = 0.14;
+  const big = lines.length === 1;
+  const lh = big ? 0.26 : 0.2;
+  const h = 0.16 + lines.length * lh;
+  const drop = 0.1;
   const y = CEILING_H - drop - h / 2;
   const face = (rot: number) => (
     <group rotation={[0, rot, 0]}>
       {lines.map((l, i) => (
-        <group key={i} position={[0, h / 2 - 0.18 - i * 0.16, 0.031]}>
-          <mesh position={[-1.18, 0, 0]}>
-            <planeGeometry args={[0.055, 0.11]} />
+        <group key={i} position={[0, h / 2 - 0.08 - lh / 2 - i * lh, 0.031]}>
+          <mesh position={[-1.58, 0, 0]}>
+            <planeGeometry args={[0.1, lh * 0.8]} />
             <meshBasicMaterial color={l.color} toneMapped={false} />
           </mesh>
-          <Text font={FONT_BOLD} position={[-1.1, 0, 0]} fontSize={0.085} anchorX="left" anchorY="middle" color="#ffffff" letterSpacing={0.02}>
+          <Text font={FONT_HEAVY} position={[-1.46, 0, 0]} fontSize={big ? 0.14 : 0.125} anchorX="left" anchorY="middle" color="#ffffff" letterSpacing={0.02}>
             {l.text}
           </Text>
         </group>
@@ -699,15 +750,15 @@ function HangingSign({ z, lines }: { z: number; lines: Array<{ text: string; col
   );
   return (
     <group position={[0, y, z]}>
-      {[-1.0, 1.0].map((x) => (
+      {[-1.4, 1.4].map((x) => (
         <mesh key={x} position={[x, h / 2 + drop / 2, 0]}>
           <cylinderGeometry args={[0.008, 0.008, drop]} />
           <meshStandardMaterial color="#9aa1a8" metalness={0.9} roughness={0.3} />
         </mesh>
       ))}
       <mesh castShadow>
-        <boxGeometry args={[2.6, h, 0.05]} />
-        <meshStandardMaterial color={M.navy} roughness={0.35} />
+        <boxGeometry args={[3.4, h, 0.05]} />
+        <meshStandardMaterial color={M.navy} emissive="#1d3257" emissiveIntensity={0.9} roughness={0.5} />
       </mesh>
       {face(0)}
       {face(Math.PI)}
@@ -1116,7 +1167,7 @@ export function CorridorWorld({
 }) {
   return (
     <>
-      <hemisphereLight args={['#f4f6ff', '#b8ab96', 0.35]} />
+      <hemisphereLight args={['#e6ecff', '#9c9486', 0.3]} />
       <FollowSun runtime={runtime} />
       <LightPool runtime={runtime} />
       {/* daylight spilling from the end window + the entrance */}
