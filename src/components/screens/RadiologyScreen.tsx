@@ -595,7 +595,7 @@ export function RadiologyScreen() {
         </div>
 
         {/* consultant line + log */}
-        <div style={{ background: UI.bg, border: `2px solid ${UI.line}`, padding: '8px 10px', fontFamily: UI.label, fontSize: 14, lineHeight: 1.4, maxHeight: 96, overflow: 'auto' }} aria-live="polite">
+        <div style={{ background: UI.bg, border: `2px solid ${UI.line}`, padding: '8px 10px', fontFamily: UI.label, fontSize: 14, lineHeight: 1.4, maxHeight: 96, flexShrink: 0, overflow: 'auto' }} aria-live="polite">
           <span style={{ ...labelStyle, fontSize: 10, color: UI.primary, display: 'block', marginBottom: 3 }}>{RADIOLOGIST.short}</span>
           {session.caption}
         </div>
