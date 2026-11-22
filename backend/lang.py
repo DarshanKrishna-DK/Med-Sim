@@ -92,7 +92,14 @@ STAFF_VOICES: dict[str, dict[str, str]] = {
     "examiner": {lg: "hi-IN-pranav" for lg in LANGS},
     "lab": {**{lg: "en-IN-samar" for lg in LANGS}, "bn": "bn-IN-subhankar"},
 }
+# Staff who are never at the bedside: they may share a voice with a patient in another room.
+SIDE_VOICES: dict[str, dict[str, str]] = {
+    "teacher": {lg: "hi-IN-jaya" for lg in LANGS},
+    "reception": {lg: "hi-IN-neeta" for lg in LANGS},
+    "theatre": {lg: "hi-IN-poonam" for lg in LANGS},
+}
 STAFF_ROLES = tuple(STAFF_VOICES)
+TTS_ROLES = (*STAFF_VOICES, *SIDE_VOICES)
 _MALE_SPARES = {
     "en": ["en-IN-nikhil", "en-IN-abhinav"], "hi": ["en-IN-nikhil", "hi-IN-aman"], "kn": ["en-IN-nikhil", "pa-IN-harman"],
     "ta": ["ta-IN-karthikeyan"], "te": ["mr-IN-prathamesh"], "mr": ["mr-IN-prathamesh", "en-IN-abhinav"], "bn": [],
@@ -107,6 +114,8 @@ def staff_voice(role: str, lang: Optional[str], avoid: Optional[str] = None) -> 
     override = os.environ.get(f"{env}_{lg.upper()}", "").strip() or (os.environ.get(env, "").strip() if lg == "en" else "")
     if override:
         return override
+    if role in SIDE_VOICES:
+        return SIDE_VOICES[role][lg]
     first = STAFF_VOICES[role][lg]
     if avoid != first:
         return first

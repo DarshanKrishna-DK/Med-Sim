@@ -23,7 +23,7 @@ const LOG = '[medsim:speech]';
 export type { SpeakingState, SpeechOutcome, SpeechPriority } from './speechArbiter';
 
 /** Whose voice. Faculty messages are relayed by the nurse. */
-export type StaffSpeaker = 'nurse' | 'pharmacist' | 'lab' | 'radiology' | 'examiner' | 'faculty';
+export type StaffSpeaker = 'nurse' | 'pharmacist' | 'lab' | 'radiology' | 'examiner' | 'faculty' | 'teacher' | 'reception' | 'theatre';
 
 export interface SayOptions {
   speaker?: StaffSpeaker;
@@ -42,7 +42,7 @@ export interface SayOptions {
   dropIfStale?: boolean | number;
 }
 
-const VOICES = new Set(['nurse', 'pharmacist', 'lab', 'radiology', 'examiner']);
+const VOICES = new Set(['nurse', 'pharmacist', 'lab', 'radiology', 'examiner', 'teacher', 'reception', 'theatre']);
 /** Set once the backend answered 422 for a department voice: use the nurse's. */
 const unsupported = new Set<string>();
 

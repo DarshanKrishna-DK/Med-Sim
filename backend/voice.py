@@ -563,7 +563,7 @@ async def voice_context(req: VoiceContextRequest):
 
 class VoiceTtsRequest(BaseModel):
     text: str
-    voice: Literal["nurse", "pharmacist", "lab", "radiology", "examiner", "M", "F"] = "nurse"
+    voice: Literal["nurse", "pharmacist", "lab", "radiology", "examiner", "teacher", "reception", "theatre", "M", "F"] = "nurse"
     locale: Optional[str] = None
     # Language the line is written in (en hi kn ta te mr bn); wins over locale.
     lang: Optional[str] = None
@@ -581,7 +581,7 @@ def tts_voice_and_locale(req: VoiceTtsRequest) -> tuple[str, str]:
     matches build_join_body's pick for the same case, gender and language."""
     lang = langmod.speech_lang(req.text, req.lang or req.locale)
     locale = langmod.locale_for(lang)
-    if req.voice in langmod.STAFF_ROLES:
+    if req.voice in langmod.TTS_ROLES:
         avoid = _voice_for(req.gender, req.caseId, lang) if req.caseId and req.gender else None
         return langmod.staff_voice(req.voice, lang, avoid), locale
     if req.caseId and req.voice != "nurse" or req.gender:

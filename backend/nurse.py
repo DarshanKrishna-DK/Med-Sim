@@ -1039,6 +1039,10 @@ ROOM_TOOL_SPECS: list[dict[str, Any]] = [
         "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
 ]
 
+LOOKUP_PROMPT = (
+    "- Context.likelyCatalog lists catalogue ids that already match the doctor's words. If the one you need is there, use that id "
+    "directly and do not call find_in_catalog. Ignore entries the doctor did not mean. Put every call this order needs in ONE turn."
+)
 ROOM_PROMPT = (
     "\nTEAM MODE (overrides anything above): you do not run tests or dispense drugs yourself, you delegate. "
     "order_test sends the test to the laboratory or radiology and the result comes later; prescribe sends the drug to the "
@@ -1106,6 +1110,30 @@ SYSTEM_PROMPT = (
 )
 
 
+_WORD = re.compile(r"[^\W_]+(?:-[^\W_]+)*", re.UNICODE)
+_COMMON = frozenset("the and for with test tests level blood serum panel count profile x ray scan please start give send get "
+                    "times time day days week weeks mg ml daily once twice after before check ka ke ki ko aur ek do".split())
+
+
+def likely_catalog(st: NurseState, utterance: str) -> dict[str, list[dict[str, str]]]:
+    """Catalogue entries the utterance plainly names, so the model can order without a
+    lookup round (about 2 s on a voice turn). Only a hint: every id is still validated."""
+    words = [w for w in _norm(utterance).split()][:60]
+    joined = f" {' '.join(words)} "
+    tests: list[tuple[int, CatalogTest]] = []
+    for t in st.tests.values():
+        idw, name = _norm(t.id), _norm(t.name)
+        keys = [w for w in _WORD.findall(name) if len(w) > 2 and w not in _COMMON]
+        score = 4 if f" {idw} " in joined or f" {name} " in joined else 0
+        score += 2 * bool(keys and f" {keys[0]} " in joined) + sum(f" {k} " in joined for k in keys[1:])
+        if score >= 2:
+            tests.append((score, t))
+    tests.sort(key=lambda x: -x[0])
+    meds = [m for m in st.meds.values() if drugterms.mentions_drug(utterance, m.id, m.name)]
+    return {"tests": [{"id": t.id, "name": t.name} for _, t in tests[:8]],
+            "medications": [{"id": m.id, "name": m.name, "dosing": m.dosing or ""} for m in meds[:6]]}
+
+
 def _patient_brief(req: NurseActRequest, st: NurseState) -> str:
     p = req.patient
     extra: dict[str, Any] = {}
@@ -1126,6 +1154,7 @@ def _patient_brief(req: NurseActRequest, st: NurseState) -> str:
                     "anamnesis": [qa.model_dump() for qa in p.anamnesis][:20]},
         "alreadyOrdered": st.ordered, "alreadyPrescribed": st.prescribed,
         "catalogSize": {"tests": len(st.tests), "medications": len(st.meds)},
+        "likelyCatalog": likely_catalog(st, req.utterance),
     })
 
 
@@ -1408,7 +1437,7 @@ async def _act(req: NurseActRequest) -> dict[str, Any]:
     room = _room_for(req)
     st = NurseState(req, room)
     steps: list[dict[str, Any]] = []
-    system = SYSTEM_PROMPT + (ROOM_PROMPT if room is not None else "") + (OSCE_PROMPT if st.osce else "")
+    system = SYSTEM_PROMPT + "\n" + LOOKUP_PROMPT + (ROOM_PROMPT if room is not None else "") + (OSCE_PROMPT if st.osce else "")
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": langmod.with_language(
             system + "\nContext: " + _patient_brief(req, st), req.lang, female=True, role="nurse")},
