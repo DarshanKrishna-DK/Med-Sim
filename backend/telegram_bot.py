@@ -9,11 +9,14 @@ Conversation (per chat, in memory, 30 min TTL), one question at a time:
   specialty -> name -> age -> sex -> complaint -> severity -> onset -> history
   -> allergies -> medicines -> intended diagnosis -> vitals -> summary
   [Create] [Edit] [Cancel]
-Create runs case_author.generate_case (LLM + checks + one repair round), stores
-the case in custom_cases and replies with a link that opens it in MedSim.
+Create runs case_author.generate_case (LLM + checks + one repair round) and stores
+the case in custom_cases. With BAND configured the case first goes to a review room
+(agentroom/casereview.py): pharmacy and lab check it, a person approves or rejects
+it, and the author is told here; "Publish unreviewed" is the author's own choice.
+Without BAND it is published at once. The reply carries a link that opens it in MedSim.
 
 Commands: /start, /help, /newpatient (or "create a patient", "new case"),
-/cancel, /list, /delete <id>.
+/cancel, /list, /publish <id>, /delete <id>.
 """
 from __future__ import annotations
 
@@ -31,6 +34,7 @@ import httpx
 import case_author
 import catalog
 import custom_cases
+from agentroom import casereview
 
 log = logging.getLogger("medsim.telegram_bot")
 
@@ -322,6 +326,7 @@ HELP = (
     "I'm Asha from MedSim, The Voice-First Clinical Simulator. I can turn your idea into a playable patient.\n\n"
     "/newpatient  create a patient, one question at a time\n"
     "/list  patients you created here\n"
+    "/publish &lt;id&gt;  publish one without waiting for its review\n"
     "/delete &lt;id&gt;  remove one of them\n"
     "/cancel  stop the current draft\n"
     "/help  this message\n\n"
@@ -456,14 +461,50 @@ async def create_case(chat_id: int, s: dict[str, Any]) -> Optional[dict[str, Any
         s["step"] = "summary"
         await send(chat_id, "The case writer is unavailable right now. Try Create again in a minute.", SUMMARY_BUTTONS)
         return None
+    label = catalog.specialty_label(case["specialty"])
+    if casereview.submit(case, s["answers"], chat_id):
+        _sessions.pop(chat_id, None)
+        await send(chat_id, f"Written: {html.escape(case['name'])} ({html.escape(label)}, {case['severity']}). It is now in review: "
+                            "pharmacy checks the medicines, the lab checks the results, then a doctor approves or rejects it. "
+                            f"Students cannot see it yet, and I will tell you here.\n\nCase id: <code>{case['id']}</code>",
+                   casereview.unreviewed_button(case["id"]))
+        return case
     custom_cases.add(case, chat_id)
     _sessions.pop(chat_id, None)
-    label = catalog.specialty_label(case["specialty"])
     link = f"{app_url()}/?case={case['id']}"
     await send(chat_id, f"Created {html.escape(case['name'])} ({html.escape(label)}, {case['severity']}). "
                         f"Open MedSim &gt; {html.escape(label)} to see the patient: {html.escape(link)}\n\n"
                         f"Case id: <code>{case['id']}</code>")
     return case
+
+
+casereview.tell = send
+
+STATUS_WORDS = {custom_cases.IN_REVIEW: "in review, not visible yet", custom_cases.APPROVED: "approved",
+                custom_cases.REJECTED: "rejected, not visible", custom_cases.UNREVIEWED: "published UNREVIEWED"}
+
+
+def status_line(case_id: str) -> str:
+    """How the review of this case stands; '' for one that never needed a review."""
+    status = custom_cases.status_of(case_id)
+    words = STATUS_WORDS.get(status or "", "")
+    reason = custom_cases.review_of(case_id).get("reason")
+    if words and status == custom_cases.REJECTED and reason:
+        words += f": {html.escape(str(reason)[:200])}"
+    return words
+
+
+async def cmd_publish(chat_id: int, arg: str) -> None:
+    cid = arg.strip()
+    if not cid:
+        await send(chat_id, "Send /publish &lt;id&gt;, e.g. /publish tg-a1b2c3 (see /list).")
+        return
+    problem = casereview.publish_unreviewed(cid, chat_id)
+    if problem:
+        await send(chat_id, problem)
+        return
+    await send(chat_id, f"Published <code>{html.escape(cid)}</code> without a review. It carries an UNREVIEWED badge until a doctor "
+                        f"approves it: {html.escape(app_url())}/?case={html.escape(cid)}")
 
 
 async def cmd_list(chat_id: int) -> None:
@@ -473,7 +514,9 @@ async def cmd_list(chat_id: int) -> None:
         return
     base = app_url()
     lines = [f"<code>{c['id']}</code> {html.escape(c['name'])}, {c['age']} {c['gender']} "
-             f"({html.escape(catalog.specialty_label(c['specialty']))}, {c['severity']})\n{html.escape(base)}/?case={c['id']}"
+             f"({html.escape(catalog.specialty_label(c['specialty']))}, {c['severity']})"
+             + (f"\n{st}" if (st := status_line(c["id"])) else "")
+             + (f"\n{html.escape(base)}/?case={c['id']}" if custom_cases.status_of(c["id"]) in custom_cases.VISIBLE else "")
              for c in rows[:20]]
     await send(chat_id, "Your patients:\n\n" + "\n\n".join(lines))
 
@@ -514,6 +557,8 @@ async def handle_message(msg: dict[str, Any]) -> None:
             await send(chat_id, "Cancelled." if s else "Nothing to cancel.", REMOVE_KEYBOARD)
         elif cmd == "/list":
             await cmd_list(chat_id)
+        elif cmd == "/publish":
+            await cmd_publish(chat_id, arg)
         elif cmd == "/delete":
             await cmd_delete(chat_id, arg)
         elif cmd == "/skip" and s:
@@ -545,6 +590,9 @@ async def handle_callback(cq: dict[str, Any]) -> None:
         return
     remember_chat(chat)
     data = str(cq.get("data") or "")
+    if data.startswith("p:"):
+        await cmd_publish(chat_id, data[2:])
+        return
     s, _ = _session(chat_id)
     if not s:
         await send(chat_id, "That draft is no longer open. Send /newpatient to start again.")
@@ -610,6 +658,7 @@ async def _loop() -> None:
 
 def start() -> bool:
     global _task
+    casereview.start()  # reviews left open by an earlier run go on, whether or not the bot polls
     if not enabled():
         return False
     if _task is None or _task.done():
@@ -619,6 +668,7 @@ def start() -> bool:
 
 def stop() -> None:
     global _task
+    casereview.stop()
     if _task and not _task.done():
         _task.cancel()
     _task = None

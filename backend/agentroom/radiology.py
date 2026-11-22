@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from . import analytes
+from . import dept_lines  # noqa: F401 - adds the theatre and reading room lines
 from . import dept_phrases as phrases
+from . import secondread
 from .answers import go_ahead, yes_no
 from .base import LAB, NURSE, RADIOLOGY, DepartmentAdapter, Pending, Records, Room, Turn, llm_answer, text_lang, two_sentences
 from .lab import human_line, spoken_results, turnaround_s
@@ -20,6 +23,7 @@ from .protocol import Handoff
 
 LAB_WAIT_S = 12.0
 QUESTION_WAIT_S = 600.0
+READ_BACK_WAIT_S = 45.0  # a critical finding is called again once if nobody reads it back
 CONTRAST_HOLD_EGFR = 30
 CONTRAST_CARE_EGFR = 45
 
@@ -57,18 +61,25 @@ def uses_contrast(test_id: str, indication: str, name: str) -> bool:
 
 class RadiologyAdapter(DepartmentAdapter):
     role = RADIOLOGY
-    handles = frozenset({("request", "run_imaging"), ("request", "ask")})
+    handles = frozenset({("request", "run_imaging"), ("request", "ask"), ("request", "second_read"), ("ack", "critical_finding")})
 
     def __init__(self, owner: str = "", lab_wait: float = LAB_WAIT_S, **kw: Any) -> None:
         super().__init__(owner, **kw)
         self.lab_wait = lab_wait
         self._records: Optional[Records] = None
+        self._reads: Optional[secondread.Reads] = None
 
     @property
     def records(self) -> Records:
         if self._records is None:
             self._records = Records(("imaging",), extra=("pocus",))
         return self._records
+
+    @property
+    def reads(self) -> secondread.Reads:
+        if self._reads is None:
+            self._reads = secondread.Reads()
+        return self._reads
 
     def warm(self) -> None:
         self.records.names
@@ -86,6 +97,12 @@ class RadiologyAdapter(DepartmentAdapter):
     async def handle(self, turn: Turn, h: Handoff) -> None:
         if h.action == "ask":
             await self.answer(turn, h)
+            return
+        if h.action == "second_read":
+            await self.second_read(turn, h)
+            return
+        if h.action == "critical_finding":
+            await self.read_back(turn, h)
             return
         known, unknown, names = self.records.wanted(h.data.get("tests"))
         p = h.data.get("patient") if isinstance(h.data.get("patient"), dict) else {}
@@ -205,6 +222,11 @@ class RadiologyAdapter(DepartmentAdapter):
 
     async def on_wait_timeout(self, turn: Turn, p: Pending) -> None:
         st = p.state
+        if p.action == "critical_finding":
+            if not st.get("again"):
+                turn.thought("No read-back yet, calling the critical finding again")
+                await self._call(turn, p.ref, st["labels"], st["study"], again=True)
+            return
         if p.action == "renal_function":
             turn.thought("No answer from the laboratory, going on without it")
             st["notes"].append("The laboratory did not answer on kidney function before contrast.")
@@ -212,6 +234,66 @@ class RadiologyAdapter(DepartmentAdapter):
             return
         tests = st["contrast"] if st.get("step") == "contrast" else self._risky(st)
         await self.defer(turn, st, tests, "the safety question was not answered")
+
+    # ── reading room: second read ────────────────────────────────────────────
+    async def second_read(self, turn: Turn, h: Handoff) -> None:
+        """His own reading of the film against the student's report. The request never carries the answer."""
+        film_id = str(h.data.get("filmId") or "")[:64]
+        film = self.reads.get(film_id)
+        if film is None:
+            await turn.reply("I do not have that film.", "ack", "second_read", h.ref, data={"status": "rejected", "reason": "unknown film"})
+            return
+        turn.tool("read_film", f"Reading {film['study']} independently", filmId=film_id)
+        r = await secondread.read(film_id, film, str(h.data.get("report") or ""), str(h.data.get("diagnosis") or ""))
+        turn.tool_done("Agrees with the report" if r.agrees else f"Discrepancy, {len(r.missed)} finding(s) not in the report", r.agrees)
+        top = next((f["label"] for f in r.missed if f["critical"]), "")
+        if r.agrees:
+            spoken = phrases.say("sr_agree", turn.lang)
+            text = "Second read: I agree with the report." + (f" For completeness: {'; '.join(f['label'] for f in r.missed[:2])}." if r.missed else "")
+        else:
+            spoken = (phrases.say("sr_discrepancy", turn.lang, v=phrases.speakable(top, 110)) if top
+                      else phrases.say("sr_diagnosis", turn.lang, v=phrases.speakable(r.diagnosis, 110)))
+            parts = ["Second read: DISCREPANCY."]
+            if r.missed:
+                parts.append("Not in the report: " + "; ".join(f["label"] + (" (critical)" if f["critical"] else "") for f in r.missed[:4]) + ".")
+            if not r.diagnosis_agrees:
+                parts.append(f"My diagnosis: {r.diagnosis}.")
+            text = " ".join(parts)
+        await turn.reply(text, "result", "second_read", h.ref, spoken=spoken,
+                         data={"filmId": film_id, "study": r.study, "outcome": "agree" if r.agrees else "discrepancy",
+                               "missed": [{k: f[k] for k in ("id", "label", "critical")} for f in r.missed],
+                               "diagnosisAgrees": r.diagnosis_agrees, "diagnosis": r.diagnosis, "calling": bool(r.to_call)})
+        if r.to_call:
+            await self._call(turn, h.ref, [f["label"] for f in r.to_call[:3]], r.study)
+
+    async def _call(self, turn: Turn, ref: str, labels: list[str], study: str, again: bool = False) -> None:
+        """A missed critical finding goes to the nurse by name, and stays open until she reads it back."""
+        v = "; ".join(labels)
+        self.file_pending(Pending(room_id=turn.room_id, ref=ref, action="critical_finding", expect=NURSE, requester=turn.sender_id,
+                                  lang=turn.lang, enc=turn.enc, tools=turn.tools,
+                                  state={"labels": labels, "study": study, "again": again}), READ_BACK_WAIT_S)
+        await turn.reply(f"CRITICAL FINDING on {study}: {v}. Please tell the treating team now and read it back to me.", "note", "critical_finding", ref,
+                         spoken=phrases.say("cf_note", turn.lang, v=phrases.speakable(labels[0], 110)),
+                         data={"findings": labels, "study": study, "calledAt": datetime.now(timezone.utc).isoformat(timespec="seconds"), "again": again})
+
+    async def read_back(self, turn: Turn, h: Handoff) -> None:
+        p = self._pending.get((turn.room_id, h.ref, "critical_finding"))
+        if p is None:
+            await turn.no_reply("no critical finding is open")
+            return
+        if not secondread.read_back_ok(p.state["labels"], str(h.data.get("readBack") or "")):
+            turn.thought("The read-back does not match")
+            self.take_pending(turn.room_id, h.ref, "critical_finding")
+            if p.state.get("again"):
+                await turn.no_reply("read-back did not match")
+                return
+            turn.sender_id = p.requester
+            await self._call(turn, h.ref, p.state["labels"], p.state["study"], again=True)
+            return
+        self.take_pending(turn.room_id, h.ref, "critical_finding")
+        turn.tool_done("Read-back matches, critical finding communicated")
+        await turn.reply("Read-back correct. Critical finding communicated.", "ack", "critical_finding", h.ref,
+                         data={"status": "closed", "closedAt": datetime.now(timezone.utc).isoformat(timespec="seconds")})
 
     # ── results ──────────────────────────────────────────────────────────────
     async def defer(self, turn: Turn, st: dict[str, Any], tests: list[str], why: str) -> None:

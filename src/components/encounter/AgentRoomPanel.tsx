@@ -499,7 +499,7 @@ const ACTION_WORD: Record<string, string> = {
   system: '',
 };
 
-function Slim({ m }: { m: RoomMessage }) {
+export function Slim({ m }: { m: RoomMessage }) {
   return (
     <li className={`aroom-slim aroom-slim--${m.type} ar-role--${m.from}`}>
       <span className="aroom-slim-who">
@@ -531,7 +531,7 @@ function Shared({ room, m }: { room: RoomState; m: RoomMessage }) {
   );
 }
 
-function Bubble({ room, m }: { room: RoomState; m: RoomMessage }) {
+export function Bubble({ room, m }: { room: RoomState; m: RoomMessage }) {
   const human = isHumanMessage(m);
   const name = human ? m.fromName || facultyName(room) : ROLE_LABEL[m.from] ?? m.fromName;
   return (

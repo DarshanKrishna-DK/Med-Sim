@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CUSTOM_BADGE, caseIdFromSearch, mergeCustomCases, parseCustomCase } from '../../src/data/customCasesCore.ts';
+import { CUSTOM_BADGE, UNREVIEWED_BADGE, caseIdFromSearch, mergeCustomCases, parseCustomCase, reconcileCustomCases } from '../../src/data/customCasesCore.ts';
 
 const CLINICS = new Set(['all-specialties', 'cardiology', 'pediatrics']);
 
@@ -66,6 +66,28 @@ test('mergeCustomCases dedupes against known ids and within the batch', () => {
   assert.equal(out[1].clinic, 'pediatrics');
   assert.deepEqual(mergeCustomCases({ cases: [] }, new Set(), CLINICS), []);
   assert.equal(CUSTOM_BADGE, 'Created on Telegram');
+});
+
+test('an unreviewed case says so, an approved one says who it came from', () => {
+  assert.deepEqual([parseCustomCase(wire(), CLINICS)!.badge, parseCustomCase(wire(), CLINICS)!.badgeTitle], [CUSTOM_BADGE, 'Created via Telegram by Darsh']);
+  const u = parseCustomCase(wire({ reviewStatus: 'unreviewed' }), CLINICS)!;
+  assert.equal(u.badge, UNREVIEWED_BADGE);
+  assert.match(u.badgeTitle, /without a doctor's review/);
+  const a = parseCustomCase(wire({ reviewStatus: 'approved' }), CLINICS)!;
+  assert.equal(a.badge, CUSTOM_BADGE);
+  assert.match(a.badgeTitle, /approved by a doctor/);
+  assert.equal(parseCustomCase(wire({ reviewStatus: 7 }), CLINICS)!.badge, CUSTOM_BADGE);
+});
+
+test('reconcile takes out what the server no longer shows and updates badges', () => {
+  const shown = new Map([['tg-abc123', UNREVIEWED_BADGE], ['tg-old111', CUSTOM_BADGE]]);
+  const r = reconcileCustomCases([wire({ reviewStatus: 'approved' })], shown, CLINICS);
+  assert.deepEqual(r.removed, ['tg-old111']);
+  assert.deepEqual(r.changed.map((c) => [c.patient.id, c.badge]), [['tg-abc123', CUSTOM_BADGE]]);
+  assert.deepEqual(reconcileCustomCases([wire({ reviewStatus: 'unreviewed' })], new Map([['tg-abc123', UNREVIEWED_BADGE]]), CLINICS), { removed: [], changed: [] });
+  assert.deepEqual(reconcileCustomCases('down', shown, CLINICS), { removed: [], changed: [] });
+  // a payload we cannot parse is not a deletion
+  assert.deepEqual(reconcileCustomCases([{ id: 'tg-abc123' }, { id: 'tg-old111' }], shown, CLINICS), { removed: [], changed: [] });
 });
 
 test('caseIdFromSearch reads ?case= safely', () => {

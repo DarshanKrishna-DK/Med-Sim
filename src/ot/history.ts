@@ -86,7 +86,7 @@ export function otHistoryPayload(report: OTReport, now = Date.now()): OTHistoryP
       safety_breach: report.safety.length ? { what: report.safety.map((s) => s.text).join(' '), guideline_ref: null } : null,
       highlights,
       improvements,
-      narrative: `OT drill, ${sc.title}: ${report.score}/100. ${evOk} of ${report.events.length} problems fixed or anticipated, WHO checklist ${report.checklistPct}%${report.avgResponseS !== null ? `, average response ${report.avgResponseS}s` : ''}${report.safety.length ? `, ${report.safety.length} safety error${report.safety.length > 1 ? 's' : ''}` : ''}.`,
+      narrative: `OT drill, ${sc.title}: ${report.score}/100. ${evOk} of ${report.events.length} problems fixed or anticipated, WHO checklist ${report.checklistPct}%${report.avgResponseS !== null ? `, average response ${report.avgResponseS}s` : ''}${report.safety.length ? `, ${report.safety.length} safety error${report.safety.length > 1 ? 's' : ''}` : ''}.${report.blood.length ? ` Blood: ${report.blood.map((b) => b.text).join(' ')}` : ''}`,
     },
     patientSnapshot: snapshot,
     mode: 'ot',

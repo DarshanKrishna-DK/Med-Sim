@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "patients": {
+    "ot-appendix": {"abo": "B", "rh": "+", "sample": "none", "antibodies": []},
+    "ot-lap-chole": {"abo": "A", "rh": "+", "sample": "valid", "antibodies": ["K"]},
+    "ot-lscs": {"abo": "O", "rh": "-", "sample": "valid", "antibodies": []}
+  },
+  "stock": [
+    {"unit": "K1041", "abo": "O", "rh": "-", "neg": ["K"]},
+    {"unit": "K1042", "abo": "O", "rh": "-", "neg": ["K"]},
+    {"unit": "K1043", "abo": "O", "rh": "-", "neg": []},
+    {"unit": "K1107", "abo": "O", "rh": "+", "neg": ["K"]},
+    {"unit": "K1108", "abo": "O", "rh": "+", "neg": []},
+    {"unit": "K1211", "abo": "A", "rh": "+", "neg": []},
+    {"unit": "K1212", "abo": "A", "rh": "+", "neg": ["K"]},
+    {"unit": "K1213", "abo": "A", "rh": "+", "neg": ["K"]},
+    {"unit": "K1220", "abo": "A", "rh": "-", "neg": ["K"]},
+    {"unit": "K1301", "abo": "B", "rh": "+", "neg": []},
+    {"unit": "K1302", "abo": "B", "rh": "+", "neg": ["K"]},
+    {"unit": "K1310", "abo": "B", "rh": "-", "neg": ["K"]},
+    {"unit": "K1401", "abo": "AB", "rh": "+", "neg": []}
+  ]
+}

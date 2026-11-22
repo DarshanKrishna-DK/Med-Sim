@@ -30,7 +30,8 @@ export interface Vitals {
 
 /** Everything the student can do in the theatre. Doses are in the drug's unit. */
 export type OTAction =
-  | { kind: 'fluid-bolus'; fluid: FluidId; volumeMl: number }
+  /** `emergency`: O negative straight away, without a cross-match (theatre room only). */
+  | { kind: 'fluid-bolus'; fluid: FluidId; volumeMl: number; emergency?: boolean }
   | { kind: 'fluid-rate'; fluid: FluidId; rateMlH: number }
   | { kind: 'fluid-stop' }
   | { kind: 'drug'; drug: DrugId; dose: number }
@@ -40,7 +41,11 @@ export type OTAction =
   | { kind: 'oxygen'; fio2: number }
   | { kind: 'pulse-check' }
   | { kind: 'cap-refill' }
-  | { kind: 'allergy-check' };
+  | { kind: 'allergy-check' }
+  /** The labelled cross-match sample the laboratory asked for. */
+  | { kind: 'send-sample' }
+  /** Bring the human consultant into the theatre room. */
+  | { kind: 'call-help' };
 
 export type ActionKind = OTAction['kind'];
 
@@ -56,6 +61,8 @@ export const STATION_OF: Record<ActionKind, StationId> = {
   'pulse-check': 'patient',
   'cap-refill': 'patient',
   'allergy-check': 'patient',
+  'send-sample': 'iv',
+  'call-help': 'patient',
 };
 
 export const STATION_LABEL: Record<StationId, string> = {

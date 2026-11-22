@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from llm_provider import chat, strip_think
 import lang as langmod
+from agentroom import theatre  # noqa: F401 - registers Theatre Sister Leela's side room
 
 log = logging.getLogger("medsim.ot")
 

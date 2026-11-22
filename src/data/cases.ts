@@ -184,3 +184,20 @@ export function registerRuntimeCase(
   registerCaseSpecialty(p.id, clinic);
   return true;
 }
+
+/** Change the chip of a runtime case (its review finished). */
+export function setRuntimeBadge(id: string, badge: { label: string; title: string }): void {
+  const i = CASES.findIndex((c) => c.id === id);
+  if (i >= 0) CASES[i] = { ...CASES[i], badge: badge.label, badgeTitle: badge.title };
+}
+
+/** Take a runtime case out of the library and the rosters. `getPatientCase` still knows it,
+ *  so a consultation that is already running, and its debrief, can finish. */
+export function removeRuntimeCase(id: string): void {
+  const i = CASES.findIndex((c) => c.id === id);
+  if (i >= 0) CASES.splice(i, 1);
+  const clinic = BY_ID.get(id)?.clinic;
+  for (const list of clinic ? [clinic, 'all-specialties' as ClinicId] : []) {
+    POLYCLINIC_CASES[list] = (POLYCLINIC_CASES[list] ?? []).filter((p) => p.id !== id);
+  }
+}

@@ -15,6 +15,8 @@ export interface CustomCaseWire extends Omit<PatientCase, 'source' | 'realCase'>
   synthetic?: boolean;
   createdVia?: string;
   createdAt?: string;
+  /** Set only when the case went through a review (backend/agentroom/casereview.py). */
+  reviewStatus?: string;
 }
 
 /** A custom case ready to register in the library. `patient` has no
@@ -25,9 +27,20 @@ export interface CustomCase {
   diagnosisLabels: Record<string, string>;
   /** e.g. "Created via Telegram by Darsh". */
   createdBy: string;
+  /** What the library shows: Telegram, or that nobody has reviewed it. */
+  badge: string;
+  badgeTitle: string;
 }
 
 export const CUSTOM_BADGE = 'Created on Telegram';
+export const UNREVIEWED_BADGE = 'Unreviewed';
+
+/** The chip on the card. Only in_review and rejected are hidden, and those never leave the server. */
+export function badgeFor(reviewStatus: unknown, createdBy: string): { badge: string; badgeTitle: string } {
+  if (reviewStatus === 'unreviewed') return { badge: UNREVIEWED_BADGE, badgeTitle: `${createdBy}. Published without a doctor's review` };
+  if (reviewStatus === 'approved') return { badge: CUSTOM_BADGE, badgeTitle: `${createdBy}. Reviewed and approved by a doctor` };
+  return { badge: CUSTOM_BADGE, badgeTitle: createdBy };
+}
 
 const SEVERITIES: ReadonlySet<Severity> = new Set(['critical', 'urgent', 'stable']);
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
@@ -80,6 +93,7 @@ export function parseCustomCase(raw: unknown, validClinics: ReadonlySet<string>)
   const rawLabels = (r.diagnosisLabels ?? {}) as Record<string, unknown>;
   for (const id of diagnosisOptions) labels[id] = isStr(rawLabels[id]) ? rawLabels[id] : id.replace(/-/g, ' ');
   const src = r.source as Record<string, unknown> | undefined;
+  const createdBy = src && isStr(src.title) ? src.title : CUSTOM_BADGE;
   return {
     patient: {
       id: r.id,
@@ -99,7 +113,8 @@ export function parseCustomCase(raw: unknown, validClinics: ReadonlySet<string>)
     },
     clinic: r.specialty,
     diagnosisLabels: labels,
-    createdBy: src && isStr(src.title) ? src.title : CUSTOM_BADGE,
+    createdBy,
+    ...badgeFor(r.reviewStatus, createdBy),
   };
 }
 
@@ -119,6 +134,31 @@ export function mergeCustomCases(
     out.push(c);
   }
   return out;
+}
+
+/** What changed among the cases already in the library: gone from the server (deleted, or
+ *  rejected after all), or with another badge. An answer we do not understand changes nothing. */
+export function reconcileCustomCases(
+  incoming: unknown,
+  shown: ReadonlyMap<string, string>,
+  validClinics: ReadonlySet<string>,
+): { removed: string[]; changed: CustomCase[] } {
+  if (!Array.isArray(incoming)) return { removed: [], changed: [] };
+  const now = new Map<string, CustomCase>();
+  const ids = new Set<string>();
+  for (const raw of incoming) {
+    const id = (raw as { id?: unknown } | null)?.id;
+    if (typeof id === 'string') ids.add(id);
+    const c = parseCustomCase(raw, validClinics);
+    if (c) now.set(c.patient.id, c);
+  }
+  return {
+    removed: [...shown.keys()].filter((id) => !ids.has(id)),
+    changed: [...shown].flatMap(([id, badge]) => {
+      const c = now.get(id);
+      return c && c.badge !== badge ? [c] : [];
+    }),
+  };
 }
 
 /** `?case=<id>` deep link (the Telegram bot's "open this patient" link). */

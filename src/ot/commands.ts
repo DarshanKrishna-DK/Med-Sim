@@ -83,10 +83,41 @@ const word = (alts: string) => new RegExp(String.raw`(?:^|\s)(?:${alts})(?=\s|$)
 const ON = word('on|start|starting|switch on|switching on|turn on|turning on|up|chalu|chalao|चालू|शुरू|ऑन');
 const OFF = word('off|stop|stopping|switch off|switching off|turn off|turning off|band|बंद|ऑफ');
 
-/** Parse one spoken or typed command. Returns null if nothing matched. */
-export function parseOTCommand(input: string): OTAction | null {
+// Theatre room orders, only understood while a room is connected.
+const HELP = /call (?:for )?(?:help|the consultant|a consultant|senior|the boss)|(?:need|get|send) (?:some )?help|consultant (?:ko )?(?:bula|call)|senior (?:ko )?(?:bula|call)|madad|sahayak? (?:bula|chahiye)|help (?:chahiye|beku|venum|kavali|pahije|lagbe)|मदद|सीनियर को बुला|कंसल्टेंट|ಸಹಾಯ|ಸೀನಿಯರ್|உதவி|సహాయం|మదద|मदत|সাহায্য/;
+const BLOOD = /\bblood\b|prbc|packed (?:red )?cells|\bprc\b|khoon|raktha?m?\b|खून|रक्त|ब्लड|ರಕ್ತ|ಬ್ಲಡ್|ரத்த|இரத்த|రక్త|బ్లడ్|রক্ত|ব্লাড/;
+const SAMPLE = /sample|specimen|cross ?match tube|सैंपल|सैम्पल|नमुना|नमूना|ಸ್ಯಾಂಪಲ್|ಮಾದರಿ|மாதிரி|శాంపిల్|నమూనా|নমুনা|স্যাম্পল/;
+const SEND = /\bsend|\bsent\b|bhej|kalis|kaluhis|anupp|pamp|pampu|pathav|patha|भेज|ಕಳುಹಿಸ|ಕಳಿಸ|அனுப்ப|పంప|पाठव|পাঠা/;
+const EMERGENCY = /emergency|o neg(?:ative)?\b|o minus|uncross|un cross|universal donor|इमरजेंसी|आपात|ओ नेगेटिव|ತುರ್ತು|ಒ ನೆಗೆಟಿವ್|அவசர|ஓ நெகட்டிவ்|అత్యవసర|ఓ నెగటివ్|आपत्कालीन|ओ निगेटिव्ह|জরুরি|ও নেগেটিভ/;
+
+const OTHER = /blood (?:pressure|loss|sugar|gas)|suction|sucker|cautery|diathermy|warmer|oxygen|fio2|rl|ringer|saline|सक्शन/;
+
+function parseRoomCommand(t: string): OTAction | null {
+  if (HELP.test(t)) return { kind: 'call-help' };
+  // An order for something else that happens to mention blood.
+  if (OTHER.test(t) || DRUG_WORDS.some((d) => d.re.test(t))) return null;
+  const blood = BLOOD.test(t);
+  if (SAMPLE.test(t) && (SEND.test(t) || /cross ?match|group|label/.test(t))) return { kind: 'send-sample' };
+  if (/\b(?:stop|slow)\b|\bband\b|बंद|रोक/.test(t)) return null;
+  const vol = /(\d{3,4})\s*(?:ml|mls|cc)?/.exec(t);
+  const volumeMl = vol ? Number(vol[1]) : 250;
+  if (EMERGENCY.test(t) && (blood || /o neg|o minus|नेगेटिव|निगेटिव्ह|ನೆಗೆಟಿವ್|நெகட்டிவ்|నెగటివ్|নেগেটিভ/.test(t))) {
+    return { kind: 'fluid-bolus', fluid: 'blood', volumeMl, emergency: true };
+  }
+  if (blood && !/ml ?\/ ?h|per h|an hour/.test(t) && (SEND.test(t) || /cross ?match|hang|start|give|unit|de do|चढ़ा|दो|ಕೊಡಿ|ಹಾಕಿ|கொடு|ఇవ్వ|ఎక్కించ|द्या|लावा|দিন|give/.test(t))) {
+    return { kind: 'fluid-bolus', fluid: 'blood', volumeMl };
+  }
+  return null;
+}
+
+/** Parse one spoken or typed command. Returns null if nothing matched. `room`: a theatre room is connected. */
+export function parseOTCommand(input: string, opts: { room?: boolean } = {}): OTAction | null {
   const t = clean(input);
   if (!t) return null;
+  if (opts.room) {
+    const a = parseRoomCommand(t);
+    if (a) return a;
+  }
 
   // Patient checks first: they rarely carry numbers.
   if (/allergy|wrist ?band|id band|name band|identity|एलर्जी|बैंड/.test(t)) return { kind: 'allergy-check' };

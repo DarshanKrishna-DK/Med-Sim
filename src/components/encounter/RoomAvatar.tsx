@@ -124,6 +124,66 @@ const ART: Record<RoomRole, { px: string[]; pal: Palette }> = {
       '.kuuuuggwuuuk.',
     ],
   },
+  // Dr Iyer: bald crown, white moustache, chalk-green coat.
+  teacher: {
+    pal: { k: K, h: '#e7e9ee', s: '#a86f48', e: K, m: '#6b2a20', u: '#2f6b5a', w: '#f7f6ef', y: '#ffd76a' },
+    px: [
+      '.....kkkk.....',
+      '...kkssssskk..',
+      '..kssssssssk..',
+      '..kssssssssk..',
+      '.khssssssssk..',
+      '.khssessesshk.',
+      '.khsssssssshk.',
+      '..ksshhhhssk..',
+      '..kssmmmmssk..',
+      '...kssssssk...',
+      '....kssssk....',
+      '..kuuwsswuuk..',
+      '.kuuuuyyuuuuk.',
+      '.kuuuuyyuuuuk.',
+    ],
+  },
+  // Priya: side plait, marigold sari border.
+  reception: {
+    pal: { k: K, h: '#1c120f', s: '#b9784f', e: K, m: '#8c2f3a', r: '#c2185b', u: '#7a3f9d', y: '#ffb347' },
+    px: [
+      '....kkkkkk....',
+      '..kkhhhhhhkk..',
+      '..khhhhhhhhk..',
+      '.khhhssrshhk..',
+      '.khhsssssshk..',
+      '.khsessesshk..',
+      '.khssssssshk..',
+      '.khhsssssshk..',
+      '.khhksmmskkk..',
+      '.khhkkssskk...',
+      '.khhkkssk.....',
+      '.kyhuusssuyk..',
+      '.kyyuuuuuyyuk.',
+      '.kuyyyuuyyuuk.',
+    ],
+  },
+  // Sister Leela: theatre cap and mask.
+  theatre: {
+    pal: { k: K, c: '#3f8f9a', C: '#5fb3bd', s: '#a86f48', e: K, w: '#dff1f2', u: '#2f7480' },
+    px: [
+      '....kkkkkk....',
+      '..kkccCCcckk..',
+      '.kccCccccCcck.',
+      '.kcccccccccck.',
+      '.kccccccccck..',
+      '..kssssssssk..',
+      '..ksessssesk..',
+      '..kwwwwwwwwk..',
+      '..kwwwwwwwwk..',
+      '...kwwwwwwk...',
+      '....kssssk....',
+      '..kuuwsswuuk..',
+      '.kuuuuwwuuuuk.',
+      '.kuuuuuuuuuuk.',
+    ],
+  },
 };
 
 const RECTS = Object.fromEntries(

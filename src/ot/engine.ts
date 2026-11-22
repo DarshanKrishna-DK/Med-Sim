@@ -2,6 +2,11 @@
 // the state and returns a new one; time only moves through `tick(state, dt)`,
 // so the same seed and inputs always give the same run (unit-tested in
 // scripts/test/ot-engine.test.ts). The React screen owns the clock.
+//
+// With a theatre room connected (`room`), packed cells wait for the laboratory
+// and sign-in waits for the pharmacist. What they answer is fed in as an event
+// (`theatreEvent`); what has to be asked comes out in `outbox`. Every wait has
+// its own fallback on the sim clock, so a drill never stalls.
 
 import {
   DRUGS,
@@ -45,6 +50,8 @@ export interface EventRun {
   atStation: boolean;
   reminded: boolean;
   attempts: Array<{ t: number; text: string; verdict: Verdict }>;
+  /** When the student acted, if the effect had to wait for somebody (blood): what the response time counts from. */
+  actedAt?: number;
   /** Vitals offset frozen at the moment of resolution (decays afterwards). */
   frozen: Partial<Record<keyof Vitals, number>> | null;
 }
@@ -52,7 +59,8 @@ export interface EventRun {
 export interface LogLine {
   id: number;
   t: number;
-  who: Speaker | 'you' | 'system';
+  /** 'leela': Theatre Sister Leela, for the room. She speaks for herself, so these lines are only shown. */
+  who: Speaker | 'you' | 'system' | 'leela';
   text: string;
   tone: Tone;
 }
@@ -101,6 +109,46 @@ export interface Transient {
   d: Partial<Record<'hr' | 'sbp' | 'dbp', number>>;
 }
 
+export type BloodStatus = 'waiting' | 'sample' | 'matching' | 'released' | 'refused' | 'unconfirmed' | 'emergency';
+
+export interface BloodRequest {
+  n: number;
+  action: Extract<OTAction, { kind: 'fluid-bolus' | 'fluid-rate' }>;
+  station: StationId | null;
+  askedAt: number;
+  /** The current wait started here (a sample request starts a new one). */
+  waitFrom: number;
+  status: BloodStatus;
+  group: string;
+  units: string[];
+  note: string;
+}
+
+/** How blood really went up: told in the report, never part of the marks. */
+export interface BloodNote {
+  how: 'crossmatched' | 'unconfirmed' | 'emergency' | 'refused';
+  t: number;
+  text: string;
+}
+
+export type RxStatus = 'none' | 'waiting' | 'release' | 'hold' | 'clarify' | 'unconfirmed';
+
+/** Something the theatre room has to be asked. The screen posts each one once. */
+export interface OutItem {
+  id: number;
+  kind: 'blood' | 'sample' | 'unconfirmed' | 'allergy' | 'help';
+  n?: number;
+  units?: number;
+  emergency?: boolean;
+  sbar?: string;
+}
+
+/** What came back from the theatre room. */
+export type TheatreEvent =
+  | { kind: 'blood'; n: number; status: 'sample' | 'matching' | 'released' | 'refused' | 'recorded'; group?: string; units?: string[]; text?: string }
+  | { kind: 'rx'; verdict: 'release' | 'hold' | 'clarify' | 'no_reply'; text?: string }
+  | { kind: 'help'; status: 'called' | 'unreachable' | 'replied'; name?: string; text?: string };
+
 export interface OTState {
   scenarioId: string;
   seed: number;
@@ -118,6 +166,14 @@ export interface OTState {
   log: LogLine[];
   nextLogId: number;
   allergyChecked: boolean;
+  /** A theatre room (BAND) is connected. Off: everything below stays unused. */
+  room: boolean;
+  blood: BloodRequest | null;
+  bloodNotes: BloodNote[];
+  rx: { status: RxStatus; askedAt: number; text: string };
+  help: { status: 'calling' | 'called' | 'unreachable' | 'replied'; askedAt: number; name: string; text: string } | null;
+  outbox: OutItem[];
+  nextOutId: number;
 }
 
 export interface ActContext {
@@ -136,6 +192,11 @@ export interface Feedback {
 export const LEAD_S = 6;
 /** Pause between the end of sign-in and the time-out (induction). */
 export const INDUCTION_S = 4;
+/** Packed cells go up without confirmation when the lab has not answered by then. */
+export const BLOOD_WAIT_S = 12;
+/** Sign-in goes on without the pharmacist's word after this long. */
+export const RX_WAIT_S = 12;
+const HELP_AGAIN_S = 20;
 const RECOVER_TAU = 7;
 const TEMP_TAU = 30;
 const TRANSIENT_TAU = 45;
@@ -224,7 +285,7 @@ export function antibioticGiven(s: OTState): boolean {
 
 // ───────── creation ─────────
 
-export function createOT(scenarioId: string, seed = 1): OTState {
+export function createOT(scenarioId: string, seed = 1, opts: { room?: boolean } = {}): OTState {
   const sc = scenarioById(scenarioId);
   const hasMaint = sc.events.some((e) => e.problem === 'maintenance');
   const s: OTState = {
@@ -271,6 +332,13 @@ export function createOT(scenarioId: string, seed = 1): OTState {
     log: [],
     nextLogId: 1,
     allergyChecked: false,
+    room: !!opts.room,
+    blood: null,
+    bloodNotes: [],
+    rx: { status: 'none', askedAt: 0, text: '' },
+    help: null,
+    outbox: [],
+    nextOutId: 1,
   };
   say(s, 'nurse', `${sc.patient.name} is on the table. ${sc.patient.procedure}.`, 'info');
   const first = checklistItems(sc, 'sign-in')[0];
@@ -514,7 +582,7 @@ export function fmtDose(drug: DrugId, dose: number): string {
 export function describeAction(a: OTAction): string {
   switch (a.kind) {
     case 'fluid-bolus':
-      return `${a.volumeMl} mL ${a.fluid} bolus running`;
+      return a.emergency ? `${a.volumeMl} mL emergency O negative running` : `${a.volumeMl} mL ${a.fluid} bolus running`;
     case 'fluid-rate':
       return `${FLUID_LABEL[a.fluid]} at ${a.rateMlH} mL/h`;
     case 'fluid-stop':
@@ -535,6 +603,10 @@ export function describeAction(a: OTAction): string {
       return 'Checking capillary refill';
     case 'allergy-check':
       return 'Reading the ID and allergy band';
+    case 'send-sample':
+      return 'Sending the labelled cross-match sample';
+    case 'call-help':
+      return 'Calling for help';
   }
 }
 
@@ -586,6 +658,8 @@ function applyEquipment(s: OTState, a: OTAction): string | null {
       s.allergyChecked = true;
       return `Wrist band: ${sc.patient.name}, ${sc.patient.age}${sc.patient.sex}. Allergy: ${sc.patient.allergy}.`;
     case 'drug':
+    case 'send-sample':
+    case 'call-help':
       return null;
   }
 }
@@ -604,8 +678,16 @@ function resolve(s: OTState, ev: EventRun, outcome: Outcome, ctx: ActContext | n
 export function act(state: OTState, action: OTAction, ctx: ActContext = { station: null }): { state: OTState; feedback: Feedback } {
   const s = clone(state);
   if (s.stage === 'done') return { state: s, feedback: { tone: 'info', text: 'The case is over.' } };
+  if (action.kind === 'send-sample') return { state: s, feedback: sendSample(s) };
+  if (action.kind === 'call-help') return { state: s, feedback: callHelp(s) };
+  if (s.room && isBlood(action)) return askForBlood(s, action, ctx);
+  return perform(s, action, ctx);
+}
+
+/** The action takes effect now. `s` is already a copy. `askedAt`: it was ordered earlier and had to wait. */
+function perform(s: OTState, action: OTAction, ctx: ActContext, askedAt?: number): { state: OTState; feedback: Feedback } {
   const result = applyEquipment(s, action);
-  say(s, 'you', describeAction(action) + '.', 'info');
+  if (askedAt === undefined) say(s, 'you', describeAction(action) + '.', 'info');
   if (result) say(s, 'system', result, 'info');
 
   let drugRec: GivenDrug | null = null;
@@ -632,6 +714,7 @@ export function act(state: OTState, action: OTAction, ctx: ActContext = { statio
     const def = eventDef(s, hit.ev.id);
     hit.ev.attempts.push({ t: round1(s.t), text: describeAction(action), verdict: hit.j.verdict });
     resolve(s, hit.ev, hit.j.verdict === 'correct' ? 'correct' : 'partial', ctx);
+    if (askedAt !== undefined) hit.ev.actedAt = askedAt;
     say(s, def.speaker, def.ack, 'good');
     if (hit.j.note) notes.push(hit.j.note);
     feedback = { tone: hit.j.verdict === 'correct' ? 'good' : 'warn', text: hit.j.verdict === 'correct' ? `Correct: ${PROBLEMS[hit.ev.problem].label.toLowerCase()} fixed.` : `Partly right. ${hit.j.note}` };
@@ -699,6 +782,11 @@ export function answerChecklist(state: OTState, optionId: string): { state: OTSt
   const ok = optionId === right;
   s.checklist[item.id] = { answer: optionId, ok, t: round1(s.t) };
   say(s, 'you', opt.label + '.', 'info');
+  if (s.room && item.id === 'allergy' && s.rx.status === 'none') {
+    s.rx = { status: 'waiting', askedAt: s.t, text: '' };
+    post(s, { kind: 'allergy' });
+    say(s, 'leela', 'Asking pharmacy to check the antibiotic against the recorded allergy.', 'info');
+  }
   let feedback: Feedback;
   if (ok) {
     feedback = { tone: 'good', text: 'Confirmed.' };
@@ -788,7 +876,13 @@ export function tick(state: OTState, dt: number): OTState {
     eq.infusedMl += d;
   }
 
-  if (s.stage === 'induction' && s.t - s.stageAt >= INDUCTION_S) {
+  if (bloodOpen(s) && s.t - s.blood!.waitFrom >= BLOOD_WAIT_S) issueUnconfirmed(s);
+  if (s.rx.status === 'waiting' && s.t - s.rx.askedAt >= RX_WAIT_S) {
+    s.rx = { ...s.rx, status: 'unconfirmed', text: 'Pharmacy has not answered. The allergy check is not confirmed.' };
+    say(s, 'leela', s.rx.text, 'warn');
+  }
+
+  if (s.stage === 'induction' && s.t - s.stageAt >= INDUCTION_S && s.rx.status !== 'waiting') {
     say(s, 'anaesthetist', sc.inductionLine, 'info');
     s.stage = 'time-out';
     s.stageAt = s.t;
@@ -819,7 +913,7 @@ export function tick(state: OTState, dt: number): OTState {
         ev.reminded = true;
         say(s, def.speaker, def.remind, 'warn');
       }
-      if (since >= def.deadlineS) {
+      if (since >= def.deadlineS && !waitingBloodTreats(s, ev)) {
         resolve(s, ev, 'missed', null);
         takeOver(s, ev);
       }
@@ -894,6 +988,182 @@ function takeOver(s: OTState, ev: EventRun) {
   say(s, who, `I will do it myself: ${p.model.charAt(0).toLowerCase()}${p.model.slice(1)}.`, 'bad');
 }
 
+// ───────── theatre room ─────────
+
+const isBlood = (a: OTAction): a is BloodRequest['action'] =>
+  (a.kind === 'fluid-bolus' && a.fluid === 'blood' && a.volumeMl > 0) || (a.kind === 'fluid-rate' && a.fluid === 'blood' && a.rateMlH > 0);
+
+/** The laboratory still has to answer. */
+export function bloodOpen(s: OTState): boolean {
+  return !!s.blood && (s.blood.status === 'waiting' || s.blood.status === 'sample' || s.blood.status === 'matching');
+}
+
+/** Cells asked for in time keep their problem open until they run or the wait runs out. */
+function waitingBloodTreats(s: OTState, ev: EventRun): boolean {
+  if (!bloodOpen(s) || !s.blood || ev.callAt === null) return false;
+  if (s.blood.askedAt > ev.callAt + eventDef(s, ev.id).deadlineS) return false;
+  const v = judge(s, ev, s.blood.action).verdict;
+  return v === 'correct' || v === 'partial';
+}
+
+function post(s: OTState, item: Omit<OutItem, 'id'>) {
+  s.outbox.push({ id: s.nextOutId++, ...item });
+  if (s.outbox.length > 20) s.outbox.splice(0, s.outbox.length - 20);
+}
+
+/** Switch the theatre room on or off (it connects a moment after the drill starts). */
+export function connectRoom(state: OTState, on: boolean): OTState {
+  if (state.room === on) return state;
+  const s = clone(state);
+  s.room = on;
+  return s;
+}
+
+function askForBlood(s: OTState, action: BloodRequest['action'], ctx: ActContext): { state: OTState; feedback: Feedback } {
+  const emergency = action.kind === 'fluid-bolus' && !!action.emergency;
+  const cur = s.blood;
+  if (!emergency && cur && bloodOpen(s)) {
+    return { state: s, feedback: { tone: 'info', text: cur.status === 'sample' ? 'The lab is waiting for a labelled sample.' : 'Already waiting for the lab cross-match.' } };
+  }
+  // Compatible cells for this patient are already in theatre.
+  if (!emergency && cur?.status === 'released') return perform(s, action, ctx);
+  const n = (cur?.n ?? 0) + 1;
+  s.blood = {
+    n, action, station: ctx.station, askedAt: round1(s.t), waitFrom: s.t, status: emergency ? 'emergency' : 'waiting',
+    group: emergency ? 'O negative' : '', units: [], note: '',
+  };
+  post(s, { kind: 'blood', n, units: action.kind === 'fluid-bolus' && action.volumeMl > 350 ? 2 : 1, emergency });
+  if (emergency) {
+    s.bloodNotes.push({ how: 'emergency', t: round1(s.t), text: 'Emergency O negative was given without a cross-match and recorded with the lab.' });
+    say(s, 'leela', 'Emergency O negative is going up without cross-match. Recording it with the lab.', 'warn');
+    return perform(s, action, ctx);
+  }
+  say(s, 'you', 'Send packed red cells.', 'info');
+  say(s, 'leela', 'Waiting for Lab cross-match.', 'info');
+  return { state: s, feedback: { tone: 'info', text: 'Waiting for Lab cross-match. The cells run when the lab releases them.' } };
+}
+
+function runBlood(s: OTState) {
+  const b = s.blood!;
+  perform(s, b.action, { station: b.station }, b.askedAt);
+}
+
+function issueUnconfirmed(s: OTState) {
+  const b = s.blood!;
+  b.note = b.status === 'sample' ? 'no sample was sent' : 'the lab had not answered';
+  b.status = 'unconfirmed';
+  s.bloodNotes.push({ how: 'unconfirmed', t: round1(s.t), text: `Packed cells were issued without cross-match confirmation: ${b.note}.` });
+  say(s, 'leela', `Packed cells issued without cross-match confirmation: ${b.note}.`, 'warn');
+  post(s, { kind: 'unconfirmed', n: b.n });
+  runBlood(s);
+}
+
+function sendSample(s: OTState): Feedback {
+  if (!s.blood || s.blood.status !== 'sample') return { tone: 'info', text: 'The lab has not asked for a sample.' };
+  s.blood.status = 'matching';
+  s.blood.waitFrom = s.t;
+  post(s, { kind: 'sample', n: s.blood.n });
+  say(s, 'you', 'Labelled cross-match sample sent.', 'info');
+  return { tone: 'good', text: 'Sample labelled at the bedside and sent.' };
+}
+
+/** One line for the consultant: no name, only what they need. */
+export function sbarLine(s: OTState): string {
+  const sc = scenarioOf(s);
+  const v = vitalsAt(s);
+  const open = activeCalls(s)[0];
+  const problem = open ? PROBLEMS[open.run.problem].label : 'Help needed';
+  const blood = s.blood && s.blood.status !== 'refused' ? ` Blood: ${s.blood.status}.` : '';
+  return (
+    `S: ${problem}. HR ${v.hr}, BP ${v.sbp}/${v.dbp}, SpO2 ${v.spo2}. ` +
+    `B: ${sc.patient.age}${sc.patient.sex}, ${sc.patient.procedure}, ${sc.anaesthesia === 'GA' ? 'general anaesthesia' : 'spinal'}. ` +
+    `A: ${phaseLabel(s)}${open ? `, problem open ${Math.round(open.sinceS)} s` : ''}.${blood} R: please advise now or come to theatre.`
+  );
+}
+
+function callHelp(s: OTState): Feedback {
+  if (!s.room) return { tone: 'info', text: 'No consultant can be reached from this theatre. Use the team here.' };
+  if (s.help && (s.help.status === 'calling' || s.t - s.help.askedAt < HELP_AGAIN_S)) return { tone: 'info', text: 'Help has already been called.' };
+  s.help = { status: 'calling', askedAt: s.t, name: s.help?.name ?? '', text: '' };
+  const sbar = sbarLine(s);
+  post(s, { kind: 'help', sbar });
+  say(s, 'you', `Call for help. ${sbar}`, 'call');
+  return { tone: 'good', text: 'Calling the consultant with this: ' + sbar };
+}
+
+/** Feed one answer from the theatre room into the drill. */
+export function theatreEvent(state: OTState, ev: TheatreEvent): OTState {
+  if (state.stage === 'done') return state;
+  const s = clone(state);
+  if (ev.kind === 'rx') {
+    if (s.rx.status === 'none') return state;
+    const text = ev.text?.trim() ?? '';
+    if (ev.verdict === 'no_reply') {
+      if (s.rx.status !== 'waiting') return state;
+      s.rx = { ...s.rx, status: 'unconfirmed', text: 'Pharmacy has not answered. The allergy check is not confirmed.' };
+      say(s, 'leela', s.rx.text, 'warn');
+    } else {
+      if (s.rx.status === ev.verdict) return state;
+      s.rx = { ...s.rx, status: ev.verdict, text };
+      say(s, 'leela', `Pharmacist Meera: ${text || (ev.verdict === 'release' ? 'the antibiotic can be given.' : 'do not give it before it is settled.')}`, ev.verdict === 'release' ? 'good' : 'warn');
+    }
+    return s;
+  }
+  if (ev.kind === 'help') {
+    if (!s.help) return state;
+    s.help = { ...s.help, status: ev.status, name: ev.name ?? s.help.name, text: ev.status === 'replied' ? ev.text ?? '' : s.help.text };
+    const who = s.help.name || 'The consultant';
+    if (ev.status === 'called') say(s, 'leela', `${who} has been called and has your SBAR.`, 'info');
+    else if (ev.status === 'unreachable') say(s, 'leela', 'The consultant could not be reached. Carry on with the team here.', 'warn');
+    else say(s, 'leela', `${who}: ${ev.text ?? ''}`, 'call');
+    return s;
+  }
+  const b = s.blood;
+  if (!b || b.n !== ev.n) return state;
+  if (ev.status === 'recorded') {
+    if (b.status !== 'emergency' || b.units.length) return state;
+    b.units = ev.units ?? [];
+    say(s, 'leela', `Lab has recorded the emergency issue${b.units.length ? ` (${b.units.join(', ')})` : ''}. Send a sample for a retrospective cross-match.`, 'info');
+    return s;
+  }
+  if (b.status === 'unconfirmed' && ev.status === 'released') {
+    if (b.group) return state;
+    b.group = ev.group ?? '';
+    b.units = ev.units ?? [];
+    say(s, 'leela', `Lab confirms afterwards: compatible, ${b.group || 'group checked'}.`, 'info');
+    return s;
+  }
+  if (!bloodOpen(s)) return state;
+  switch (ev.status) {
+    case 'sample':
+      if (b.status !== 'waiting') return state;
+      b.status = 'sample';
+      b.waitFrom = s.t;
+      say(s, 'leela', 'Lab has no valid sample. Send a labelled cross-match sample.', 'call');
+      return s;
+    case 'matching':
+      if (b.status !== 'sample') return state;
+      b.status = 'matching';
+      b.waitFrom = s.t;
+      return s;
+    case 'released':
+      b.status = 'released';
+      b.group = ev.group ?? '';
+      b.units = ev.units ?? [];
+      s.bloodNotes.push({ how: 'crossmatched', t: round1(s.t), text: `Cross-matched cells released by the lab${b.group ? ` (${b.group})` : ''} after ${Math.round(s.t - b.askedAt)} s.` });
+      say(s, 'leela', `Cross-match released${b.units.length ? `: ${b.units.join(', ')}` : ''}${b.group ? `, patient ${b.group}` : ''}. Cells running.`, 'good');
+      runBlood(s);
+      return s;
+    case 'refused':
+      b.status = 'refused';
+      b.note = ev.text ?? '';
+      s.bloodNotes.push({ how: 'refused', t: round1(s.t), text: `The lab did not release blood${b.note ? `: ${b.note}` : '.'}` });
+      say(s, 'leela', b.note || 'The lab did not release any blood.', 'bad');
+      return s;
+  }
+  return state;
+}
+
 // ───────── report ─────────
 
 export interface EventScore {
@@ -938,13 +1208,15 @@ export interface OTReport {
   safety: SafetyError[];
   avgResponseS: number | null;
   durationS: number;
+  /** How blood went up, for the narrative only. */
+  blood: BloodNote[];
 }
 
 export function scoreEvent(ev: EventRun, def: OTEventDef): EventScore {
   const p = PROBLEMS[ev.problem];
   const wrong = ev.attempts.filter((a) => a.verdict === 'wrong').length;
   const responseS = ev.resolvedAt !== null && ev.callAt !== null && ev.outcome !== 'missed' && ev.outcome !== 'prevented'
-    ? round1(Math.max(0, ev.resolvedAt - ev.callAt))
+    ? round1(Math.max(0, (ev.actedAt ?? ev.resolvedAt) - ev.callAt))
     : null;
   let points = 0;
   const outcome: Outcome = ev.outcome ?? 'missed';
@@ -1011,6 +1283,7 @@ export function buildReport(s: OTState): OTReport {
     safety: s.safety,
     avgResponseS: times.length ? round1(times.reduce((a, b) => a + b, 0) / times.length) : null,
     durationS: Math.round(s.t),
+    blood: s.bloodNotes,
   };
 }
 

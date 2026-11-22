@@ -11,10 +11,14 @@ import asyncio
 import os
 from typing import Any, Optional
 
-from . import analytes
+from . import analytes, casechecks
+from . import dept_lines  # noqa: F401 - adds the theatre and reading room lines
 from . import dept_phrases as phrases
-from .base import LAB, PHARMACIST, DepartmentAdapter, Records, Room, Turn, llm_answer, text_lang, two_sentences
+from .base import LAB, PHARMACIST, THEATRE, DepartmentAdapter, Pending, Records, Room, Turn, llm_answer, text_lang, two_sentences
+from .bloodbank import BloodBank, Patient, compatible, label, parse_group
 from .protocol import Handoff
+
+SAMPLE_WAIT_S = 60.0  # how long a request waits for theatre to send a sample
 
 # Tests that carry renal function, best first.
 RENAL_TESTS = ("bmp",)
@@ -33,6 +37,13 @@ def turnaround_s(count: int) -> float:
         return max(0.0, min(20.0, float(raw))) if raw else min(5.0, 1.5 + 0.5 * max(1, count))
     except ValueError:
         return 2.0
+
+
+def crossmatch_s(antibodies: bool, fresh_sample: bool) -> float:
+    """Seconds a cross-match takes (4 to 6): an antibody or a sample to group first makes it longer."""
+    if os.environ.get("LAB_TURNAROUND_S", "").strip():
+        return turnaround_s(1)
+    return 4.0 + (1.0 if antibodies else 0.0) + (1.0 if fresh_sample else 0.0)
 
 
 def spoken_results(results: list[dict[str, Any]], unknown: list[str], lang: str, critical_key: str = "res_critical") -> str:
@@ -74,11 +85,19 @@ def human_line(results: list[dict[str, Any]], unknown: list[str]) -> str:
 
 class LabAdapter(DepartmentAdapter):
     role = LAB
-    handles = frozenset({("request", "run_test"), ("request", "ask"), ("query", "renal_function")})
+    handles = frozenset({("request", "run_test"), ("request", "ask"), ("query", "renal_function"), ("request", "crossmatch"),
+                         ("request", "case_review")})
 
     def __init__(self, owner: str = "", **kw: Any) -> None:
         super().__init__(owner, **kw)
         self._records: Optional[Records] = None
+        self._bank: Optional[BloodBank] = None
+
+    @property
+    def bank(self) -> BloodBank:
+        if self._bank is None:
+            self._bank = BloodBank()
+        return self._bank
 
     @property
     def records(self) -> Records:
@@ -105,6 +124,10 @@ class LabAdapter(DepartmentAdapter):
             await self.run(turn, h)
         elif h.action == "renal_function":
             await self.renal(turn, h)
+        elif h.action == "crossmatch":
+            await self.crossmatch(turn, h)
+        elif h.action == "case_review":
+            await self.case_review(turn, h)
         else:
             await self.answer(turn, h)
 
@@ -161,6 +184,119 @@ class LabAdapter(DepartmentAdapter):
                     break
         turn.tool_done("Kidney function found" if data["available"] else "No kidney function on record", bool(data["available"]))
         await turn.reply(data["text"], "answer", "renal_function", h.ref, data=data)
+
+    # ── blood for theatre ────────────────────────────────────────────────────
+    async def crossmatch(self, turn: Turn, h: Handoff) -> None:
+        """Group, screen and cross-match before any unit leaves; emergency O negative goes at once, recorded."""
+        d = h.data
+        try:
+            units = max(1, min(4, int(d.get("units") or 1)))
+        except (TypeError, ValueError):
+            units = 1
+        st = {"caseId": str(d.get("caseId") or "")[:80], "units": units, "unitGroup": str(d.get("unitGroup") or "")[:20],
+              "requester": turn.sender_id}
+        if d.get("emergency") is True:
+            await self._emergency(turn, h.ref, units)
+            return
+        p = self.bank.patient(st["caseId"])
+        turn.tool("check_sample", "Checking the group and screen sample", units=units)
+        if p is None or p.sample != "valid":
+            turn.tool_done("No valid sample for this patient", False)
+            q = "I have no valid group and screen sample for this patient. Please send a labelled cross-match sample."
+            if await turn.ask_department(
+                    THEATRE, q, Handoff(kind="query", action="crossmatch", ref=h.ref, enc=turn.enc, lang=turn.lang,
+                                        spoken=phrases.say("xm_sample", turn.lang), data={"question": q, "needs": "sample"}),
+                    requester=turn.sender_id, state=st, timeout=SAMPLE_WAIT_S, target_id=turn.sender_id):
+                return
+            await self._no_blood(turn, h.ref, "no valid sample")
+            return
+        turn.tool_done("Valid group and screen on file")
+        await self._issue(turn, h.ref, p, st, fresh=False)
+
+    async def resume(self, turn: Turn, p: Pending, h: Handoff) -> None:
+        if p.action != "crossmatch":
+            return
+        turn.sender_id = p.requester
+        patient = self.bank.patient(p.state["caseId"])
+        if h.data.get("sample") is not True or patient is None:
+            await self._no_blood(turn, p.ref, "no sample was sent" if patient is not None else "the sample could not be matched to a patient")
+            return
+        turn.thought("Sample received, label checked against the request")
+        await self._issue(turn, p.ref, patient, p.state, fresh=True)
+
+    async def on_wait_timeout(self, turn: Turn, p: Pending) -> None:
+        if p.action == "crossmatch":
+            await self._no_blood(turn, p.ref, "no sample was sent")
+
+    @staticmethod
+    def _used(room: Room) -> list[str]:
+        return room.data.setdefault("unitsIssued", [])
+
+    async def _issue(self, turn: Turn, ref: str, p: Patient, st: dict[str, Any], fresh: bool) -> None:
+        group, anti = label(*p.group), ", ".join(f"anti-{a}" for a in p.antibodies)
+        turn.tool("group_and_screen", "Grouping and antibody screen" if fresh else "Checking group and antibody screen")
+        turn.tool_done(f"{group}, antibody screen " + (f"positive ({anti})" if anti else "negative"))
+        offered = parse_group(st.get("unitGroup"))
+        if offered and not compatible(p.group, offered):
+            v = label(*offered)
+            turn.tool_done(f"{v} is not compatible with {group}", False)
+            await turn.reply(f"NOT RELEASED. {v} red cells are incompatible with this patient ({group}).", "result", "crossmatch", ref,
+                             spoken=phrases.say("xm_incompatible", turn.lang, v=v, g=group), to=st["requester"],
+                             data={"status": "incompatible", "compatible": False, "group": group, "offered": v, "units": []})
+            return
+        chosen = self.bank.choose(p, st["units"], self._used(turn.room))
+        if not chosen:
+            await self._no_blood(turn, ref, f"no compatible unit in stock for {group}", group)
+            return
+        turn.tool("crossmatch", "Cross-matching the units", units=[u["unit"] for u in chosen])
+        wait = crossmatch_s(bool(anti), fresh)
+        if wait:
+            await asyncio.sleep(wait)
+        turn.tool_done(f"{len(chosen)} unit(s) compatible")
+        self._used(turn.room).extend(u["unit"] for u in chosen)
+        units = [{"unit": u["unit"], "group": label(u["abo"], u["rh"])} for u in chosen]
+        notes = [f"{anti[0].upper()}{anti[1:]} present, antigen negative units chosen."] if anti else []
+        if len(chosen) < st["units"]:
+            notes.append(f"Only {len(chosen)} of {st['units']} units available.")
+        text = " ".join([f"Cross-match compatible. Patient {group}. Released: " + ", ".join(f"{u['unit']} ({u['group']})" for u in units) + ".", *notes])
+        await turn.reply(text, "result", "crossmatch", ref, to=st["requester"],
+                         spoken=phrases.say("xm_released", turn.lang, n=len(units), g=units[0]["group"]),
+                         data={"status": "released", "compatible": True, "group": group, "units": units,
+                               "antibodies": list(p.antibodies), "freshSample": fresh, "notes": notes})
+
+    async def _emergency(self, turn: Turn, ref: str, count: int) -> None:
+        chosen = self.bank.emergency(count, self._used(turn.room))
+        if not chosen:
+            await self._no_blood(turn, ref, "no O negative left in stock")
+            return
+        self._used(turn.room).extend(u["unit"] for u in chosen)
+        turn.tool("emergency_issue", "Recording the emergency O negative issue", units=[u["unit"] for u in chosen])
+        turn.tool_done("Issued without cross-match, recorded")
+        units = [{"unit": u["unit"], "group": label(u["abo"], u["rh"])} for u in chosen]
+        await turn.reply("Emergency O negative recorded as issued WITHOUT cross-match: " + ", ".join(u["unit"] for u in units)
+                         + ". Send a sample for a retrospective cross-match.", "result", "crossmatch", ref,
+                         spoken=phrases.say("xm_emergency", turn.lang),
+                         data={"status": "emergency", "compatible": None, "group": "", "units": units,
+                               "notes": ["Retrospective cross-match needed."]})
+
+    async def _no_blood(self, turn: Turn, ref: str, why: str, group: str = "") -> None:
+        turn.tool_done(f"Not released: {why}", False)
+        await turn.reply(f"No blood released: {why}.", "result", "crossmatch", ref, spoken=phrases.say("xm_none", turn.lang),
+                         data={"status": "unavailable", "compatible": None, "group": group, "units": [], "reason": why})
+
+    # ── newly authored cases ─────────────────────────────────────────────────
+    async def case_review(self, turn: Turn, h: Handoff) -> None:
+        """Are the case's results plausible, flagged correctly, and able to show the stated diagnosis?"""
+        turn.tool("review_results", "Checking the results against reference ranges")
+        findings = casechecks.review_results(h.data, set(self.records.names))
+        hard = any(f["level"] == "hard" for f in findings)
+        verdict = "hold" if hard else "clarify" if findings else "release"
+        turn.tool_done(f"{len(findings)} point(s) raised" if findings else "Results are plausible", not hard)
+        lead = {"hold": "Results are NOT plausible as written.", "clarify": "Results need a look.",
+                "release": "Results are plausible and the diagnosis can be tested."}[verdict]
+        text = " ".join([lead, *[f["detail"] + "." for f in findings[:6]]])
+        await turn.reply(text, "verdict", "case_review", h.ref,
+                         data={"verdict": verdict, "caseId": str(h.data.get("caseId") or "")[:80], "findings": findings[:10], "reason": text[:600]})
 
     # ── questions ────────────────────────────────────────────────────────────
     async def _answer_text(self, room: Room, question: str, lang: str, held: Any = None) -> str:

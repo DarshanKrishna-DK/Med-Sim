@@ -18,7 +18,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Optional
 
-from . import analytes
+from . import analytes, casechecks, drugquestion
+from . import dept_lines  # noqa: F401 - adds the theatre and reading room lines
 from . import dept_phrases as phrases
 from .answers import PREGNANT, go_ahead, yes_no
 from .base import (
@@ -256,6 +257,8 @@ INTERACTIONS: tuple[tuple[tuple[str, ...], tuple[str, ...], str, str], ...] = (
     (("acei",), ("arb",), "hold", "an ACE inhibitor with an ARB can cause hyperkalaemia and kidney injury"),
     (("lithium",), ("nsaid", "acei", "arb", "thiazide"), "hold", "this raises lithium levels"),
     (("warfarin",), ("metronidazole", "sulfa", "fluoroquinolone", "macrolide"), "hold", "this antibiotic raises INR on warfarin"),
+    (("warfarin",), ("tetracycline",), "caution", "doxycycline can raise the INR on warfarin, check INR in 3 to 5 days"),
+    (("warfarin",), ("tramadol",), "caution", "tramadol can raise the INR on warfarin, check INR in 3 to 5 days"),
     (("levodopa",), ("dopamine_blocker",), "hold", "a dopamine blocker worsens Parkinson's disease"),
     (("betablocker",), ("ratelimiting_ccb",), "hold", "a beta blocker with verapamil or diltiazem can cause heart block"),
     (("simvastatin",), ("macrolide",), "hold", "a macrolide raises simvastatin levels and the risk of rhabdomyolysis"),
@@ -554,7 +557,7 @@ def check_local(rx: Rx) -> list[Finding]:
             fwd = set(a) & ctags and set(b) & rx.tags
             back = set(b) & ctags and set(a) & rx.tags
             if fwd or back:
-                out.append(_f(level, "interaction", cname, f"with {cname}: {why}"))
+                out.append(_f(level, "inr" if "INR" in why else "interaction", cname, f"with {cname}: {why}"))
                 break
     # pregnancy
     if rx.pregnancy == "yes":
@@ -705,9 +708,51 @@ SYSTEM = (
 )
 
 
+@dataclass
+class TheatreCheck:
+    """The recorded allergy against the drugs drawn up in theatre."""
+
+    verdict: str                       # release | hold | clarify, for the drug asked about
+    drug: str
+    top: Optional[Finding]
+    avoid: list[str]                   # recorded allergens, by name
+    rows: list[dict[str, str]]         # every drug on the trolley: {name, verdict, reason}
+
+
+def check_theatre(data: dict[str, Any], formulary: Formulary) -> TheatreCheck:
+    allergies = str(data.get("allergies") or "")[:500]
+    p = data.get("patient") if isinstance(data.get("patient"), dict) else {}
+    drugs = [d for d in data.get("drugs") or [] if isinstance(d, dict)][:12] if isinstance(data.get("drugs"), list) else []
+    asked = str(data.get("drug") or (drugs[0].get("name") if drugs else "") or "")[:80]
+    if asked and not any(str(d.get("name")) == asked for d in drugs):
+        drugs.insert(0, {"name": asked})
+    rows: list[dict[str, str]] = []
+    top: Optional[Finding] = None
+    verdict = "release" if asked else "clarify"
+    for d in drugs:
+        name = str(d.get("name") or "")[:80]
+        rx = build_rx("theatre", {"medicationId": str(d.get("id") or name).lower()[:60], "medication": name, "dose": "", "duration": "", "caseId": "",
+                                  "patient": {"age": p.get("age"), "gender": p.get("gender"), "allergies": allergies}}, formulary)
+        rx.known, rx.topical = True, False
+        # Single anaesthetic doses: only what the allergy record decides belongs here.
+        found = [f for f in check_local(rx) if f.code in ("allergy", "cross")]
+        v, _, worst = decide(found)
+        rows.append({"name": name, "verdict": v, "reason": _article([f.detail for f in worst[:2]])})
+        if name == asked:
+            verdict, top = v, worst[0] if worst else None
+    avoid = sorted(allergy_tags(allergies))
+    for _, name, tags in formulary.mentioned(allergies):
+        word = re.split(r"[\s/\d]", name.lower())[0]
+        m = re.search(re.escape(word), allergies.lower())
+        if m and not _negated(allergies.lower(), m.start(), m.end()) and not tags & set(avoid):
+            avoid.append(word)
+    return TheatreCheck(verdict, asked, top, avoid, rows)
+
+
 class PharmacistAdapter(DepartmentAdapter):
     role = PHARMACIST
-    handles = frozenset({("request", "verify_rx"), ("request", "ask"), ("note", "critical_value")})
+    handles = frozenset({("request", "verify_rx"), ("request", "ask"), ("note", "critical_value"), ("request", "theatre_allergy"),
+                         ("request", "case_review")})
 
     def __init__(self, owner: str = "", lab_wait: float = LAB_WAIT_S, **kw: Any) -> None:
         super().__init__(owner, **kw)
@@ -747,6 +792,10 @@ class PharmacistAdapter(DepartmentAdapter):
             await self.verify(turn, h)
         elif h.action == "ask":
             await self.answer(turn, h)
+        elif h.action == "theatre_allergy":
+            await self.theatre(turn, h)
+        elif h.action == "case_review":
+            await self.case_review(turn, h)
         else:
             await self.critical(turn, h)
 
@@ -765,7 +814,8 @@ class PharmacistAdapter(DepartmentAdapter):
         room = turn.room
         recent = [(m, v["name"]) for m, v in self.verdicts(room).items()
                   if v["verdict"] == "release" and time.monotonic() - v["at"] < 60 and v["ref"] != h.ref and v["at"]]
-        rx = build_rx(h.ref, h.data, self.formulary, [(m, n) for m, n in recent if m != str(h.data.get("medicationId") or "")])
+        extra = [(m, n) for m, n in recent + self._co_meds(room) if m != str(h.data.get("medicationId") or "")]
+        rx = build_rx(h.ref, h.data, self.formulary, extra)
         room.data["osce"] = rx.osce
         turn.tool("check_formulary", f"Checking {rx.name or 'the order'} against the formulary", medicationId=rx.medication_id)
         ext_task = asyncio.ensure_future(self._external(turn, rx)) if rx.name else None
@@ -813,6 +863,10 @@ class PharmacistAdapter(DepartmentAdapter):
             requester=turn.sender_id, state={"rx": rx}, timeout=self.lab_wait)
 
     async def resume(self, turn: Turn, p: Pending, h: Handoff) -> None:
+        if "ask" in p.state:
+            turn.tool_done("Kidney function received from the laboratory", bool(h.data.get("available")))
+            await self._finish_ask(turn, p, h.data)
+            return
         rx: Rx = p.state["rx"]
         if h.action == "renal_function":
             rx.renal = h.data
@@ -866,6 +920,10 @@ class PharmacistAdapter(DepartmentAdapter):
         await self.give_verdict(turn, rx, p.requester, tries=p.state.get("tries", 0))
 
     async def on_wait_timeout(self, turn: Turn, p: Pending) -> None:
+        if "ask" in p.state:
+            turn.thought("No answer from the laboratory, answering without it")
+            await self._finish_ask(turn, p, None)
+            return
         rx: Rx = p.state["rx"]
         if p.state.get("clarify"):
             return  # the verdict is already 'clarify'; the drug stays off the prescription
@@ -932,6 +990,42 @@ class PharmacistAdapter(DepartmentAdapter):
                                       state={"rx": rx, "clarify": top[0].code, "tries": tries + 1}), QUESTION_WAIT_S)
         await turn.reply(text, "verdict", "verify_rx", rx.ref, spoken=spoken, data=data, to=to)
 
+    # ── theatre: the sign-in allergy question ────────────────────────────────
+    async def theatre(self, turn: Turn, h: Handoff) -> None:
+        turn.tool("check_allergy", "Checking the theatre drugs against the recorded allergy")
+        c = check_theatre(h.data, self.formulary)
+        bad = [r for r in c.rows if r["verdict"] != "release"]
+        turn.tool_done(f"{len(bad)} drug(s) to avoid" if bad else f"{len(c.rows)} drug(s) clear")
+        if c.verdict == "hold":
+            spoken = phrases.say("th_hold", turn.lang, d=c.drug, w=phrases.say(f"why_{c.top.code}", turn.lang, x=c.top.x) if c.top else "")
+            text = f"HOLD {c.drug}. {_article([c.top.detail]) if c.top else ''}."
+        elif c.verdict == "clarify":
+            spoken = phrases.say("th_clarify", turn.lang, d=c.drug, w=phrases.say(f"why_{c.top.code}", turn.lang, x=c.top.x) if c.top else "")
+            text = f"Ask the anaesthetist before {c.drug or 'any drug'}. {_article([c.top.detail]) if c.top else ''}".strip()
+        else:
+            spoken = phrases.say("th_avoid", turn.lang, d=c.drug, a=c.avoid[0]) if c.avoid else phrases.say("th_clear", turn.lang, d=c.drug)
+            text = f"{c.drug} can be given." + (f" Avoid {', '.join(c.avoid)}: recorded allergy." if c.avoid else " No recorded drug allergy.")
+        others = [r for r in bad if r["name"] != c.drug]
+        if others:
+            text += " Also not for this patient: " + "; ".join(f"{r['name']} ({r['reason']})" for r in others[:3]) + "."
+        await turn.reply(text.replace("..", "."), "verdict", "theatre_allergy", h.ref, spoken=spoken,
+                         data={"verdict": c.verdict, "drug": c.drug, "avoid": c.avoid, "drugs": c.rows, "reason": text[:420],
+                               "evidence": [{"source": "Allergy record", "detail": (c.top.detail if c.top else "checked, no conflict")[:220]}]})
+
+    # ── newly authored cases ─────────────────────────────────────────────────
+    async def case_review(self, turn: Turn, h: Handoff) -> None:
+        """Do the case's accepted treatments and the patient's own medicines go with the allergy?"""
+        turn.tool("review_medicines", "Checking treatments against allergies and current medicines")
+        findings = casechecks.review_medicines(h.data, self.formulary)
+        hard = any(f["level"] == "hard" for f in findings)
+        verdict = "hold" if hard else "clarify" if findings else "release"
+        turn.tool_done(f"{len(findings)} point(s) raised" if findings else "No conflict found", not hard)
+        lead = {"hold": "A treatment in this case is UNSAFE for this patient.", "clarify": "Treatments need a look.",
+                "release": "No conflict between treatments, allergies and current medicines."}[verdict]
+        text = " ".join([lead, *[f["detail"][:1].upper() + f["detail"][1:] + "." for f in findings[:6]]])
+        await turn.reply(text, "verdict", "case_review", h.ref,
+                         data={"verdict": verdict, "caseId": str(h.data.get("caseId") or "")[:80], "findings": findings[:10], "reason": text[:600]})
+
     # ── critical results ─────────────────────────────────────────────────────
     async def critical(self, turn: Turn, h: Handoff) -> None:
         released = [v for v in self.verdicts(turn.room).values() if v["verdict"] == "release"]
@@ -982,33 +1076,183 @@ class PharmacistAdapter(DepartmentAdapter):
                 info.append({"drug": name, "class": m[3], "usualDose": m[4], "duration": m[5]})
         return {"verdicts": rows[:8], "formulary": info}
 
-    def _fixed_answer(self, room: Room, question: str, lang: str) -> str:
-        """The standing verdict on a held drug the question is about, else ''."""
-        held = [v for v in self.verdicts(room).values() if v["verdict"] == "hold"]
-        if not held:
-            return ""
-        low = question.lower()
-        named = [v for v in held if re.split(r"[\s/\d]", v["name"].lower())[0] in low]
-        pick = named[0] if named else (held[-1] if _WANTS_RELEASE.search(question) else None)
-        if pick is None:
-            return ""
-        why = phrases.say(f"why_{pick['code']}", lang, x=pick["x"]) if pick.get("code") else pick["reason"].rstrip(".")
-        out = phrases.say("rx_hold_stands", lang, d=pick["name"], w=why)
-        if pick.get("suggestion") and not room.data.get("osce"):
-            out += " " + phrases.say("rx_option", lang, a=pick["suggestion"])
+    # A question about a drug is decided by the same fixed checks as an order; nothing here asks a model.
+    @property
+    def index(self) -> drugquestion.Index:
+        return drugquestion.index_for(self.formulary.meds)
+
+    def _named_verdict(self, room: Room, d: drugquestion.Drug) -> Optional[dict[str, Any]]:
+        """This encounter's verdict on the drug that was named, by id or by ingredient."""
+        vs = self.verdicts(room)
+        if d.med_id in vs:
+            return vs[d.med_id]
+        return next((v for v in vs.values() if d.key in drugquestion.keys_for([v["name"]], self.index)), None)
+
+    def _co_meds(self, room: Room) -> list[tuple[str, str]]:
+        """Drugs the doctor has said the patient takes, in this encounter."""
+        return list(room.data.get("coMeds", {}).items())
+
+    def _question_rx(self, room: Room, d: drugquestion.Drug, ctx: dict[str, Any], allergy: str) -> Rx:
+        """The asked drug as if it were ordered now, for what is known of this patient."""
+        last = next((v["rx"] for v in reversed(list(self.verdicts(room).values())) if v.get("rx") is not None), None)
+        known = ctx.get("patient") if isinstance(ctx.get("patient"), dict) else {}
+        current = [c for c in ctx.get("current") or [] if isinstance(c, dict)] if isinstance(ctx.get("current"), list) else []
+        current += [{"medicationId": i, "name": n} for i, n in self._co_meds(room)]
+        allergies = "; ".join(a for a in (str(ctx.get("allergies") or known.get("allergies") or "")[:500], allergy) if a)
+        rx = build_rx("ask", {"medicationId": d.med_id or d.key, "medication": d.name, "dose": "", "duration": "", "caseId": "",
+                              "patient": {**known, "allergies": allergies}, "current": current, "osce": bool(room.data.get("osce"))}, self.formulary)
+        if last is not None:
+            if rx.age is None:
+                rx.age = last.age
+            rx.gender = rx.gender or last.gender
+            rx.allergies = "; ".join(a for a in dict.fromkeys((last.allergies, rx.allergies)) if a)
+            rx.pairs = rx.pairs or last.pairs
+            rx.pregnancy = last.pregnancy if rx.pregnancy == "unknown" or not known else rx.pregnancy
+            rx.renal = last.renal
+            held = {i for i, v in self.verdicts(room).items() if v["verdict"] == "hold"}
+            have = {c[0] for c in rx.current}
+            rx.current += [c for c in last.current if c[0] not in have and c[0] not in held]
+        rx.current = [c for c in rx.current if c[0] != rx.medication_id and c[1].lower() != rx.name.lower()]
+        if d.cls:
+            rx.known, rx.tags = True, tags_of(d.name)
+        return rx
+
+    def _check_question(self, rx: Rx) -> list[Finding]:
+        out = [f for f in check_local(rx) if f.code not in ("duplicate", "unknown_drug")]
+        if rx.pregnancy == "unknown" and any(t in rx.tags for t in PREGNANCY_ASK):
+            out.append(_f("clarify", "pregnancy_unknown", "", f"pregnancy has not been ruled out before {rx.name}"))
+        if renal_tags(rx) and rx.renal is not None:
+            out += check_renal(rx, rx.renal)
         return out
 
-    async def _answer_text(self, room: Room, question: str, lang: str) -> str:
-        fixed = self._fixed_answer(room, question, lang)
-        if fixed:
-            return fixed
-        record = self._record(room, question)
-        system = SYSTEM + (" This is an exam: never name an alternative drug, a diagnosis or what to prescribe." if room.data.get("osce") else "")
-        out = await llm_answer(system, record, question, lang, female=True)
-        if out:
+    def _option(self, room: Room, v: dict[str, Any]) -> str:
+        """The alternative to a held drug, checked again against everything known by now."""
+        if room.data.get("osce") or not v.get("suggestion"):
+            return ""
+        rx = v.get("rx")
+        if rx is None:  # after a restart: only the recorded one, and only while nothing new is known
+            return "" if self._co_meds(room) else str(v["suggestion"])
+        extra = [(i, n, self.formulary.tags(i, n)) for i, n in self._co_meds(room) if i not in {c[0] for c in rx.current}]
+        option = suggest(Rx(**{**rx.__dict__, "current": rx.current + extra}), self.formulary)
+        return option["name"] if option else ""
+
+    def _held_line(self, room: Room, v: dict[str, Any], lang: str, option: bool = True) -> str:
+        why = phrases.say(f"why_{v['code']}", lang, x=v["x"]) if v.get("code") else v["reason"].rstrip(".")
+        out = phrases.say("rx_hold_stands", lang, d=v["name"], w=why)
+        alt = self._option(room, v) if option else ""
+        return f"{out} {phrases.say('rx_option', lang, a=alt)}" if alt else out
+
+    def _drug_line(self, room: Room, rx: Rx, d: drugquestion.Drug, lang: str, brief: bool) -> str:
+        """One drug's answer, from its fixed verdict: at most two sentences, one when `brief`."""
+        verdict, _, top = decide(rx.findings)
+        if d.cls and verdict == "release":
+            return phrases.say("aq_which", lang, d=d.name)
+        # The finding worth saying first: an interaction before a missing laboratory value.
+        first = sorted(top, key=lambda f: (f.code not in ("allergy", "inr", "interaction"), f.code in ("renal_unknown", "lab_silent")))[0] if top else None
+        why = phrases.say(f"why_{first.code}", lang, x=first.x) if first else ""
+        if verdict == "hold":
+            out = phrases.say("aq_no", lang, d=d.name, w=why)
+            option = None if brief or rx.osce or d.cls else suggest(rx, self.formulary)
+            return f"{out} {phrases.say('rx_option', lang, a=option['name'])}" if option else out
+        if verdict == "clarify":
+            return phrases.say("aq_check", lang, d=d.name, w=why)
+        if first is not None and brief:
+            return phrases.say("aq_care", lang, d=d.name, w=why)
+        allergic = sorted(allergy_tags(rx.allergies))
+        out = phrases.say("aq_ok_allergy", lang, d=d.name, x=allergic[0]) if allergic else phrases.say("aq_ok", lang, d=d.name)
+        if first is not None:
+            out += " " + (phrases.say("aq_inr", lang, x=first.x) if first.code == "inr" else phrases.say("aq_caution", lang, w=why))
+        return out
+
+    def _plan(self, room: Room, question: str, ctx: dict[str, Any]) -> Optional[list[tuple[str, drugquestion.Drug, Any]]]:
+        """What the question needs checked: ('held'|'unknown'|'rx', drug, verdict or Rx) rows. None when it
+        is not a question about whether a drug may be given."""
+        parsed = drugquestion.parse(question, self.index)
+        co = room.data.setdefault("coMeds", {})
+        for i, n in drugquestion.co_medications(parsed.by("taking")):
+            if len(co) < 20:
+                co[i] = n
+        allergy = drugquestion.allergy_text(parsed.by("allergy"), question)
+        asked = parsed.by("asked")
+        rows: list[tuple[str, drugquestion.Drug, Any]] = []
+        if not asked:
+            for d in parsed.by("replaced"):
+                v = self._named_verdict(room, d)
+                if v is not None and v["verdict"] == "hold":
+                    rows.append(("held", d, v))
+            if rows:
+                return rows[:1]
+            if parsed.by("taking") and not _WANTS_RELEASE.search(question):
+                # "He is on warfarin too, any problem?": about the drug that was verified last.
+                last = next(((i, v) for i, v in reversed(list(self.verdicts(room).items()))), None)
+                if last is not None and drugquestion.wants_permission(question):
+                    i, v = last
+                    if v["verdict"] == "hold":
+                        return [("held", drugquestion.Drug(i, i, v["name"]), v)]
+                    asked = [drugquestion.Drug(i, i, re.sub(r"\s*\d.*$", "", v["name"]).strip() or v["name"])]
+            if not asked:
+                return None
+        elif not drugquestion.wants_permission(question) and not any(
+                (v := self._named_verdict(room, d)) is not None and v["verdict"] == "hold" for d in asked):
+            return None
+        for d in asked[:2]:
+            v = self._named_verdict(room, d)
+            if v is not None and v["verdict"] == "hold":
+                rows.append(("held", d, v))
+            elif not d.med_id and not d.cls:
+                rows.append(("unknown", d, None))
+            else:
+                rx = self._question_rx(room, d, ctx, allergy)
+                rx.findings = self._check_question(rx)
+                rows.append(("rx", d, rx))
+        return rows
+
+    def _plan_text(self, room: Room, rows: list[tuple[str, drugquestion.Drug, Any]], lang: str) -> str:
+        brief = len(rows) > 1
+        out = []
+        for kind, d, x in rows:
+            if kind == "held":
+                out.append(self._held_line(room, x, lang, option=not brief))
+            elif kind == "unknown":
+                out.append(phrases.say("aq_unknown", lang, d=d.name))
+            else:
+                out.append(self._drug_line(room, x, d, lang, brief))
+        return " ".join(out)
+
+    def _wording_verdicts(self, room: Room) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for v in self.verdicts(room).values():
+            for k in drugquestion.keys_for([v["name"]], self.index):
+                out[k] = v["verdict"]
+            alt = self._option(room, v) if v["verdict"] == "hold" else ""
+            for k in drugquestion.keys_for([alt], self.index) if alt else []:
+                out.setdefault(k, "release")
+        return out
+
+    async def _answer_text(self, room: Room, question: str, lang: str, ctx: Optional[dict[str, Any]] = None,
+                           rows: Optional[list[tuple[str, drugquestion.Drug, Any]]] = None) -> str:
+        rows = rows if rows is not None else self._plan(room, question, ctx or {})
+        if rows:
+            return self._plan_text(room, rows, lang)
+        held = [v for v in self.verdicts(room).values() if v["verdict"] == "hold"]
+        if held and _WANTS_RELEASE.search(question) and not drugquestion.parse(question, self.index).by("asked"):
+            return self._held_line(room, held[-1], lang)
+        osce = bool(room.data.get("osce"))
+        system = SYSTEM + (" This is an exam: never name an alternative drug, a diagnosis or what to prescribe." if osce else "")
+        out = await llm_answer(system, self._record(room, question), question, lang, female=True)
+        # The model words, it does not decide: nothing about a drug that was not checked, nothing against a verdict.
+        if out and drugquestion.wording_ok(out, self._wording_verdicts(room), self.index, bool(held)):
             return out
+        about = [d for d in drugquestion.parse(question, self.index).by("asked") if d.med_id]
+        if about and not osce:
+            row = self.formulary.get(about[0].med_id)
+            if row:
+                dose = re.sub(r"(\d)\s*×\s*1\b", r"\1 times a day", re.sub(r"\s*\([^)]*\)", "", row[4])).replace(", PO", "").strip()
+                return phrases.say("aq_dose", lang, d=about[0].name, v=dose.rstrip("."))
+        if any(not d.med_id and not d.cls for d in drugquestion.parse(question, self.index).by("asked")):
+            return phrases.say("aq_unknown", lang, d=drugquestion.parse(question, self.index).by("asked")[0].name)
         last = list(self.verdicts(room).values())
-        if last:
+        if last and not about:
             v = last[-1]
             key = {"release": "rx_release_caution" if v.get("code") else "rx_release", "hold": "rx_hold_stands", "clarify": "rx_clarify"}[v["verdict"]]
             why = phrases.say(f"why_{v['code']}", lang, x=v["x"]) if v.get("code") else v["reason"].rstrip(".")
@@ -1020,8 +1264,42 @@ class PharmacistAdapter(DepartmentAdapter):
         ctx = h.data.get("context") if isinstance(h.data.get("context"), dict) else {}
         if h.data.get("osce") or ctx.get("osce"):
             turn.room.data["osce"] = True
-        text = two_sentences(await self._answer_text(turn.room, q, turn.lang))
-        await turn.reply(text, "answer", "ask", h.ref, spoken=text, data={"text": text})
+        rows = self._plan(turn.room, q, ctx)
+        if rows:
+            turn.tool("check_question", "Checking " + ", ".join(d.name for _, d, _ in rows), drugs=[d.key for _, d, _ in rows])
+            waiting = [x for kind, _, x in rows if kind == "rx" and renal_tags(x) and x.renal is None and decide(x.findings)[0] != "hold"]
+            case_id = str(h.data.get("caseId") or "")[:80]
+            if waiting and case_id:
+                turn.thought("The answer depends on kidney function, asking the laboratory")
+                if await turn.ask_department(
+                        LAB, "Please send the kidney function on record for this case.",
+                        Handoff(kind="query", action="renal_function", ref=h.ref, enc=turn.enc, lang=turn.lang, data={"caseId": case_id}),
+                        requester=turn.sender_id, state={"ask": rows}, timeout=self.lab_wait):
+                    return  # resume() or on_wait_timeout() answers
+            for x in waiting:
+                x.findings.append(_f("caution", "renal_unknown", "", "no kidney function on record; check creatinine", "Laboratory"))
+        await self._say_answer(turn, h.ref, await self._answer_text(turn.room, q, turn.lang, ctx, rows), turn.sender_id, rows)
+
+    async def _say_answer(self, turn: Turn, ref: str, text: str, to: str, rows: Any = None) -> None:
+        text = two_sentences(text)
+        data: dict[str, Any] = {"text": text}
+        if rows:
+            data["checked"] = [{"drug": d.name, "verdict": "hold" if kind == "held" else "not_in_formulary" if kind == "unknown" else decide(x.findings)[0],
+                                "reason": x["reason"] if kind == "held" else "" if kind == "unknown" else _article([f.detail for f in x.findings[:3]])}
+                               for kind, d, x in rows]
+            turn.tool_done("; ".join(f"{c['drug']}: {c['verdict'].replace('_', ' ')}" for c in data["checked"]))
+        await turn.reply(text, "answer", "ask", ref, spoken=text, data=data, to=to)
+
+    async def _finish_ask(self, turn: Turn, p: Pending, renal: Optional[dict[str, Any]]) -> None:
+        rows = p.state["ask"]
+        for kind, _, x in rows:
+            if kind == "rx" and renal_tags(x):
+                if renal is None:
+                    x.findings.append(_f("caution", "lab_silent", "", "the laboratory has not answered; check creatinine", "Laboratory"))
+                else:
+                    x.renal = renal
+                    x.findings += check_renal(x, renal)
+        await self._say_answer(turn, p.ref, self._plan_text(turn.room, rows, turn.lang), p.requester, rows)
 
     async def on_human(self, turn: Turn, text: str) -> None:
         if not text:
@@ -1029,8 +1307,10 @@ class PharmacistAdapter(DepartmentAdapter):
             return
         lang = text_lang(text)
         held = [v for v in self.verdicts(turn.room).values() if v["verdict"] == "hold"]
-        out = await self._answer_text(turn.room, text, lang)
-        if held and _WANTS_RELEASE.search(text):
+        rows = self._plan(turn.room, text, {})
+        out = await self._answer_text(turn.room, text, lang, {}, rows)
+        about_held = any(kind == "held" for kind, _, _ in rows or []) or not rows
+        if held and about_held and _WANTS_RELEASE.search(text):
             out += " To release it, please reply to @Nurse Asha with your approval; I will not release it myself."
         await turn.send(clean_text(out, 600) if "@Nurse" not in out else out, None, turn.sender_id)
 

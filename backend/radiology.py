@@ -28,7 +28,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from llm_provider import chat, strip_think
+from radtext import keyword_hit, norm
 import lang as langmod
+from agentroom import reads  # noqa: F401 - registers the second read's side room
 
 log = logging.getLogger("medsim.radiology")
 
@@ -57,22 +59,6 @@ def get_case(case_id: str) -> dict[str, Any]:
 
 # ───────────────────────── text helpers ─────────────────────────
 
-_NEG = {"no", "not", "without", "absent", "nil", "negative", "none", "nor", "rule", "exclude"}
-_CLAUSE = "|"
-# Filler words dropped from both the text and the keywords ("angles are clear" == "angles clear").
-_STOP = {"is", "are", "the", "a", "an", "seen", "there"}
-
-
-def norm(text: Any) -> str:
-    """Lower-case words; clause punctuation becomes a '|' token so negation never
-    leaks across a comma or full stop ("no effusion, consolidation right base")."""
-    t = str(text or "").lower()
-    t = t.replace("\u2019", "'")
-    t = re.sub(r"[,.;:!?\n]+|\bbut\b|\bhowever\b", f" {_CLAUSE} ", t)
-    t = re.sub(r"[^a-z0-9'|\u0900-\u0dff]+", " ", t)
-    return " ".join(w for w in t.split() if w not in _STOP)
-
-
 def clean(text: Any, limit: int = 600) -> str:
     """Plain spoken-style text: no markdown, no em or en dashes."""
     t = strip_think(str(text or ""))
@@ -80,22 +66,6 @@ def clean(text: Any, limit: int = 600) -> str:
     t = re.sub(r"\s*[\u2014\u2013]\s*", ", ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t[:limit].rstrip()
-
-
-def keyword_hit(text_n: str, keyword: str) -> bool:
-    """True if `keyword` occurs in normalised text and is not negated just before it.
-    Keywords that are themselves negative ("no midline shift") skip the negation check."""
-    kw = norm(keyword)
-    if not kw:
-        return False
-    kw_is_negative = bool(set(kw.split()) & _NEG)
-    for m in re.finditer(r"(?:^|\s)" + re.escape(kw) + r"(?=\s|$)", text_n):
-        if kw_is_negative:
-            return True
-        before = text_n[: m.start()].split(_CLAUSE)[-1].split()[-3:]
-        if not (set(before) & _NEG):
-            return True
-    return False
 
 
 def student_text(description: str, transcript: list[str]) -> str:

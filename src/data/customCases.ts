@@ -5,13 +5,15 @@
 import { useSyncExternalStore } from 'react';
 import { CLINIC_IDS, type ClinicId } from '../game/clinic';
 import { store } from '../game/store';
-import { CASES, getPatientCase, registerRuntimeCase } from './cases';
-import { CUSTOM_BADGE, caseIdFromSearch, mergeCustomCases } from './customCasesCore';
+import { CASES, getPatientCase, registerRuntimeCase, removeRuntimeCase, setRuntimeBadge } from './cases';
+import { caseIdFromSearch, mergeCustomCases, reconcileCustomCases } from './customCasesCore';
 
 const POLL_MS = 20_000;
 const LOG = '[medsim:custom-cases]';
 const VALID = new Set<string>(CLINIC_IDS);
 
+/** Custom cases now in the library, with the badge they show. */
+const shown = new Map<string, string>();
 let version = 0;
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -65,9 +67,22 @@ export async function refreshCustomCases(): Promise<number> {
       const fresh = mergeCustomCases(body.cases, new Set(CASES.map((c) => c.id)), VALID);
       // Server order is newest first; register oldest first so the newest ends up at the front.
       for (const c of [...fresh].reverse()) {
-        if (registerRuntimeCase(c.patient, c.clinic as ClinicId, c.diagnosisLabels, { label: CUSTOM_BADGE, title: c.createdBy })) added += 1;
+        if (registerRuntimeCase(c.patient, c.clinic as ClinicId, c.diagnosisLabels, { label: c.badge, title: c.badgeTitle })) {
+          shown.set(c.patient.id, c.badge);
+          added += 1;
+        }
       }
-      if (added) emit();
+      // Rejected after being published unreviewed, deleted by its author, or approved since.
+      const { removed, changed } = reconcileCustomCases(body.cases, shown, VALID);
+      for (const id of removed) {
+        removeRuntimeCase(id);
+        shown.delete(id);
+      }
+      for (const c of changed) {
+        setRuntimeBadge(c.patient.id, { label: c.badge, title: c.badgeTitle });
+        shown.set(c.patient.id, c.badge);
+      }
+      if (added || removed.length || changed.length) emit();
     }
   } catch {
     /* backend offline: static cases still work */
