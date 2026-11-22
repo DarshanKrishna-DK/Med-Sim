@@ -220,3 +220,22 @@ test('QR encoder: sizes, finder patterns and the dark module', () => {
   assert.equal(size, 41);
   assert.match(d, /^M4 4h1v1h-1z/);
 });
+
+test('agent room summary: round trip, alone and inside a snapshot, with hostile fields dropped', () => {
+  const room = {
+    url: 'https://app.band.ai/rooms/r1',
+    now: 'Pharmacy is waiting on Lab',
+    participants: [{ role: 'nurse' as const, name: 'Nurse Asha', human: false }, { role: 'faculty' as const, name: 'Dr Rao', human: true }],
+    items: [{ at: '2026-11-23T10:00:00Z', who: 'Pharmacy', what: 'Amoxicillin: held. Allergy', tone: 'bad' as const }],
+  };
+  assert.deepEqual(roundTrip({ object: 'medsim.room', caseId: 'im-001', room }), { object: 'medsim.room', caseId: 'im-001', room });
+  const snap = roundTrip({ object: 'medsim.snapshot', caseId: 'im-001', caseLabel: 'x', osce: false, startedAt: 1, transcript: [], events: [], room });
+  assert.deepEqual(snap && snap.object === 'medsim.snapshot' && snap.room, room);
+  const bad = parseMedsimMessage({
+    object: 'medsim.room', caseId: 'c',
+    room: { url: 'javascript:alert(1)', participants: [{ role: 'root', name: 'x' }, 7], items: [{ who: 'A', what: 'b'.repeat(900), tone: 'x' }] },
+  });
+  assert.ok(bad && bad.object === 'medsim.room');
+  assert.deepEqual([bad.room.url, bad.room.participants.length, bad.room.items[0].what.length, bad.room.items[0].tone], ['', 0, LIMITS.roomText, undefined]);
+  assert.equal(parseMedsimMessage({ object: 'medsim.room', caseId: 'c' }), null);
+});

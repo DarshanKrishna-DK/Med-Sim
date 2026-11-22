@@ -1,3 +1,4 @@
+import type { RoomState } from '../room/reducer';
 import type { PaletteName } from '../styles/palettes';
 import type { ClinicId } from './clinic';
 import type { Lang } from './lang';
@@ -226,6 +227,26 @@ export type PatientStatus =
   | 'discharged'
   | 'deceased';
 
+/** A booked follow-up. `inDays` 0 is later today. */
+export interface FollowUp {
+  inDays: number;
+  reason: string;
+  recurrence?: Record<string, unknown>;
+  mode?: 'visit' | 'call';
+  callUrl?: string;
+}
+
+/** A drug at the pharmacy (BAND room mode): being checked, or held. */
+export interface RxReview {
+  ref: string;
+  medicationId: string;
+  dose: string;
+  duration: string;
+  status: 'verifying' | 'held';
+  reason?: string;
+  at: number;
+}
+
 export interface ActivePatient {
   case: PatientCase;
   bedIndex: number;
@@ -244,8 +265,12 @@ export interface ActivePatient {
     duration: string;
     prescribedAt: number;
   }>;
+  /** Drugs the pharmacist is checking or holding: NOT on the prescription. */
+  rxReview?: RxReview[];
+  /** Result text returned by a department (BAND agent room), by test id. */
+  testReports?: Record<string, { text: string; abnormal: boolean; critical: boolean; at: number }>;
   /** Follow-up booked for this patient (by the trainee or the nurse agent). */
-  followUp?: { inDays: number; reason: string };
+  followUp?: FollowUp;
   /** Body systems the trainee examined, in order (by voice or click). */
   examsPerformed?: ExamSystem[];
   /** Findings per examined system, once /agent/exam/perform answered. */
@@ -287,6 +312,15 @@ export interface NurseStep {
   result?: unknown;
 }
 
+export interface NursePending {
+  ref: string;
+  action: string;
+  target: string;
+  label: string;
+  medicationId?: string;
+  testIds?: string[];
+}
+
 export interface NurseRun {
   /** Client-generated id (stable from the 'running' placeholder onward). */
   id: string;
@@ -298,15 +332,19 @@ export interface NurseRun {
   status: 'running' | 'done' | 'error';
   startedAt: number;
   finishedAt?: number;
-  intent?: 'order' | 'none';
+  intent?: 'order' | 'none' | 'clarify';
   plan?: string;
   steps: NurseStep[];
   /** What was actually applied to the store (validated against catalogs). */
   applied?: {
     orderedTestIds: string[];
     prescriptions: Array<{ medicationId: string; dose: string; duration: string }>;
-    followUp?: { inDays: number; reason: string };
+    followUp?: FollowUp;
+    cancelledTestIds?: string[];
+    stoppedMedicationIds?: string[];
   };
+  /** Work handed to a department through the BAND room. */
+  pending?: NursePending[];
   spokenConfirmation?: string;
   error?: string;
 }
@@ -364,6 +402,9 @@ export interface GameState {
   /** Mistake alerts raised by Nurse Asha for the current polyclinic patient,
    *  oldest first. Cleared when a new patient is accepted. */
   coachAlerts: CoachAlert[];
+  /** BAND agent room of the current encounter (src/room). Null before the first
+   *  patient; `enabled` false means the legacy single-agent flow. */
+  agentRoom: RoomState | null;
   /** Clinic whose corridor door the doctor last walked through. The
    *  corridor respawns the player in front of that door on return;
    *  null = spawn in the lobby. */

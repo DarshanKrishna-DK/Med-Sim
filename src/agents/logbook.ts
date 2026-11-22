@@ -57,7 +57,7 @@ export function buildLogbookPayload(encounter: ActivePatient, specialty: ClinicI
     patientName: c.name,
     diagnosis: POLYCLINIC_DIAGNOSIS_LABELS[dxId] ?? dxId.replace(/-/g, ' '),
     skills: skillsPerformed(encounter),
-    tests: encounter.orderedTestIds.map((id) => testName.get(id) ?? id),
+    tests: encounter.orderedTestIds.map((id) => `${testName.get(id) ?? id}${encounter.completedTestIds.includes(id) ? '' : ' (result pending)'}`),
     prescriptions: (encounter.prescriptions ?? []).map((r) => `${medName.get(r.medicationId) ?? r.medicationId} ${r.dose}`.trim()),
     ...(typeof score === 'number' ? { score } : {}),
     student: profile?.name ?? '',

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import { store, useAgentRuns, useCoachAlerts, useOsceLive } from '../../game/store';
 import type { CoachAlert } from '../../game/types';
-import { isNurseSpeaking, speakAsNurse, subscribeNurseSpeaking } from '../../agents/nurseAgent';
+import { isNurseSpeaking, subscribeNurseSpeaking } from '../../agents/nurseAgent';
+import { cancelSpeechKey, say } from '../../voice/speech';
 import { explainAlert, requestHint } from '../../agents/coach';
 import { activeAlert } from '../../agents/coachRules';
 import { visibleRuns } from './NurseFeed';
@@ -432,7 +433,20 @@ export function AshaExplain({ alert, onClose }: { alert: CoachAlert; onClose: ()
     spokenFor.current = alert.id;
     setTurns([]);
     // A check-in hint was already spoken when it arrived.
-    if (alert.source !== 'hint') void speakAsNurse([alert.explanation, alert.suggestion].filter(Boolean).join(' '));
+    if (alert.source !== 'hint') {
+      void say({
+        speaker: 'nurse',
+        priority: 'chat',
+        key: `explain:${alert.id}`,
+        dedupeMs: 3000,
+        text: [alert.explanation, alert.suggestion].filter(Boolean).join(' '),
+      });
+    }
+    // Closing the card, or opening another alert, stops this explanation.
+    return () => {
+      spokenFor.current = null;
+      cancelSpeechKey('explain:');
+    };
   }, [alert]);
 
   useEffect(() => {
@@ -447,7 +461,7 @@ export function AshaExplain({ alert, onClose }: { alert: CoachAlert; onClose: ()
     setTurns((t) => [...t, { q: question, a: null }]);
     const answer = await explainAlert(alert, question);
     setTurns((t) => t.map((x, i) => (i === t.length - 1 && x.a === null ? { ...x, a: answer } : x)));
-    void speakAsNurse(answer);
+    if (spokenFor.current === alert.id) void say({ speaker: 'nurse', priority: 'chat', key: `explain:${alert.id}:answer`, dedupeMs: 0, dropIfStale: 15000, text: answer });
   };
 
   return (

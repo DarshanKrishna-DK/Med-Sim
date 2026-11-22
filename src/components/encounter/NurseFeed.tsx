@@ -4,6 +4,8 @@ import { ThinkingOrb } from 'thinking-orbs';
 import { MedicineTrayArt } from '../ui/pixel/MedArt';
 import type { NurseRun, NurseStep } from '../../agents/nurseAgent';
 import { prefersReducedMotion } from '../ui/chrome';
+import { ROLE_LABEL } from '../../room/reducer';
+import type { RoomRole } from '../../room/types';
 
 function formatValue(v: unknown): string {
   if (typeof v === 'string') return `"${v.length > 40 ? v.slice(0, 39) + '…' : v}"`;
@@ -167,6 +169,16 @@ export function RunCard({ run }: { run: NurseRun }) {
         <p className="run-say">
           <span className="run-say-who">Nurse</span>
           <span>“{run.spokenConfirmation}”</span>
+        </p>
+      )}
+
+      {run.pending && run.pending.length > 0 && (
+        <p className="step-links">
+          {run.pending.map((x) => (
+            <span key={x.ref} className="step-tag">
+              Handed to {ROLE_LABEL[x.target as RoomRole] ?? x.target}: {x.label}
+            </span>
+          ))}
         </p>
       )}
 

@@ -6,11 +6,13 @@ import type {
   EndConfirmChecks,
   ExamResult,
   ExamSystem,
+  FollowUp,
   OsceSession,
   GameState,
   NurseRun,
   PatientCase,
   RoomLayout,
+  RxReview,
   Screen,
   Tweaks,
 } from './types';
@@ -22,6 +24,9 @@ import { CASES, getCase, getCaseClinic, getPatientCase } from '../data/cases';
 import { ensureAudioContext } from '../voice/conversationStore';
 import { readLang, writeLang, type Lang } from './lang';
 import { observeCodeFromUrl } from '../observer/observeParam';
+import * as chart from '../room/chart';
+import type { RoomState } from '../room/reducer';
+import type { Delegation, RoomApply } from '../room/types';
 
 const ONBOARDED_KEY = 'medsim:onboarded';
 
@@ -92,6 +97,7 @@ function hasEncounterActivity(p: ActivePatient): boolean {
     p.orderedTestIds.length > 0 ||
     p.givenTreatmentIds.length > 0 ||
     (p.prescriptions?.length ?? 0) > 0 ||
+    (p.rxReview?.length ?? 0) > 0 ||
     (p.examsPerformed?.length ?? 0) > 0 ||
     p.submittedDiagnosisId !== null
   );
@@ -131,6 +137,7 @@ class Store {
     corridorReturnClinic: null,
     corridorReturnPortal: false,
     osce: null,
+    agentRoom: null,
   };
 
   private listeners = new Set<() => void>();
@@ -228,6 +235,7 @@ class Store {
       polyclinic: { ...this.state.polyclinic, patient: toActivePatient(c) },
       agentRuns: [],
       coachAlerts: [],
+      agentRoom: null,
     });
   };
 
@@ -372,6 +380,7 @@ class Store {
       screen: 'encounter',
       agentRuns: [],
       coachAlerts: [],
+      agentRoom: null,
     });
   };
 
@@ -391,19 +400,14 @@ class Store {
       return { ...p, askedQuestionIds: [...p.askedQuestionIds, qid] };
     });
 
-  /** Order Tests tab: in the polyclinic the result is instant, so we set
-   *  both `orderedTestIds` and `completedTestIds` in one shot. */
-  orderPolyclinicTest = (testId: string) =>
-    this.updatePolyclinicPatient((p) => {
-      if (p.orderedTestIds.includes(testId)) return p;
-      const now = Date.now();
-      return {
-        ...p,
-        orderedTestIds: [...p.orderedTestIds, testId],
-        testOrderedAt: { ...p.testOrderedAt, [testId]: now },
-        completedTestIds: [...p.completedTestIds, testId],
-      };
-    });
+  /** Order a test. Without a BAND room the result is instant; in room mode
+   *  (`pending`) the department's message completes it, see `applyRoom`. */
+  orderPolyclinicTest = (testId: string, opts: { pending?: boolean } = {}) =>
+    this.updatePolyclinicPatient((p) => chart.orderTest(p, testId, !!opts.pending, Date.now()));
+
+  /** Cancel an ordered test that has no result yet. */
+  cancelPolyclinicTest = (testId: string) =>
+    this.updatePolyclinicPatient((p) => chart.cancelTests(p, [testId]));
 
   /** Diagnose tab: lock in a diagnosis. Once submitted, options become
    *  disabled and the prescription tab unlocks. */
@@ -412,19 +416,51 @@ class Store {
       p.submittedDiagnosisId ? p : { ...p, submittedDiagnosisId: dxId },
     );
 
-  /** Rx tab: append a prescription line to the patient's record. */
+  /** Put a drug on the prescription (one line per drug; a new dose updates it). */
   addPolyclinicPrescription = (rx: { medicationId: string; dose: string; duration: string }) =>
-    this.updatePolyclinicPatient((p) => ({
-      ...p,
-      prescriptions: [
-        ...(p.prescriptions ?? []),
-        { ...rx, prescribedAt: Date.now() },
-      ],
-    }));
+    this.updatePolyclinicPatient((p) => chart.addPrescription(p, rx, Date.now()));
+
+  /** Take a drug off the prescription and out of any pharmacy review. */
+  removePrescription = (medicationId: string) =>
+    this.updatePolyclinicPatient((p) => chart.removePrescription(p, medicationId));
+
+  /** A drug went to the pharmacist: checking or held, not on the prescription. */
+  reviewPrescription = (r: Omit<RxReview, 'at'>) =>
+    this.updatePolyclinicPatient((p) => chart.reviewPrescription(p, { ...r, at: Date.now() }));
 
   /** Book (or replace) the seated patient's follow-up. */
-  setPolyclinicFollowUp = (followUp: { inDays: number; reason: string } | undefined) =>
+  setPolyclinicFollowUp = (followUp: FollowUp | undefined) =>
     this.updatePolyclinicPatient((p) => ({ ...p, followUp }));
+
+  // ── BAND agent room (src/room) ─────────────────
+  /** Latest room state from the client. */
+  setAgentRoom = (agentRoom: RoomState | null) => {
+    if (agentRoom !== this.state.agentRoom) this.set({ agentRoom });
+  };
+
+  private forEncounter(encounterId: string, mut: (p: ActivePatient) => ActivePatient): boolean {
+    const cur = this.state.polyclinic.patient;
+    if (!cur || chart.encounterIdOf(cur) !== encounterId) return false;
+    const next = mut(cur);
+    if (next !== cur) this.set({ polyclinic: { ...this.state.polyclinic, patient: next } });
+    return true;
+  }
+
+  /** Chart change from a department. False when that patient is not seated. */
+  applyRoom = (encounterId: string, a: RoomApply): boolean =>
+    this.forEncounter(encounterId, (p) => {
+      const now = Date.now();
+      let next = p;
+      if (a.results?.length) next = chart.completeTests(next, a.results, now);
+      if (a.cancelTests?.length) next = chart.cancelTests(next, a.cancelTests);
+      if (a.removePrescription) next = chart.recallPrescription(next, a.removePrescription.medicationId, a.removePrescription.reason, a.ref, now);
+      if (a.addPrescription) next = chart.addPrescription(next, a.addPrescription, now);
+      return next;
+    });
+
+  /** Mirror a delegation's status onto the chart (pending, checking, held). */
+  applyRoomDelegation = (encounterId: string, d: Delegation, first: boolean): boolean =>
+    this.forEncounter(encounterId, (p) => chart.applyDelegation(p, d, Date.now(), first));
 
   /** Physical exam: mark a body system as examined (start of the exam) and,
    *  once the backend answers, store its findings. */
@@ -544,6 +580,13 @@ export function isOsceLive(s: GameState): boolean {
   return !!o && o.startedAt !== null && o.endedAt === null && s.polyclinic.patient?.case.id === o.caseId;
 }
 
+/** The BAND agent room is on for the seated patient: results come from the
+ *  departments and drugs go through the pharmacist. */
+export function isRoomMode(s: GameState): boolean {
+  const p = s.polyclinic.patient;
+  return !!p && !!s.agentRoom?.enabled && s.agentRoom.encounterId === chart.encounterIdOf(p);
+}
+
 export const store = new Store();
 
 if (
@@ -587,4 +630,14 @@ export function useAgentRuns(): NurseRun[] {
 /** True while an OSCE station is running (see `isOsceLive`). */
 export function useOsceLive(): boolean {
   return useStore(isOsceLive);
+}
+
+/** Agent room of the current (or just finished) encounter. */
+export function useAgentRoom(): RoomState | null {
+  return useStore((s) => s.agentRoom);
+}
+
+/** True while the BAND agent room runs for the seated patient. */
+export function useRoomMode(): boolean {
+  return useStore(isRoomMode);
 }

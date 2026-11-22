@@ -26,6 +26,8 @@ import { EXAM_SYSTEMS } from '../agents/examClassifier';
 import { attachFacultyMarks } from '../data/evalHistory';
 import { chartSoFar, diffChart, type ChartLabels, type ChartSlice } from './chartEvents';
 import { saveFacultyMarks } from './facultyMarks';
+import { encounterIdOf } from '../room/chart';
+import { roomSummary, type RoomState } from '../room/reducer';
 import {
   encodeMedsim,
   isForMe,
@@ -127,6 +129,8 @@ class Link {
   private prev: ChartSlice;
   private pending: ChartEvent[] = [];
   private flushTimer: number | null = null;
+  private roomTimer: number | null = null;
+  private prevRoom: RoomState | null = null;
   private expiryTimer: number | null = null;
   private history: ChartEvent[] = [];
   private closed = false;
@@ -169,7 +173,24 @@ class Link {
     this.unsubStore = store.subscribe(() => this.onStore());
   }
 
+  /** The Agent Room of the observed encounter, if it is on. */
+  private room() {
+    const s = store.getState();
+    const p = [s.polyclinic.patient, s.lastEncounter].find((x) => x?.case.id === this.caseId && x.arrivedAt === this.encounterAt);
+    return p && s.agentRoom?.encounterId === encounterIdOf(p) ? s.agentRoom : null;
+  }
+
   private onStore() {
+    const room = this.room();
+    if (room && room !== this.prevRoom) {
+      this.prevRoom = room;
+      // At most one summary a second, always the latest.
+      this.roomTimer ??= window.setTimeout(() => {
+        this.roomTimer = null;
+        const sum = roomSummary(this.room());
+        if (sum) void this.publishChannel({ object: 'medsim.room', caseId: this.caseId, room: sum });
+      }, 1000);
+    }
     const next = sliceOf(store.getState());
     if (next.patient && next.patient.case.id !== this.caseId) {
       this.prev = next;
@@ -224,6 +245,7 @@ class Link {
       startedAt: this.encounterAt,
       transcript,
       events: this.history,
+      ...(roomSummary(this.room()) ? { room: roomSummary(this.room())! } : {}),
     };
   }
 
@@ -253,6 +275,7 @@ class Link {
   close() {
     this.closed = true;
     if (this.flushTimer !== null) window.clearTimeout(this.flushTimer);
+    if (this.roomTimer !== null) window.clearTimeout(this.roomTimer);
     if (this.expiryTimer !== null) window.clearTimeout(this.expiryTimer);
     this.unsubStore?.();
     this.unsubStore = null;

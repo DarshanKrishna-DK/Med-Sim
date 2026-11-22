@@ -12,6 +12,7 @@ import { HospitalScene } from '../ui/pixel/HospitalScene';
 import { SiteFooter } from '../ui/SiteFooter';
 import { AttendingPortrait, CLINIC_GLYPH, PixelGlyph } from '../ui/pixel/PixelIcon';
 import { ArrowIcon, CountUp, Dither, OrnamentRule } from '../ui/pixel/Bits';
+import { BandChip } from '../ui/BandChip';
 
 const SPECIALTIES = CLINIC_IDS.filter((id) => id !== 'all-specialties' && CASES.some((c) => c.clinic === id));
 
@@ -51,6 +52,7 @@ const AGENTS = [
 ];
 
 const BEYOND = [
+  { title: 'Departments in one room', what: 'Pharmacy, Lab, Radiology and the examiner are separate agents on BAND. Asha brings in only the one a case needs, each sees only what it is sent, and a human teacher can join the room to overrule them.' },
   { title: 'Follow-up calls', what: 'At the booked time Asha messages the patient and calls them over Agora. A red flag mid-call alerts the doctor on Telegram.' },
   { title: 'Observer, by phone', what: '“Asha, invite Darshan to observe.” She phones him, answers his questions, and he joins the live call listen-only.' },
   { title: 'Assignments and Reception', what: 'Teachers assign cases with a code. Priya at the front desk tells you what is pending and emails your report card.' },
@@ -212,6 +214,7 @@ export function LandingScreen() {
                 paperwork, while Priya at Reception keeps your teacher in the loop. Every voice runs on Agora
                 Conversational AI with Murf.
               </p>
+              <p><BandChip /></p>
             </div>
             <div className="landing-osce-side">
               <ul className="osce-rules">

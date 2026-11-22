@@ -4,13 +4,26 @@ import { LangToggle } from '../ui/LangToggle';
 import { PatientCard } from './PatientCard';
 import { VoicePanel } from './VoicePanel';
 import { AgentPanel } from './AgentPanel';
+import { AgentRoomPanel } from './AgentRoomPanel';
 import { useCoachWatch } from './useCoachWatch';
 import type { EncounterController } from './useEncounterController';
 import type { RoomControls } from './Scene';
+import type { ActivePatient } from '../../game/types';
 import { OsceTimer } from './OsceTimer';
 import { Icon, OverflowMenu, type MenuEntry } from './HudControls';
 import { useOsceLive, useStore } from '../../game/store';
+import { pendingCounts } from '../../room/chart';
 import { ObserverInvite } from '../observer/ObserverInvite';
+
+/** What is still with a department, in the words the End dialog uses. */
+function pendingLines(p: ActivePatient): string[] {
+  const n = pendingCounts(p);
+  return [
+    n.results ? `${n.results} result${n.results === 1 ? '' : 's'} still pending` : '',
+    n.checks ? `${n.checks} drug${n.checks === 1 ? '' : 's'} still with the pharmacist, not prescribed` : '',
+    n.holds ? `${n.holds} drug${n.holds === 1 ? '' : 's'} on hold, not prescribed` : '',
+  ].filter(Boolean);
+}
 
 /** The encounter HUD as a pure overlay layer. Position it over any
  *  full-bleed canvas inside a `position: relative|fixed` parent; empty
@@ -109,6 +122,7 @@ export function EncounterHud({
           <>
             <div className="hud-left" id="hud-chart">
               {chartOpen && <PatientCard patient={patient} bare={compact} />}
+              <AgentRoomPanel patient={patient} />
             </div>
             <div className="hud-bottom">
               <VoicePanel
@@ -157,13 +171,16 @@ export function EncounterHud({
               <li className={patient.orderedTestIds.length > 0 ? 'is-done' : ''}>
                 {patient.orderedTestIds.length} test{patient.orderedTestIds.length === 1 ? '' : 's'} ordered
               </li>
+              {pendingLines(patient).map((l) => (
+                <li key={l}>{l}</li>
+              ))}
             </ul>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setConfirmEnd(false)} autoFocus>
                 Keep going
               </button>
               <button type="button" className="btn btn-primary" onClick={endConsultation}>
-                End and get debrief
+                {pendingLines(patient).length ? 'End anyway and get debrief' : 'End and get debrief'}
               </button>
             </div>
           </div>

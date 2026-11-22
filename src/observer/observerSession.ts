@@ -22,6 +22,8 @@ import {
   type MedsimMessage,
 } from './messages';
 
+import type { RoomSummary } from '../room/reducer';
+
 const LOG = '[medsim:observer]';
 
 export interface ObserverJoin {
@@ -54,6 +56,8 @@ export interface ObserverView {
   expiresAt: number;
   lines: TranscriptLine[];
   events: ChartEvent[];
+  /** The student's BAND Agent Room, read only. */
+  room: RoomSummary | null;
   studentInCall: boolean;
   patientInCall: boolean;
   /** The student's MedSim tab is connected (it relays whispers and marks). */
@@ -76,6 +80,7 @@ const INITIAL: ObserverView = {
   expiresAt: 0,
   lines: [],
   events: [],
+  room: null,
   studentInCall: false,
   patientInCall: false,
   studentOnline: false,
@@ -291,6 +296,9 @@ export class ObserverSession {
       case 'medsim.event':
         this.set({ events: [...this.view.events, ...m.events].slice(-300) });
         break;
+      case 'medsim.room':
+        this.set({ room: m.room });
+        break;
       case 'medsim.snapshot': {
         if (this.view.synced) break;
         const seeded = this.assembler.seed(m.transcript);
@@ -299,6 +307,7 @@ export class ObserverSession {
           studentOnline: true,
           caseLabel: m.caseLabel || this.view.caseLabel,
           osce: m.osce,
+          ...(m.room && !this.view.room ? { room: m.room } : {}),
           startedAt: m.startedAt,
           // Live events that raced the snapshot come after it.
           events: [...m.events, ...this.view.events.filter((e) => !m.events.some((s) => s.label === e.label && s.at === e.at))],

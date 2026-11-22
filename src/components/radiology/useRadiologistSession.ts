@@ -3,10 +3,11 @@ import { Conversation, type ConversationStatus, type SubtitleEvent } from '../..
 import { ensureAudioContext } from '../../voice/conversationStore';
 import {
   RADIOLOGIST,
-  RADIOLOGIST_GREETING,
+  radiologistGreeting,
   buildRadiologistCasePrompt,
   buildRadiologistPersona,
 } from '../../voice/radiologistPersona';
+import { radiologistBack } from '../../voice/lines';
 import { estimateSpeechMs } from '../teach/lesson';
 import type { RadCase } from '../../data/radiology';
 import { store, useStore } from '../../game/store';
@@ -39,7 +40,7 @@ export function useRadiologistSession(opts: { onStudentFinal: (text: string) => 
   const [status, setStatus] = useState<ConversationStatus>('uninitialized');
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
-  const [caption, setCaption] = useState<string>(RADIOLOGIST_GREETING);
+  const [caption, setCaption] = useState<string>(() => radiologistGreeting(store.getState().lang));
   const [log, setLog] = useState<RadLine[]>([]);
   const [micMuted, setMicMuted] = useState(false);
 
@@ -94,9 +95,8 @@ export function useRadiologistSession(opts: { onStudentFinal: (text: string) => 
     }
     setError('');
     const c = caseRef.current;
-    const greeting = c
-      ? `Achha, you are back. The film on the screen is a ${c.study}. Go ahead, describe it to me.`
-      : RADIOLOGIST_GREETING;
+    const { lang } = store.getState();
+    const greeting = c ? radiologistBack(lang, c.study) : radiologistGreeting(lang);
     const conv = new Conversation(ctx, listeners.current, {
       systemPrompt: promptRef.current,
       initialMessage: { role: 'assistant', content: greeting },

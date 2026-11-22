@@ -10,12 +10,20 @@ import { useSyncExternalStore } from 'react';
 import { CLINIC_LABELS } from '../game/clinic';
 import { getProfile } from '../game/profile';
 import { POLYCLINIC_BED_INDEX, store } from '../game/store';
-import { speakAsNurse } from '../agents/nurseAgent';
 import { getExistingConversation } from '../voice/conversationStore';
+import { observerLine } from '../voice/lines';
+import { say } from '../voice/speech';
 import { findContact, getContacts, parseInviteCommand, type ObserverContact } from './contacts';
 import { getLinkState, inviteObserver, pushObserverMessage } from './studentLink';
 
 const LOG = '[medsim:observer-call]';
+
+type Spoken = Parameters<typeof observerLine>[0];
+/** One of Asha's fixed observer lines, in the session language. */
+function sayLine(which: Spoken, name = ''): void {
+  const { lang } = store.getState();
+  void say({ speaker: 'nurse', priority: 'result', lang, text: observerLine(which, lang, name), dropIfStale: 10000 });
+}
 const POLL_MS = 2000;
 const POLL_MAX_MS = 15 * 60 * 1000;
 
@@ -212,7 +220,7 @@ function startRun(utterance: string, caseId: string) {
 /** Mint (or reuse) the observer link, send it, and have Asha phone `contact`. */
 export async function callObserver(contact: ObserverContact, note = '', utterance = ''): Promise<void> {
   if (isCallBusy(state.status)) {
-    void speakAsNurse(`I'm still on the call with ${state.contactName ? firstName(state.contactName) : 'them'}, doctor.`);
+    sayLine('stillOnCall', state.contactName ? firstName(state.contactName) : firstName(contact.name));
     return;
   }
   const s = store.getState();
@@ -223,7 +231,7 @@ export async function callObserver(contact: ObserverContact, note = '', utteranc
   seenMessages = 0;
   if (!patient || !conv || !info) {
     setCall({ ...IDLE, status: 'error', contactName: contact.name, error: 'Start voice first (press T): the observer listens to the live call.' });
-    void speakAsNurse(`Start voice first, doctor. Press T, then ask me again to invite ${firstName(contact.name)}.`);
+    sayLine('startVoice', firstName(contact.name));
     return;
   }
   setCall({ ...IDLE, status: 'inviting', contactName: contact.name });
@@ -245,7 +253,7 @@ export async function callObserver(contact: ObserverContact, note = '', utteranc
     setCall({ status: 'error', error: link.error || 'Could not create the observer link.' });
     run.step({ tool: 'create_observer_link', args: { channel: info.channel }, ok: false, summary: link.error || 'Could not create the observer link' });
     run.finish(false, "Sorry doctor, I couldn't create the observer link.");
-    void speakAsNurse("Sorry doctor, I couldn't create the observer link.");
+    sayLine('linkFailed');
     return;
   }
   run.step({
@@ -298,7 +306,7 @@ export async function callObserver(contact: ObserverContact, note = '', utteranc
       summary: called ? `Calling ${firstName(contact.name)}: Asha speaks in her Murf voice and answers questions` : `Call not placed${(snap as unknown as { error?: string }).error ? `: ${(snap as unknown as { error?: string }).error}` : ''}`,
     });
     run.finish(called || !!d?.ok, snap.spoken || `Calling ${firstName(contact.name)} now.`);
-    if (snap.spoken) void speakAsNurse(snap.spoken);
+    if (snap.spoken) void say({ speaker: 'nurse', priority: 'result', text: snap.spoken, key: `observer-call:${snap.token}` });
     if (!TERMINAL.has(snap.status)) startPolling(snap.token);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -306,7 +314,7 @@ export async function callObserver(contact: ObserverContact, note = '', utteranc
     setCall({ status: 'error', error: msg });
     run.step({ tool: 'place_call', args: { via: 'Twilio' }, ok: false, summary: msg });
     run.finish(false, `Sorry doctor, I couldn't call ${firstName(contact.name)}.`);
-    void speakAsNurse(`Sorry doctor, I couldn't call ${firstName(contact.name)}.`);
+    sayLine('callFailed', firstName(contact.name));
   }
 }
 
@@ -322,7 +330,7 @@ export function maybeHandleObserverCommand(text: string): boolean {
   if (!contact && !cmd.explicit) return false;
   if (!contact) {
     const name = titleCase(cmd.name);
-    void speakAsNurse(`I don't have ${name} in your contacts yet. Add their number and I'll call.`);
+    sayLine('noContact', name);
     requestObserverPopover(name);
     return true;
   }

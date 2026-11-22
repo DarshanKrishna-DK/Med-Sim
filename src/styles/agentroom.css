@@ -1,0 +1,1186 @@
+/* BAND agent room: the docked panel in the consultation, the teamwork card in
+ * the debrief, the recipient chips and the status chip. Night ward tokens; each
+ * participant owns one colour, the human owns gold and a frame. */
+
+.ar-role--nurse { --ar: #9fd0ff; }
+.ar-role--pharmacist { --ar: #a8e27c; }
+.ar-role--lab { --ar: #c9a7ff; }
+.ar-role--radiology { --ar: #ffa36b; }
+.ar-role--examiner { --ar: #f59bc0; }
+.ar-role--faculty { --ar: #ffd76a; }
+
+/* ── dock: the left column runs to the bottom, above the observer button ── */
+
+.hud--compact .hud-left {
+  grid-row: 2 / 4;
+  align-self: stretch;
+  padding-bottom: 48px;
+}
+
+.aroom {
+  --ar-gold: #ffd76a;
+  width: 100%;
+  min-height: 0;
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.hud-left > .patient-card {
+  flex: none;
+}
+
+.aroom-head {
+  flex: none;
+  background: var(--bg-deep);
+}
+
+.aroom-toggle {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.aroom-toggle:hover .chev {
+  color: var(--text);
+}
+
+.aroom-toggle:focus-visible,
+.aroom :is(a, summary, .aroom-mini):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.aroom-toggle:focus-visible {
+  outline-offset: -2px;
+}
+
+.aroom-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.aroom-band {
+  padding: 1px 6px 0;
+  background: var(--text);
+  color: var(--background);
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 18px;
+  letter-spacing: 0.06em;
+}
+
+.aroom-live {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.aroom-live-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--muted);
+}
+
+.aroom-live--live .aroom-live-dot {
+  background: var(--primary);
+}
+
+.aroom-live--connecting .aroom-live-dot,
+.aroom-live--offline .aroom-live-dot {
+  background: var(--amber-strong);
+  animation: twinkle 0.9s steps(2) infinite;
+}
+
+.aroom-ticker {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 2px solid var(--line);
+  color: var(--ink-2);
+}
+
+.aroom-ticker-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aroom-ticker-flag {
+  flex: none;
+  padding: 0 6px;
+  background: var(--ar-gold);
+  color: #1d2433;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.aroom.needs-you {
+  box-shadow: 0 0 0 2px var(--ar-gold), 4px 4px 0 0 var(--bg-deep);
+}
+
+.aroom-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 2px solid var(--line);
+}
+
+.aroom-body[hidden] {
+  display: none;
+}
+
+.aroom p {
+  margin: 0;
+}
+
+.aroom-empty {
+  padding: 14px 12px;
+  color: var(--ink-2);
+  display: grid;
+  gap: 8px;
+}
+
+.aroom-fine {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.aroom-link {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.aroom-link code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.aroom a {
+  color: var(--accent2);
+  text-underline-offset: 3px;
+}
+
+/* ── roster ── */
+
+.aroom-roster {
+  flex: none;
+  padding: 4px 12px 8px;
+  display: grid;
+  gap: 6px;
+  border-bottom: 2px solid var(--line);
+}
+
+.aroom-roster ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.aroom-seat {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 44px;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  line-height: 1.2;
+  animation: aroom-sit 0.24s steps(3, end) both;
+}
+
+@keyframes aroom-sit {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+.aroom-face {
+  position: relative;
+  padding: 2px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--line), inset 0 -4px 0 0 var(--ar);
+  line-height: 0;
+}
+
+.aroom-seat.is-speaking .aroom-face {
+  box-shadow: inset 0 0 0 2px var(--ar), inset 0 -4px 0 0 var(--ar), 0 0 0 2px var(--ar);
+}
+
+.aroom-seat.is-human .aroom-face {
+  box-shadow: 0 0 0 2px var(--bg-deep), 0 0 0 4px var(--ar-gold);
+}
+
+.aroom-seat.is-human.is-speaking .aroom-face {
+  box-shadow: 0 0 0 2px var(--bg-deep), 0 0 0 6px var(--ar-gold);
+}
+
+.aroom-dot {
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  background: var(--line-strong);
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+.aroom-dot.is-on {
+  background: var(--primary);
+}
+
+.aroom-eq {
+  position: absolute;
+  left: 50%;
+  top: -11px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 9px;
+  transform: translateX(-50%);
+}
+
+.aroom-eq i {
+  width: 3px;
+  height: 100%;
+  background: var(--ar);
+  transform-origin: bottom;
+  animation: aroom-eq 0.5s steps(3) infinite alternate;
+}
+
+.aroom-eq i:nth-child(2) { animation-delay: -0.2s; }
+.aroom-eq i:nth-child(3) { animation-delay: -0.35s; }
+
+@keyframes aroom-eq {
+  from { transform: scaleY(0.3); }
+  to { transform: scaleY(1); }
+}
+
+.aroom-human {
+  flex: none;
+  padding: 0 5px;
+  background: var(--ar-gold, #ffd76a);
+  color: #1d2433;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.aroom-because {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── scroll area, tray, cards ── */
+
+/* Fills the column once there is something to show. */
+.aroom.is-open:has(.aroom-mid) {
+  flex: 1 1 auto;
+}
+
+.aroom.is-open .aroom-body:has(.aroom-mid) {
+  flex: 1 1 auto;
+}
+
+.aroom-mid {
+  flex: 1 1 auto;
+  min-height: 0;
+  container-type: size;
+}
+
+.aroom-flow {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Short column (chart open, small laptop): one scroll, the cards first. */
+@container (max-height: 270px) {
+  .aroom-flow {
+    display: block;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  .aroom-flow > .aroom-tray,
+  .aroom-flow > .aroom-scroll {
+    overflow: visible;
+  }
+}
+
+.aroom-scroll {
+  /* Gives way to the tray first: what needs the doctor stays readable. */
+  flex: 1 1000 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.aroom-tray {
+  flex: 0 1 auto;
+  min-height: 64px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--line);
+}
+
+.aroom-tray:empty {
+  display: none;
+}
+
+.aroom-card {
+  display: grid;
+  gap: 8px;
+  padding: 9px 10px 10px;
+  background: var(--surface);
+  box-shadow: inset 3px 0 0 var(--ar, var(--line-strong));
+}
+
+.aroom-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.aroom-card-who {
+  flex: none;
+  color: var(--ar, var(--text));
+  font-weight: 600;
+}
+
+.aroom-card-label {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.aroom-card-label--dim {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.aroom-secs {
+  margin-left: auto;
+  flex: none;
+  color: var(--accent2);
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.aroom-card-text {
+  color: var(--ink-2);
+}
+
+.aroom-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.aroom-mini {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  background: var(--secondary);
+  color: var(--text);
+  box-shadow: inset 0 0 0 2px var(--line);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.aroom-mini:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.aroom-mini:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.aroom-mini--go {
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: none;
+}
+
+.aroom-mini--go:hover:not(:disabled) {
+  background: #bdf094;
+}
+
+.aroom-mini--gold {
+  background: var(--ar-gold, #ffd76a);
+  color: #1d2433;
+  box-shadow: none;
+}
+
+.aroom-mini--gold:hover:not(:disabled) {
+  background: #ffe394;
+}
+
+/* Stage tracker: square nodes on one rail. */
+.aroom-track {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+}
+
+.aroom-track li {
+  position: relative;
+  flex: 1 1 auto;
+  padding: 13px 8px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.25;
+}
+
+.aroom-track li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 8px;
+  height: 8px;
+  z-index: 1;
+  background: var(--line-strong);
+}
+
+.aroom-track li::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 0;
+  top: 4px;
+  height: 2px;
+  background: var(--line);
+}
+
+.aroom-track li:last-child {
+  flex: 0 1 auto;
+  padding-right: 0;
+}
+
+.aroom-track li:last-child::after {
+  display: none;
+}
+
+.aroom-track .is-done {
+  color: var(--ink-2);
+}
+
+.aroom-track .is-done::before,
+.aroom-track .is-done::after {
+  background: var(--ar, var(--primary));
+}
+
+.aroom-track .is-now {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.aroom-track .is-now::before {
+  background: var(--text);
+  animation: twinkle 0.9s steps(2) infinite;
+}
+
+.aroom-track .is-bad::before {
+  background: var(--destructive);
+}
+
+.aroom-card--hold {
+  background: linear-gradient(var(--red-tint), var(--red-tint)), var(--surface);
+  box-shadow: inset 3px 0 0 var(--destructive);
+}
+
+.aroom-hold {
+  flex: none;
+  padding: 1px 7px 0;
+  background: var(--destructive);
+  color: #1d0708;
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 18px;
+  letter-spacing: 0.04em;
+}
+
+.aroom-suggest {
+  color: var(--text);
+}
+
+.aroom-card--trouble {
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.aroom-card--ask {
+  background: var(--secondary);
+}
+
+.aroom-question {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.aroom-answer,
+.aroom-reply {
+  display: flex;
+  gap: 8px;
+}
+
+.aroom-answer .input,
+.aroom-reply .input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.aroom-reply.is-asked .input {
+  box-shadow: inset 0 0 0 2px var(--ar-gold);
+}
+
+/* ── the human ── */
+
+.aroom-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px;
+  padding: 8px 10px;
+  background: linear-gradient(rgba(255, 215, 106, 0.1), rgba(255, 215, 106, 0.1)), var(--surface);
+  box-shadow: 0 0 0 2px var(--ar-gold);
+  color: var(--ink-2);
+}
+
+.aroom-banner b {
+  color: var(--ar-gold);
+  font-weight: 600;
+}
+
+.aroom-banner svg {
+  flex: none;
+}
+
+.aroom-banner--wait {
+  box-shadow: 0 0 0 2px var(--line-strong);
+}
+
+/* ── messages ── */
+
+.aroom-msgs,
+.aroom-side ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.aroom-msgs {
+  padding: 12px;
+}
+
+.aroom-msg {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.aroom-msg > .ar-avatar {
+  margin-top: 1px;
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.aroom-msg-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.aroom-msg-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.aroom-msg-name {
+  color: var(--ar);
+  font-weight: 600;
+}
+
+.aroom-msg-head time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.aroom-msg-text {
+  color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.aroom-msg.is-human {
+  padding: 8px;
+  background: linear-gradient(rgba(255, 215, 106, 0.1), rgba(255, 215, 106, 0.1)), var(--surface);
+  box-shadow: 0 0 0 2px var(--ar-gold);
+}
+
+.aroom-mention {
+  padding: 0 4px;
+  background: color-mix(in srgb, var(--ar) 18%, transparent);
+  color: var(--ar);
+  font-weight: 600;
+}
+
+.aroom-ticks {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.aroom-ticks--processing {
+  color: var(--amber-strong);
+}
+
+.aroom-ticks--processed {
+  color: var(--primary);
+}
+
+.aroom-ticks--failed {
+  color: var(--destructive);
+}
+
+/* An aside the rest of the room never received: indented, behind a dashed wire. */
+.aroom-side {
+  margin-left: 14px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px dashed var(--line-strong);
+  display: grid;
+  gap: 8px;
+}
+
+.aroom-side-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.aroom-side-label svg {
+  flex: none;
+}
+
+.aroom-slim {
+  padding-left: 32px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.aroom-slim-who {
+  color: var(--ar);
+}
+
+.aroom-slim code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.aroom-slim--error {
+  color: var(--destructive);
+}
+
+.aroom-more summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.aroom-more summary:hover {
+  color: var(--text);
+}
+
+.aroom-more > :not(summary) {
+  margin-top: 5px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.aroom-more ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.aroom-more b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.aroom-more .aroom-withheld {
+  color: var(--accent2);
+}
+
+/* ── footer ── */
+
+.aroom-foot {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border-top: 2px solid var(--line);
+  background: var(--bg-deep);
+}
+
+.aroom-reply {
+  flex: 1 1 100%;
+}
+
+/* The table opens over the messages, it never squeezes them. */
+.aroom-know > table {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 2px);
+  z-index: 2;
+  margin: 0;
+  background: var(--bg-deep);
+  box-shadow: 0 -2px 0 0 var(--line);
+}
+
+.aroom-know th:first-child {
+  padding-left: 12px;
+}
+
+.aroom-know tr:first-child th {
+  padding-top: 8px;
+}
+
+.aroom-know tr:last-child > * {
+  padding-bottom: 8px;
+}
+
+.aroom-know table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.aroom-know th {
+  padding: 2px 4px 2px 0;
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.aroom-know thead th {
+  text-align: center;
+  color: var(--ar, var(--muted));
+  font-size: 11.5px;
+}
+
+.aroom-know td {
+  text-align: center;
+}
+
+.aroom-know td > span:first-child {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  box-shadow: inset 0 0 0 2px var(--line);
+}
+
+.aroom-know td.is-yes > span:first-child {
+  background: var(--ar);
+  box-shadow: none;
+}
+
+/* ── recipient chips under the order box ── */
+
+.sendto {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+  background: var(--bg-deep);
+  border-top: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sendto + .command {
+  border-top: 0;
+}
+
+.sendto fieldset {
+  display: contents;
+}
+
+.sendto label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 2px var(--line);
+  cursor: pointer;
+}
+
+.sendto label:hover {
+  color: var(--text);
+}
+
+.sendto input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.sendto label:has(:checked) {
+  background: color-mix(in srgb, var(--ar, var(--primary)) 18%, transparent);
+  box-shadow: inset 0 0 0 2px var(--ar, var(--primary));
+  color: var(--text);
+}
+
+.sendto label:has(:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.sendto-resolved {
+  flex-basis: 100%;
+  min-height: 16px;
+}
+
+.sendto-resolved b {
+  color: var(--ar, var(--text));
+  font-weight: 600;
+}
+
+/* ── chart states in the Results and Plan tabs ── */
+
+.rx.rx--verifying {
+  box-shadow: inset 0 0 0 2px var(--line);
+  border-left: 4px dashed var(--amber);
+  background: var(--surface);
+}
+
+.rx.rx--held {
+  border-left: 4px solid var(--destructive);
+  background: linear-gradient(var(--red-tint), var(--red-tint)), var(--surface);
+}
+
+.rx-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.result-text.result-pending {
+  color: var(--amber-strong);
+}
+
+/* ── BAND status chip (landing, corridor) ── */
+
+.band-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 10px;
+  background: var(--bg-deep);
+  color: var(--ink-2);
+  box-shadow: 0 0 0 2px var(--line);
+  font-size: 12px;
+}
+
+.band-chip::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: var(--primary);
+}
+
+/* ── debrief: teamwork ── */
+
+.teamwork {
+  display: grid;
+  gap: 20px;
+}
+
+.teamwork-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.teamwork-total {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.teamwork-total small {
+  color: var(--muted);
+  font-size: 1.4rem;
+}
+
+.teamwork-state {
+  padding: 3px 10px;
+  box-shadow: inset 0 0 0 2px var(--line-strong);
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.teamwork-state--signed_off,
+.teamwork-state--revised {
+  background: #ffd76a;
+  box-shadow: none;
+  color: #1d2433;
+}
+
+.teamwork-domains {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px 24px;
+}
+
+.teamwork-comment {
+  padding: 12px 14px;
+  background: var(--surface);
+  box-shadow: 0 0 0 2px #c9971a;
+}
+
+.teamwork-line {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 18px;
+  border-left: 2px solid var(--line-strong);
+  display: grid;
+  gap: 8px;
+  max-width: 76ch;
+}
+
+.teamwork-line li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 5.2em minmax(0, 1fr);
+  gap: 10px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.teamwork-line li::before {
+  content: '';
+  position: absolute;
+  left: -23px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  background: var(--line-strong);
+}
+
+.teamwork-line .is-good::before { background: var(--green); }
+.teamwork-line .is-bad::before { background: var(--destructive); }
+.teamwork-line .is-human::before { background: #d9a520; box-shadow: 0 0 0 2px var(--background), 0 0 0 4px #d9a520; }
+
+.teamwork-line time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.teamwork-line b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ── observer page ── */
+
+.obs-room ol {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.obs-room b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.obs-room .is-human b { color: #ffd76a; }
+.obs-room .is-bad { color: var(--destructive); }
+
+/* ── small screens: a bottom sheet over the stacked page ── */
+
+@media (min-width: 1400px) {
+  .encounter .hud--compact {
+    grid-template-columns: minmax(0, 380px) minmax(0, 1fr) minmax(300px, 340px);
+  }
+}
+
+/* Two columns: the dock and the voice bar share the left one. */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .encounter .hud--compact {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  }
+
+  .encounter .hud--compact .hud-left {
+    grid-row: auto;
+    width: min(340px, 100%);
+    padding-bottom: 0;
+  }
+
+  .encounter .hud--compact .hud-bottom {
+    grid-column: 1;
+    padding-bottom: 48px;
+  }
+}
+
+@media (max-width: 900px) {
+  .encounter .hud--compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .encounter .hud--compact .hud-bottom {
+    grid-column: auto;
+  }
+
+  .hud--compact .hud-left {
+    grid-row: auto;
+    padding-bottom: 0;
+  }
+
+  .aroom {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    box-shadow: 0 -2px 0 0 var(--line);
+  }
+
+  .aroom.needs-you {
+    box-shadow: 0 -3px 0 0 var(--ar-gold);
+  }
+
+  .aroom.is-open {
+    height: min(72dvh, 640px);
+  }
+
+  .aroom-body {
+    flex: 1;
+  }
+
+  .aroom-scroll {
+    flex: 1;
+  }
+
+  .aroom-mini {
+    min-height: 44px;
+  }
+
+  .sendto label {
+    min-height: 36px;
+  }
+
+  .hud:has(.aroom) {
+    padding-bottom: 96px;
+  }
+
+  body:has(.aroom) .obs-invite {
+    bottom: 96px;
+  }
+}
+
+@media (max-width: 560px) {
+  .encounter .hud--compact .hud-top {
+    gap: 8px 12px;
+  }
+
+  .encounter button.hud-case {
+    order: 9;
+    flex: 1 1 100%;
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aroom-seat,
+  .aroom-eq i,
+  .aroom-live-dot,
+  .aroom-track .is-now::before {
+    animation: none;
+  }
+}

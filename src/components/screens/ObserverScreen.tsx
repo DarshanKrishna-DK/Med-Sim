@@ -3,7 +3,9 @@ import { Brand } from '../ui/chrome';
 import { ObserverSession, type ObserverView } from '../../observer/observerSession';
 import { observeCodeFromUrl } from '../../observer/observeParam';
 import { LIMITS, OSCE_DOMAINS, type ChartEvent, type MarkDomain } from '../../observer/messages';
+import type { RoomSummary } from '../../room/reducer';
 import '../../styles/observer.css';
+import '../../styles/agentroom.css';
 
 const NAME_KEY = 'medsim:observer-name';
 
@@ -101,6 +103,7 @@ export default function ObserverScreen() {
                 </p>
               )}
             </div>
+            {view.room && <RoomFeed room={view.room} />}
             <ChartFeed events={view.events} synced={view.synced} />
           </section>
           <section className="obs-col obs-col--mid" aria-label="Live transcript">
@@ -171,6 +174,23 @@ const KIND_LABEL: Record<ChartEvent['kind'], string> = {
   diagnosis: 'Diagnosis',
   nurse: 'Nurse',
 };
+
+/** The student's Agent Room, read only. */
+function RoomFeed({ room }: { room: RoomSummary }) {
+  return (
+    <div className="obs-panel obs-room">
+      <p className="field-label">Agent Room (BAND)</p>
+      <p className="obs-hint">In the room: {room.participants.map((p) => (p.human ? `${p.name} (human)` : p.name)).join(', ') || 'Asha'}</p>
+      <ol aria-live="polite">
+        {[...room.items].reverse().map((i, n) => (
+          <li key={`${i.at}-${n}`} className={i.tone ? `is-${i.tone}` : undefined}>
+            <b>{i.who}</b> {i.what}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
 
 function ChartFeed({ events, synced }: { events: ChartEvent[]; synced: boolean }) {
   return (

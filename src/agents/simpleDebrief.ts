@@ -72,7 +72,7 @@ export function buildSimpleDebriefPayload(encounter: ActivePatient, transcript: 
     ...encounter.orderedTestIds.map((id) => ({
       t: since(encounter.testOrderedAt[id]),
       kind: 'test' as const,
-      detail: testName.get(id) ?? id,
+      detail: `${testName.get(id) ?? id}${encounter.completedTestIds.includes(id) ? '' : ' (result still pending at the end)'}`,
     })),
     ...encounter.givenTreatmentIds.map((id) => ({
       t: null,
@@ -83,6 +83,15 @@ export function buildSimpleDebriefPayload(encounter: ActivePatient, transcript: 
       t: since(rx.prescribedAt),
       kind: 'prescription' as const,
       detail: `${medName.get(rx.medicationId) ?? rx.medicationId}, ${rx.dose}, ${rx.duration}`,
+    })),
+    // Held or still being checked: ordered, but never given to the patient.
+    ...(encounter.rxReview ?? []).map((r) => ({
+      t: since(r.at),
+      kind: 'treatment' as const,
+      detail:
+        r.status === 'held'
+          ? `NOT prescribed, held by the pharmacist: ${medName.get(r.medicationId) ?? r.medicationId}${r.reason ? ` (${r.reason})` : ''}`
+          : `NOT yet prescribed, pharmacist still checking: ${medName.get(r.medicationId) ?? r.medicationId}`,
     })),
     ...(encounter.submittedDiagnosisId
       ? [{
@@ -95,7 +104,7 @@ export function buildSimpleDebriefPayload(encounter: ActivePatient, transcript: 
       ? [{
           t: null,
           kind: 'followUp' as const,
-          detail: `Follow-up in ${encounter.followUp.inDays} days: ${encounter.followUp.reason}`,
+          detail: `Follow-up ${encounter.followUp.inDays === 0 ? 'later today' : `in ${encounter.followUp.inDays} days`}: ${encounter.followUp.reason}`,
         }]
       : []),
   ];

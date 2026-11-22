@@ -47,6 +47,8 @@ export function useVoiceSession(patient: ActivePatient | null): VoiceSession {
   const caseId = patient?.case.id ?? null;
   const patientRef = useRef(patient);
   patientRef.current = patient;
+  const micMutedRef = useRef(micMuted);
+  micMutedRef.current = micMuted;
 
   const listenersRef = useRef({
     onStatus: (s: ConversationStatus) => setStatus(s),
@@ -94,6 +96,8 @@ export function useVoiceSession(patient: ActivePatient | null): VoiceSession {
     const conv = getOrCreatePatientConversation(POLYCLINIC_BED_INDEX, p.case, listenersRef.current, store.getState().lang);
     unsubRef.current?.();
     unsubRef.current = conv.subscribeMessages((m) => setMessages([...m]));
+    // A reconnect (language switch, retry) must not unmute a muted doctor.
+    conv.setMicMuted(micMutedRef.current);
     const current = conv.getStatus();
     setStatus(current);
     if (current === 'uninitialized') {
@@ -142,10 +146,9 @@ export function useVoiceSession(patient: ActivePatient | null): VoiceSession {
   const toggleMic = useCallback(() => {
     const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
     if (!conv) return;
-    setMicMuted((m) => {
-      conv.setMicMuted(!m);
-      return !m;
-    });
+    const next = !micMutedRef.current;
+    conv.setMicMuted(next);
+    setMicMuted(next);
   }, []);
 
   const sendText = useCallback(async (text: string) => {

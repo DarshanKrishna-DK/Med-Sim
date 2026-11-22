@@ -4,6 +4,7 @@
  * one peer) and are told apart by `object` (also sent as RTM `customType`).
  *
  *   medsim.event     student link -> channel   chart events (orders, exams, alerts, diagnosis)
+ *   medsim.room      student link -> channel   compact Agent Room summary (who is in it, what happened)
  *   medsim.hello     observer -> student link  "I joined, send me the story so far"
  *   medsim.snapshot  student link -> observer  case label, transcript so far, events so far
  *   medsim.whisper   observer -> student link  private faculty note, shown as a toast
@@ -13,8 +14,11 @@
  * Pure module (no SDK imports) so `node --test` can run it.
  */
 
+import type { RoomSummary } from '../room/reducer';
+
 export const MEDSIM_TYPES = [
   'medsim.event',
+  'medsim.room',
   'medsim.hello',
   'medsim.snapshot',
   'medsim.whisper',
@@ -62,6 +66,7 @@ export interface TranscriptSnapshotLine {
 
 export type MedsimMessage =
   | { object: 'medsim.event'; caseId: string; events: ChartEvent[] }
+  | { object: 'medsim.room'; caseId: string; room: RoomSummary }
   | { object: 'medsim.hello'; examiner: string }
   | {
       object: 'medsim.snapshot';
@@ -71,6 +76,7 @@ export type MedsimMessage =
       startedAt: number;
       transcript: TranscriptSnapshotLine[];
       events: ChartEvent[];
+      room?: RoomSummary;
     }
   | { object: 'medsim.whisper'; id: string; text: string; examiner: string; at: number; to?: string }
   | { object: 'medsim.marks'; marks: FacultyMarks; to?: string }
@@ -83,6 +89,8 @@ export const LIMITS = {
   label: 160,
   detail: 400,
   eventsPerMessage: 20,
+  roomItems: 14,
+  roomText: 220,
   /** RTM v2 caps a message at 32 KB; stay well under it. */
   maxBytes: 24_000,
 } as const;
@@ -115,6 +123,29 @@ export function parseChartEvent(v: unknown): ChartEvent | null {
 function parseEvents(v: unknown, max: number): ChartEvent[] {
   if (!Array.isArray(v)) return [];
   return v.slice(-max).map(parseChartEvent).filter((e): e is ChartEvent => e !== null);
+}
+
+const ROLES = ['nurse', 'pharmacist', 'lab', 'radiology', 'examiner', 'faculty'] as const;
+const TONES = ['good', 'bad', 'human'] as const;
+
+/** The Agent Room summary another browser sent; every field is re-checked. */
+export function parseRoomSummary(v: unknown): RoomSummary | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const rows = (x: unknown, n: number) => (Array.isArray(x) ? x.slice(-n) : []).filter((e): e is Record<string, unknown> => !!e && typeof e === 'object');
+  const url = str(o.url, 300) ?? '';
+  return {
+    url: /^https:\/\//.test(url) ? url : '',
+    now: str(o.now, LIMITS.roomText) ?? '',
+    participants: rows(o.participants, 8).flatMap((p) => {
+      const role = ROLES.find((r) => r === p.role);
+      return role ? [{ role, name: str(p.name, 60) ?? '', human: p.human === true }] : [];
+    }),
+    items: rows(o.items, LIMITS.roomItems).map((i) => {
+      const tone = TONES.find((t) => t === i.tone);
+      return { at: str(i.at, 40) ?? '', who: str(i.who, 60) ?? '', what: str(i.what, LIMITS.roomText) ?? '', ...(tone ? { tone } : {}) };
+    }),
+  };
 }
 
 /** Clamp a 1-5 OSCE score; anything else is invalid (null). */
@@ -159,6 +190,10 @@ export function parseMedsimMessage(msg: Record<string, unknown> | null): MedsimM
       if (!events.length) return null;
       return { object: 'medsim.event', caseId: str(msg.caseId, 64) ?? '', events };
     }
+    case 'medsim.room': {
+      const room = parseRoomSummary(msg.room);
+      return room ? { object: 'medsim.room', caseId: str(msg.caseId, 64) ?? '', room } : null;
+    }
     case 'medsim.hello':
       return { object: 'medsim.hello', examiner: str(msg.examiner, LIMITS.examiner) ?? '' };
     case 'medsim.snapshot': {
@@ -180,6 +215,7 @@ export function parseMedsimMessage(msg: Record<string, unknown> | null): MedsimM
         startedAt: num(msg.startedAt) ?? 0,
         transcript,
         events: parseEvents(msg.events, 200),
+        ...(msg.room ? { room: parseRoomSummary(msg.room) ?? undefined } : {}),
       };
     }
     case 'medsim.whisper': {

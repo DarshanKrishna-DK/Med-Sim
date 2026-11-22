@@ -21,6 +21,7 @@ import { buildResultPayload } from '../../agents/resultSend';
 import { getProfile } from '../../game/profile';
 import { getCaseClinic } from '../../data/cases';
 import { CLINIC_LABELS } from '../../game/clinic';
+import { TeamworkSection } from './TeamworkSection';
 
 const VERDICT: Record<VerdictBand, { word: string; tone: 'good' | 'mid' | 'bad' }> = {
   excellent: { word: 'Excellent', tone: 'good' },
@@ -47,6 +48,9 @@ function asBullets(list: string[]): string[] {
 
 const dxLabel = (id: string | null) =>
   id ? POLYCLINIC_DIAGNOSIS_LABELS[id] ?? id.replace(/-/g, ' ') : null;
+
+const testLabel = (p: ActivePatient, id: string): string =>
+  `${testById(id)?.name ?? id}${p.completedTestIds.includes(id) ? '' : ' (result pending)'}`;
 
 export function DebriefScreen() {
   const viewedId = useStore((s) => s.viewedEvalHistoryId);
@@ -138,6 +142,7 @@ function LiveDebrief({
           <button type="button" className="btn btn-primary" onClick={() => onRetry('auto')}>Try again</button>
           <button type="button" className="btn btn-ghost" onClick={() => onRetry('simple')}>Use the quick debrief</button>
         </div>
+        <TeamworkSection encounter={encounter} />
         <EncounterSummary encounter={encounter} />
       </div>
     );
@@ -163,6 +168,7 @@ function LiveDebrief({
           <p className="narration-text">{narration.length > 900 ? '…' + narration.slice(-900) : narration}</p>
         </div>
       )}
+      <TeamworkSection encounter={encounter} />
       <EncounterSummary encounter={encounter} />
     </div>
   );
@@ -212,7 +218,7 @@ function DebriefBody({
     diagnosisCorrect: dxLabel(c.correctDiagnosisId),
     diagnosisIsCorrect: submitted ? submitted === c.correctDiagnosisId : false,
     prescriptions: (encounter.prescriptions ?? []).map((p) => `${medicationById(p.medicationId)?.name ?? p.medicationId} ${p.dose}`),
-    tests: encounter.orderedTestIds.map((t) => testById(t)?.name ?? t),
+    tests: encounter.orderedTestIds.map((t) => testLabel(encounter, t)),
     lang: sessionLang,
   });
 
@@ -296,6 +302,7 @@ function DebriefBody({
       )}
 
       <FacultyMarksCard caseId={c.id} encounterAt={encounter.arrivedAt} />
+      <TeamworkSection encounter={encounter} />
       <EncounterSummary encounter={encounter} />
     </article>
   );
@@ -379,7 +386,7 @@ function EncounterSummary({ encounter }: { encounter: ActivePatient }) {
         </div>
         <div>
           <dt>Tests</dt>
-          <dd>{encounter.orderedTestIds.length ? encounter.orderedTestIds.map((t) => testById(t)?.name ?? t).join(', ') : 'None'}</dd>
+          <dd>{encounter.orderedTestIds.length ? encounter.orderedTestIds.map((t) => testLabel(encounter, t)).join(', ') : 'None'}</dd>
         </div>
         <div>
           <dt>Prescriptions</dt>
@@ -389,9 +396,19 @@ function EncounterSummary({ encounter }: { encounter: ActivePatient }) {
               : 'None'}
           </dd>
         </div>
+        {(encounter.rxReview ?? []).length > 0 && (
+          <div>
+            <dt>Not prescribed</dt>
+            <dd>
+              {(encounter.rxReview ?? [])
+                .map((r) => `${medicationById(r.medicationId)?.name ?? r.medicationId} (${r.status === 'held' ? 'held by the pharmacist' : 'pharmacist still checking'})`)
+                .join('; ')}
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Follow-up</dt>
-          <dd>{encounter.followUp ? `${encounter.followUp.inDays} days: ${encounter.followUp.reason}` : 'None'}</dd>
+          <dd>{encounter.followUp ? `${encounter.followUp.inDays === 0 ? 'Later today' : `${encounter.followUp.inDays} days`}: ${encounter.followUp.reason}` : 'None'}</dd>
         </div>
         {nurseRuns > 0 && (
           <div>

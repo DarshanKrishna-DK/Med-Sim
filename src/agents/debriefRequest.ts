@@ -71,6 +71,13 @@ export interface DebriefRequest {
       dose: string;
       duration: string;
     }>;
+    /** Ordered but not on the prescription at the end: still being checked, or
+     *  held by the pharmacist. Never grade these as prescribed. */
+    not_prescribed?: Array<{
+      medication_id: string;
+      status: 'verifying' | 'held';
+      reason: string | null;
+    }>;
     submitted_diagnosis_id: string | null;
     diagnosis_was_correct: boolean | null;
   };
@@ -99,7 +106,11 @@ export function buildDebriefRequest(
   const resultByTest = new Map(c.testResults.map((r) => [r.testId, r]));
   const tests_ordered = patient.orderedTestIds.map((tid) => {
     const t = testById.get(tid);
-    const result = resultByTest.get(tid);
+    // Pending tests have no result the trainee could have seen; a department's
+    // own text wins over the case's.
+    const back = patient.testReports?.[tid];
+    const onCase = resultByTest.get(tid);
+    const result = !patient.completedTestIds.includes(tid) ? null : back ? { result: back.text, abnormal: back.abnormal } : onCase;
     const orderedAt = patient.testOrderedAt[tid];
     return {
       test_id: tid,
@@ -127,6 +138,12 @@ export function buildDebriefRequest(
     duration: p.duration,
   }));
 
+  const not_prescribed = (patient.rxReview ?? []).map((r) => ({
+    medication_id: r.medicationId,
+    status: r.status,
+    reason: r.reason ?? null,
+  }));
+
   return {
     case_id: c.id,
     case_summary: {
@@ -147,6 +164,7 @@ export function buildDebriefRequest(
       tests_ordered,
       treatments_given,
       prescriptions,
+      ...(not_prescribed.length ? { not_prescribed } : {}),
       submitted_diagnosis_id: patient.submittedDiagnosisId,
       diagnosis_was_correct:
         patient.submittedDiagnosisId === null

@@ -17,6 +17,7 @@ import {
 } from '../../agents/osceCore';
 import { AppHeader } from '../ui/chrome';
 import { FacultyMarksCard } from '../observer/FacultyMarksCard';
+import { TeamworkSection } from './TeamworkSection';
 import { SendResultButton } from '../ui/SendResultButton';
 import { buildResultPayload } from '../../agents/resultSend';
 import { getProfile } from '../../game/profile';
@@ -322,6 +323,7 @@ function Report({ entry, result, encounter }: { entry: EvalHistoryEntry; result:
       )}
 
       <FacultyMarksCard caseId={c.id} encounterAt={encounter.arrivedAt} saved={entry.facultyMarks} />
+      <TeamworkSection encounter={encounter} />
       <p className="osce-footnote">
         Synthetic training station marked by an AI examiner against the case checklist. Not a clinical or exam
         board assessment.

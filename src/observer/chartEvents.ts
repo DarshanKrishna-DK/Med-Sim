@@ -36,8 +36,20 @@ export function diffChart(prev: ChartSlice, next: ChartSlice, labels: ChartLabel
   for (const id of added(was?.orderedTestIds, p.orderedTestIds)) {
     out.push({ kind: 'order', label: `Test ordered: ${labels.test(id)}`, at: now });
   }
-  const prevRx = was?.prescriptions?.length ?? 0;
-  for (const rx of (p.prescriptions ?? []).slice(prevRx)) {
+  // Room mode: a department's result arrives after the order.
+  for (const [id, r] of Object.entries(p.testReports ?? {})) {
+    if (was?.testReports?.[id]) continue;
+    out.push({
+      kind: 'order',
+      label: `Result: ${labels.test(id)}${r.abnormal ? ' (abnormal)' : ''}`,
+      detail: r.text || undefined,
+      severity: r.critical ? 'danger' : r.abnormal ? 'warning' : 'info',
+      at: now,
+    });
+  }
+  const line = (x: { medicationId: string; prescribedAt: number }) => `${x.medicationId}|${x.prescribedAt}`;
+  const had = new Set((was?.prescriptions ?? []).map(line));
+  for (const rx of (p.prescriptions ?? []).filter((x) => !had.has(line(x)))) {
     out.push({
       kind: 'prescription',
       label: `Prescribed: ${labels.medication(rx.medicationId)}`,
@@ -45,8 +57,17 @@ export function diffChart(prev: ChartSlice, next: ChartSlice, labels: ChartLabel
       at: now,
     });
   }
+  const onRx = new Set((p.prescriptions ?? []).map((x) => x.medicationId));
+  for (const rx of was?.prescriptions ?? []) {
+    if (!onRx.has(rx.medicationId)) out.push({ kind: 'prescription', label: `Taken off: ${labels.medication(rx.medicationId)}`, severity: 'warning', at: now });
+  }
+  const heldBefore = new Set((was?.rxReview ?? []).filter((r) => r.status === 'held').map((r) => r.ref));
+  for (const r of p.rxReview ?? []) {
+    if (r.status !== 'held' || heldBefore.has(r.ref)) continue;
+    out.push({ kind: 'prescription', label: `Held by pharmacy: ${labels.medication(r.medicationId)}`, detail: r.reason || undefined, severity: 'danger', at: now });
+  }
   if (p.followUp && (!was?.followUp || was.followUp.inDays !== p.followUp.inDays || was.followUp.reason !== p.followUp.reason)) {
-    out.push({ kind: 'followup', label: `Follow-up in ${p.followUp.inDays} days`, detail: p.followUp.reason || undefined, at: now });
+    out.push({ kind: 'followup', label: p.followUp.inDays === 0 ? 'Follow-up later today' : `Follow-up in ${p.followUp.inDays} days`, detail: p.followUp.reason || undefined, at: now });
   }
   for (const sys of added(was?.examsPerformed, p.examsPerformed)) {
     if (!p.examResults?.[sys]) out.push({ kind: 'exam', label: `Examining: ${labels.exam(sys)}`, at: now });

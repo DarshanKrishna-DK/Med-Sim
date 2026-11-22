@@ -19,13 +19,15 @@ import { CLINIC_LABELS } from '../game/clinic';
 import { getCaseSpecialty, POLYCLINIC_DIAGNOSIS_LABELS } from '../data/polyclinicPatients';
 import { skillsPerformed } from './logbook';
 import { doctorName, getProfile } from '../game/profile';
-import { store, POLYCLINIC_BED_INDEX } from '../game/store';
-import { LANG_LOCALE, langOfText } from '../game/lang';
-import type { ActivePatient, NurseRun, NurseStep } from '../game/types';
+import { store, isOsceLive, isRoomMode, POLYCLINIC_BED_INDEX } from '../game/store';
+import type { ActivePatient, FollowUp, NursePending, NurseRun, NurseStep } from '../game/types';
+import { encounterIdOf } from '../room/chart';
+import { claimLine } from '../room/session';
 import { TESTS } from '../data/tests';
 import { MEDICATIONS } from '../data/medications';
 import { getExistingConversation } from '../voice/conversationStore';
 import { callUrlsFromSteps, rememberFollowupCall } from '../voice/followupCall';
+import { getStaffSpeaking, say, subscribeSpeaking, type SayOptions } from '../voice/speech';
 
 export type { NurseRun, NurseStep } from '../game/types';
 
@@ -40,14 +42,18 @@ export { looksLikeOrder, isAddressedToNurse } from './nurseIntent';
 
 interface NurseActResponse {
   runId: string;
-  intent: 'order' | 'none';
+  intent: 'order' | 'none' | 'clarify';
   plan: string;
   steps: NurseStep[];
   applied: {
     orderedTestIds: string[];
     prescriptions: Array<{ medicationId: string; dose: string; duration: string }>;
-    followUp?: { inDays: number; reason: string };
+    followUp?: FollowUp;
+    cancelledTestIds?: string[];
+    stoppedMedicationIds?: string[];
   };
+  /** BAND room mode: work that a department now owns. */
+  pending?: NursePending[];
   spokenConfirmation: string;
 }
 
@@ -69,6 +75,8 @@ function buildPayload(p: ActivePatient, utterance: string) {
   const completed = new Set(p.completedTestIds);
   return {
     caseId: c.id,
+    encounterId: encounterIdOf(p),
+    osce: isOsceLive(store.getState()),
     utterance,
     lang: store.getState().lang,
     patient: {
@@ -80,18 +88,23 @@ function buildPayload(p: ActivePatient, utterance: string) {
       anamnesis: c.anamnesis.map((q) => ({ question: q.question, answer: q.answer })),
       vitals: c.vitals,
       // Only results the doctor has actually seen.
-      testResults: c.testResults
-        .filter((r) => completed.has(r.testId))
-        .map((r) => ({
-          testId: r.testId,
-          name: testName.get(r.testId) ?? r.testId,
-          result: r.result,
-          abnormal: r.abnormal,
-        })),
+      testResults: [
+        // Returned by a department, or (legacy mode) released at once from the case.
+        ...Object.entries(p.testReports ?? {}).map(([testId, r]) => ({ testId, result: r.text, abnormal: r.abnormal })),
+        ...c.testResults.filter((r) => completed.has(r.testId) && !p.testReports?.[r.testId]),
+      ].map((r) => ({
+        testId: r.testId,
+        name: testName.get(r.testId) ?? r.testId,
+        result: r.result,
+        abnormal: r.abnormal,
+      })),
     },
     catalog: { tests: TEST_CATALOG, medications: MED_CATALOG },
     alreadyOrdered: [...p.orderedTestIds],
     alreadyPrescribed: (p.prescriptions ?? []).map((rx) => rx.medicationId),
+    // At the pharmacy: being checked or held, so NOT prescribed.
+    inReview: (p.rxReview ?? []).map(({ ref, medicationId, dose, duration, status }) => ({ ref, medicationId, dose, duration, status })),
+    pendingTests: p.orderedTestIds.filter((id) => !completed.has(id)),
     // Real-world delivery (send_to_patient) and everything already on the chart.
     contact: getPatientContact() || undefined,
     doctorName: doctorName(getProfile()),
@@ -125,59 +138,21 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
-// ── nurse voice playback (serialised so lines never overlap) ────
+// ── nurse voice (thin wrapper over the one speech queue) ─────────
 
-let speechChain: Promise<void> = Promise.resolve();
-
-// Tiny "is the nurse talking right now" signal for Nurse Asha's mascot.
-let nurseSpeaking = false;
-const speakingListeners = new Set<() => void>();
-function setNurseSpeaking(v: boolean) {
-  if (nurseSpeaking === v) return;
-  nurseSpeaking = v;
-  for (const l of speakingListeners) l();
-}
-export const isNurseSpeaking = (): boolean => nurseSpeaking;
+/** Asha or a message she relays is being heard right now (mascot mood). */
+export const isNurseSpeaking = (): boolean => {
+  const who = getStaffSpeaking()?.speaker;
+  return who === 'nurse' || who === 'faculty';
+};
 export function subscribeNurseSpeaking(fn: () => void): () => void {
-  speakingListeners.add(fn);
-  return () => speakingListeners.delete(fn);
+  return subscribeSpeaking(() => fn());
 }
 
-export function speakAsNurse(text: string): Promise<void> {
-  const line = text.trim();
-  if (!line) return Promise.resolve();
-  speechChain = speechChain.then(async () => {
-    let url: string | null = null;
-    const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
-    const wasMuted = conv?.isMicMuted() ?? false;
-    try {
-      const r = await fetch('/voice/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: line, voice: 'nurse', locale: LANG_LOCALE[langOfText(line, store.getState().lang)] }),
-      });
-      if (!r.ok) throw new Error(`/voice/tts ${r.status}`);
-      url = URL.createObjectURL(await r.blob());
-      const audio = new Audio(url);
-      // Keep the nurse's voice out of the doctor's mic → patient ASR.
-      conv?.setMicMuted(true);
-      setNurseSpeaking(true);
-      await new Promise<void>((resolve) => {
-        const done = () => resolve();
-        audio.addEventListener('ended', done, { once: true });
-        audio.addEventListener('error', done, { once: true });
-        audio.play().catch(done);
-        window.setTimeout(done, 20000); // hard cap
-      });
-    } catch (err) {
-      console.warn(LOG, 'nurse TTS failed:', err);
-    } finally {
-      setNurseSpeaking(false);
-      if (!wasMuted) conv?.setMicMuted(false);
-      if (url) URL.revokeObjectURL(url);
-    }
-  });
-  return speechChain;
+/** Say a line in Asha's voice. Prefer `say` from voice/speech when the line
+ *  has a key, a ref or a priority of its own. */
+export function speakAsNurse(text: string, opts: Omit<SayOptions, 'text' | 'speaker'> = {}): Promise<void> {
+  return say({ priority: 'result', ...opts, speaker: 'nurse', text }).then(() => undefined);
 }
 
 // ── main entry ──────────────────────────────────────────────────
@@ -186,13 +161,14 @@ function newRunId(): string {
   return `nr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function describeForPatient(applied: NurseRun['applied']): string | null {
+function describeForPatient(applied: NurseRun['applied'], pendingTests: ReadonlySet<string>): string | null {
   if (!applied) return null;
   const parts: string[] = [];
-  if (applied.orderedTestIds.length) {
-    const names = applied.orderedTestIds.map((id) => TESTS.find((t) => t.id === id)?.name ?? id);
-    parts.push(`The nurse has just done these tests on you: ${names.join(', ')}.`);
-  }
+  const names = (ids: string[]) => ids.map((id) => TESTS.find((t) => t.id === id)?.name ?? id).join(', ');
+  const done = applied.orderedTestIds.filter((id) => !pendingTests.has(id));
+  const sent = applied.orderedTestIds.filter((id) => pendingTests.has(id));
+  if (done.length) parts.push(`The nurse has just done these tests on you: ${names(done)}.`);
+  if (sent.length) parts.push(`The nurse has arranged these tests; nobody has the results yet: ${names(sent)}.`);
   if (applied.prescriptions.length) {
     const meds = applied.prescriptions.map((rx) => {
       const m = MED_BY_ID.get(rx.medicationId);
@@ -200,12 +176,45 @@ function describeForPatient(applied: NurseRun['applied']): string | null {
     });
     parts.push(`The doctor has prescribed you: ${meds.join(', ')}.`);
   }
+  if (applied.stoppedMedicationIds?.length) {
+    parts.push(`The doctor has stopped: ${applied.stoppedMedicationIds.map((id) => MED_BY_ID.get(id)?.name ?? id).join(', ')}.`);
+  }
   if (applied.followUp) {
-    parts.push(
-      `A follow-up visit was booked in ${applied.followUp.inDays} days (${applied.followUp.reason}).`,
-    );
+    const n = applied.followUp.inDays;
+    parts.push(`A follow-up visit was booked ${n === 0 ? 'for later today' : `in ${n} day${n === 1 ? '' : 's'}`} (${applied.followUp.reason}).`);
   }
   return parts.length ? parts.join(' ') : null;
+}
+
+/** The follow-up the backend booked, clamped. 0 days is later today. */
+function cleanFollowUp(fu: FollowUp | undefined): FollowUp | undefined {
+  const days = fu ? Number(fu.inDays) : NaN;
+  if (!fu || !Number.isFinite(days) || days < 0) return undefined;
+  return {
+    inDays: Math.round(days),
+    reason: String(fu.reason ?? '').trim() || 'Review',
+    ...(fu.recurrence && typeof fu.recurrence === 'object' ? { recurrence: fu.recurrence } : {}),
+    ...(fu.mode === 'call' || fu.mode === 'visit' ? { mode: fu.mode } : {}),
+    ...(typeof fu.callUrl === 'string' && fu.callUrl ? { callUrl: fu.callUrl } : {}),
+  };
+}
+
+/** Say Asha's reply once. The room may already have said the same sentence. */
+function speakRun(res: NurseActResponse, pending: NursePending[]) {
+  const text = res.spokenConfirmation?.trim();
+  if (!text || !claimLine(text)) return;
+  // Everything was handed over: just an acknowledgement, the department's own
+  // line replaces it. Anything else in the reply is the result itself.
+  const only = res.intent === 'order' && pending.length > 0 && !res.applied?.followUp && !res.applied?.prescriptions?.length;
+  const ack = only && (res.steps ?? []).every((x) => x.ok);
+  void say({
+    speaker: 'nurse',
+    text,
+    priority: ack ? 'ack' : 'result',
+    ...(ack ? { dropIfStale: 12_000 } : {}),
+    key: `nurse-run:${res.runId}`,
+    ...(pending.length === 1 ? { ref: pending[0].ref } : {}),
+  });
 }
 
 /**
@@ -221,6 +230,7 @@ export async function runNurseAction(
   const text = utterance.trim();
   if (!patient || !text) return null;
   const caseId = patient.case.id;
+  const encounterId = encounterIdOf(patient);
 
   const id = newRunId();
   const placeholder: NurseRun = {
@@ -239,7 +249,8 @@ export async function runNurseAction(
 
     // Patient may have changed while we waited, don't apply to the wrong chart.
     const cur = store.getState().polyclinic.patient;
-    if (!cur || cur.case.id !== caseId) {
+    // Same case seated again is a new encounter, so arrivedAt counts too.
+    if (!cur || encounterIdOf(cur) !== encounterId) {
       const stale: Partial<NurseRun> = {
         status: 'error',
         error: 'Patient changed before the nurse finished, nothing applied.',
@@ -249,39 +260,57 @@ export async function runNurseAction(
       return { ...placeholder, ...stale };
     }
 
-    // Validate against the catalogs; apply only what's real and new.
-    const already = new Set(cur.orderedTestIds);
-    const orderedTestIds = (res.applied?.orderedTestIds ?? []).filter(
-      (tid) => TEST_IDS.has(tid) && !already.has(tid),
-    );
-    const prescriptions = (res.applied?.prescriptions ?? [])
-      .filter((rx) => rx && MED_BY_ID.has(rx.medicationId))
-      .map((rx) => {
-        const m = MED_BY_ID.get(rx.medicationId)!;
-        return {
-          medicationId: rx.medicationId,
-          dose: rx.dose?.trim() || m.defaultDose,
-          duration: rx.duration?.trim() || m.defaultDuration,
-        };
-      });
-    const fu = res.applied?.followUp;
-    const followUp =
-      fu && Number.isFinite(Number(fu.inDays)) && Number(fu.inDays) > 0
-        ? { inDays: Math.round(Number(fu.inDays)), reason: String(fu.reason ?? '').trim() || 'Review' }
-        : undefined;
+    // Validate against the catalogs; apply only what's real and new. A result
+    // can come back over the room before this response, so "new" is measured
+    // against the chart the order was given on.
+    const already = new Set(patient.orderedTestIds);
+    const pending = (Array.isArray(res.pending) ? res.pending : []).filter((x) => x && typeof x.ref === 'string');
+    const heldByDept = new Set(pending.flatMap((x) => x.testIds ?? []));
+    const roomOn = isRoomMode(store.getState());
+    const orderedTestIds = (res.applied?.orderedTestIds ?? []).filter((tid) => TEST_IDS.has(tid) && !already.has(tid));
+    const cleanRx = (rx: { medicationId: string; dose?: string; duration?: string }) => {
+      const m = MED_BY_ID.get(rx.medicationId)!;
+      return {
+        medicationId: rx.medicationId,
+        dose: rx.dose?.trim() || m.defaultDose,
+        duration: rx.duration?.trim() || m.defaultDuration,
+      };
+    };
+    const prescriptions = (res.applied?.prescriptions ?? []).filter((rx) => rx && MED_BY_ID.has(rx.medicationId)).map(cleanRx);
+    const cancelledTestIds = (res.applied?.cancelledTestIds ?? []).filter((tid) => TEST_IDS.has(tid));
+    const stoppedMedicationIds = (res.applied?.stoppedMedicationIds ?? []).filter((mid) => MED_BY_ID.has(mid));
+    const followUp = cleanFollowUp(res.applied?.followUp);
 
-    for (const tid of orderedTestIds) store.orderPolyclinicTest(tid);
+    for (const tid of cancelledTestIds) store.cancelPolyclinicTest(tid);
+    for (const mid of stoppedMedicationIds) store.removePrescription(mid);
+    const pendingTests = new Set(orderedTestIds.filter((tid) => roomOn || heldByDept.has(tid)));
+    for (const tid of orderedTestIds) store.orderPolyclinicTest(tid, { pending: pendingTests.has(tid) });
     for (const rx of prescriptions) store.addPolyclinicPrescription(rx);
+    // Fallback for a hand-off whose delegation event has not arrived yet; the
+    // room's own events own the state from then on.
+    for (const x of pending) {
+      if (x.action !== 'verify_rx' || !x.medicationId || !MED_BY_ID.has(x.medicationId)) continue;
+      if (store.getState().agentRoom?.delegations.some((d) => d.ref === x.ref)) continue;
+      const rx = cleanRx({ medicationId: x.medicationId });
+      store.reviewPrescription({ ref: x.ref, ...rx, status: 'verifying' });
+    }
     if (followUp) store.setPolyclinicFollowUp(followUp);
 
-    const applied = { orderedTestIds, prescriptions, ...(followUp ? { followUp } : {}) };
+    const applied: NonNullable<NurseRun['applied']> = {
+      orderedTestIds,
+      prescriptions,
+      ...(followUp ? { followUp } : {}),
+      ...(cancelledTestIds.length ? { cancelledTestIds } : {}),
+      ...(stoppedMedicationIds.length ? { stoppedMedicationIds } : {}),
+    };
     const done: Partial<NurseRun> = {
       runId: res.runId,
       status: 'done',
-      intent: res.intent === 'order' ? 'order' : 'none',
+      intent: res.intent === 'order' || res.intent === 'clarify' ? res.intent : 'none',
       plan: res.plan,
       steps: Array.isArray(res.steps) ? res.steps : [],
       applied,
+      ...(pending.length ? { pending } : {}),
       spokenConfirmation: res.spokenConfirmation,
       finishedAt: Date.now(),
     };
@@ -294,11 +323,11 @@ export async function runNurseAction(
       .then((m) => m.afterNurseRun({ ...placeholder, ...done }))
       .catch((err) => console.warn(LOG, 'coach load failed:', err));
 
+    if (done.intent !== 'none') speakRun(res, pending);
     if (done.intent === 'order') {
-      if (res.spokenConfirmation) void speakAsNurse(res.spokenConfirmation);
       const sent = (res.steps ?? []).find((s) => s.tool === 'send_to_patient' && s.ok);
       const note = [
-        describeForPatient(applied),
+        describeForPatient(applied, pendingTests),
         // The live Agora patient reacts to the real message landing on their phone.
         sent
           ? 'Your phone just buzzed: the clinic sent you your prescription, a voice note explaining it in your language, and your follow-up date. You may mention it briefly if it fits.'

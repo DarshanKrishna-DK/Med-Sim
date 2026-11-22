@@ -4,6 +4,7 @@ import type { ActivePatient } from '../../game/types';
 import { LANGS, LANG_LABEL, LANG_NAME, normLang, LANG_LOCALE, type Lang } from '../../game/lang';
 import { medicationById } from '../../data/medications';
 import { POLYCLINIC_DIAGNOSIS_LABELS } from '../../data/polyclinicPatients';
+import { acquireAudio } from '../../voice/speech';
 
 interface RxAudioResult {
   script: string;
@@ -42,6 +43,35 @@ function toBlobUrl(r: RxAudioResult): string {
   return URL.createObjectURL(new Blob([bytes], { type: r.mime || 'audio/mpeg' }));
 }
 
+/** Player for the counselling audio. While it plays it owns the room: staff
+ *  lines wait, the patient stops talking and the doctor's mic is held. */
+function RoomAudio({ src }: { src: string }) {
+  const el = useRef<HTMLAudioElement>(null);
+  const release = useRef<(() => void) | null>(null);
+  const stop = () => {
+    release.current?.();
+    release.current = null;
+  };
+  const start = () => {
+    release.current ??= acquireAudio('voice-prescription', {
+      interruptPatient: true,
+      onPreempt: () => {
+        el.current?.pause();
+        stop();
+      },
+    });
+  };
+  useEffect(() => {
+    const audio = el.current;
+    return () => {
+      audio?.pause();
+      release.current?.();
+      release.current = null;
+    };
+  }, [src]);
+  return <audio ref={el} controls src={src} style={{ width: '100%' }} onPlay={start} onPause={stop} onEnded={stop} onError={stop} />;
+}
+
 /** Take-home counselling audio: a plain-language script of the prescription
  *  in the patient's language, spoken with Murf Falcon. */
 export function VoiceRx({ patient }: { patient: ActivePatient }) {
@@ -53,6 +83,8 @@ export function VoiceRx({ patient }: { patient: ActivePatient }) {
   const [url, setUrl] = useState('');
   const urlRef = useRef('');
   const rxCount = patient.prescriptions?.length ?? 0;
+  // A recalled and a replaced drug can leave the count unchanged.
+  const rxKey = (patient.prescriptions ?? []).map((r) => `${r.medicationId}|${r.dose}|${r.duration}`).join(';');
 
   useEffect(() => setLang(sessionLang), [sessionLang]);
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current); }, []);
@@ -63,7 +95,7 @@ export function VoiceRx({ patient }: { patient: ActivePatient }) {
     setUrl('');
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     urlRef.current = '';
-  }, [patient.case.id, rxCount, lang]);
+  }, [patient.case.id, rxKey, lang]);
 
   if (rxCount === 0) return null;
 
@@ -117,7 +149,7 @@ export function VoiceRx({ patient }: { patient: ActivePatient }) {
           <p className="voice-rx-script subtitle-line" lang={LANG_LOCALE[lang]} style={{ fontFamily: 'var(--font-indic)' }}>
             {script}
           </p>
-          {url && <audio controls src={url} style={{ width: '100%' }} />}
+          {url && <RoomAudio src={url} />}
           {url && (
             <a className="btn btn-quiet btn-sm" href={url} download={rxAudioFileName(patient.case.id)}>
               Download MP3

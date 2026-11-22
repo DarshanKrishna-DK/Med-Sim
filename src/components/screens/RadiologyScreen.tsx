@@ -291,7 +291,7 @@ export function RadiologyScreen() {
     setGrading(false);
     sessionRef.current?.setCase(c);
     if (firstCase.current) firstCase.current = false;
-    else sessionRef.current?.speak(filmIntroLine(c), { log: true });
+    else sessionRef.current?.speak(filmIntroLine(c, store.getState().lang), { log: true });
   }, [c]);
 
   useEffect(() => {

@@ -4,6 +4,8 @@ import type { ActivePatient } from '../../game/types';
 import { getExistingConversation, disposePatientConversation } from '../../voice/conversationStore';
 import { interactionBus } from '../three/interactions';
 import { useVoiceSession, type VoiceSession } from './useVoiceSession';
+import { pendingCounts } from '../../room/chart';
+import { closeRoom } from '../../room/client';
 
 function useElapsed(since: number | undefined): string {
   const [now, setNow] = useState(() => Date.now());
@@ -93,6 +95,20 @@ export function useEncounterController(): EncounterController {
     }
     // OSCE station: snapshot the encounter + silent coach alerts at the bell.
     const osce = isOsceLive(store.getState());
+    const p = store.getState().polyclinic.patient;
+    if (p) {
+      const left = pendingCounts(p);
+      // The examiner scores the teamwork; the score streams into the debrief.
+      void closeRoom({
+        tests: p.orderedTestIds.length,
+        pendingResults: left.results,
+        prescriptions: p.prescriptions?.length ?? 0,
+        heldDrugs: left.holds,
+        uncheckedDrugs: left.checks,
+        diagnosisSubmitted: !!p.submittedDiagnosisId,
+        seconds: Math.round((Date.now() - p.arrivedAt) / 1000),
+      });
+    }
     if (osce) store.captureOsceEncounter();
     store.finishPolyclinicCase();
     disposePatientConversation(POLYCLINIC_BED_INDEX);
