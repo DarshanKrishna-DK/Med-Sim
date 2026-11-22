@@ -8,6 +8,7 @@ import { getProfile } from '../game/profile';
 import { store } from '../game/store';
 import { getAssignmentView, localProgressSummary, openAssignment } from '../assignments/client';
 import { looksLikeReceptionRequest } from '../assignments/core';
+import { followDesk, openDeskRoom } from '../room/deskWatch';
 
 export { looksLikeReceptionRequest };
 
@@ -23,6 +24,8 @@ export interface ReceptionResult {
   source: string;
   steps: ReceptionStep[];
   emailed: { ok: boolean; to?: string; via?: string; teacherName?: string; reason?: string } | null;
+  /** A BAND side room to follow: faculty or Dr Iyer answers there. */
+  desk?: Record<string, unknown> | null;
   spokenConfirmation: string;
 }
 
@@ -58,12 +61,14 @@ export async function runReceptionAction(utterance: string, source: 'voice' | 't
         localProgress: localProgressSummary(),
         lang: store.getState().lang,
         history: history.slice(-6),
+        deskRoom: openDeskRoom(),
       }),
     });
     if (!r.ok) throw new Error(`Reception desk unavailable (${r.status})`);
     const res = (await r.json()) as ReceptionResult;
     history = [...history, { role: 'user' as const, content: clean }, { role: 'assistant' as const, content: res.spokenConfirmation }].slice(-8);
     if (res.emailed?.ok && view.code) void openAssignment(view.code);
+    followDesk(res.desk);
     sink?.onResult(res, source);
     return res;
   } catch (e) {

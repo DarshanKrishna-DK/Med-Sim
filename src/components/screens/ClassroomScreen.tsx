@@ -16,6 +16,7 @@ import { TEACHER } from '../../voice/teacherPersona';
 import { AssignPanel, DEFAULT_TEACHER_EMAIL } from '../assignments/AssignPanel';
 import { CASES } from '../../data/cases';
 import { teacherAction, type AgentEvent, type QuizCard } from '../../agents/agentEvents';
+import { takeLesson } from '../../room/lessonLink';
 
 /** Up to 3 cases per clinic, the menu Dr. Iyer's assign_practice tool picks from. */
 function caseCatalog(): Record<string, string[][]> {
@@ -156,6 +157,15 @@ export function ClassroomScreen() {
         setLessonError(err instanceof Error ? err.message : String(err));
       });
   }, []);
+
+  // Came here from a study plan ("Learn in the classroom"): start that lesson.
+  useEffect(() => {
+    const asked = takeLesson();
+    if (!asked) return;
+    setLevel(asked.level);
+    levelRef.current = asked.level;
+    startLesson(asked.topic);
+  }, [startLesson]);
 
   // Language switched with a lesson on the board: redraw it in the new language.
   const prevLang = useRef(lang);

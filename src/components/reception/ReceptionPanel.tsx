@@ -6,6 +6,8 @@ import { RECEPTIONIST } from '../../voice/receptionistPersona';
 import { openAssignment, submitToTeacher, useAssignment } from '../../assignments/client';
 import { formatDue } from '../../assignments/core';
 import { useProfile, openProfileDialog } from '../../game/profile';
+import { useDeskItems } from '../../room/deskWatch';
+import { openLesson, openPractice } from '../../room/lessonLink';
 
 const STATUS_LABEL: Record<string, string> = {
   uninitialized: 'Voice off',
@@ -40,7 +42,7 @@ const input: CSSProperties = {
   outline: 'none',
 };
 
-const SUGGESTIONS = ["What's pending on my assignment?", 'How am I doing?', 'Email my report to my teacher'];
+const SUGGESTIONS = ["What's pending on my assignment?", 'How am I doing?', 'Email my report to my teacher', 'What should I revise?'];
 
 /** Front-desk overlay: Priya's avatar, live captions, text box and mic. */
 export function ReceptionPanel({ onClose }: { onClose: () => void }) {
@@ -50,6 +52,9 @@ export function ReceptionPanel({ onClose }: { onClose: () => void }) {
   const [draft, setDraft] = useState('');
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const deskItems = useDeskItems();
+  const waiting = deskItems.find((i) => i.kind === 'desk' && !i.done && !i.answer);
+  const plan = deskItems.find((i) => i.kind === 'desk_plan' && i.plan?.topic)?.plan;
   const logEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -143,6 +148,25 @@ export function ReceptionPanel({ onClose }: { onClose: () => void }) {
               </div>
               {view.error && <span style={{ fontFamily: UI.label, fontSize: 12, color: UI.amber }}>{view.error}</span>}
             </form>
+          )}
+          {waiting && (
+            <div role="status" style={{ border: `2px solid ${UI.line}`, padding: 10, fontFamily: UI.label, fontSize: 13, lineHeight: 1.4 }}>
+              Waiting for faculty: {waiting.question}
+            </div>
+          )}
+          {plan && (
+            <div style={{ border: `2px solid ${UI.primary}`, padding: 10, display: 'grid', gap: 8 }}>
+              <div style={{ fontFamily: UI.heading, fontSize: 22, lineHeight: 1 }}>Your plan from Dr Iyer</div>
+              {plan.reason && <div style={{ fontFamily: UI.label, fontSize: 13, lineHeight: 1.4 }}>{plan.reason}</div>}
+              <button type="button" style={{ ...btn, textTransform: 'none', letterSpacing: 0, fontSize: 13, textAlign: 'left' }} onClick={() => openLesson(plan.topic!, plan.level ?? 'student')}>
+                Learn: {plan.topic}
+              </button>
+              {plan.caseId && (
+                <button type="button" style={{ ...btn, textTransform: 'none', letterSpacing: 0, fontSize: 13, textAlign: 'left' }} onClick={() => openPractice(plan.caseId!)}>
+                  Practise: a {plan.clinicLabel || 'clinic'} patient
+                </button>
+              )}
+            </div>
           )}
         </div>
 

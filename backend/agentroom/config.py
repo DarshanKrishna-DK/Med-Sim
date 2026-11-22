@@ -32,9 +32,9 @@ def ws_url() -> str | None:
 
 
 def workers_mode() -> str:
-    """spawn (default) | external | off"""
+    """spawn (default, one process per department) | compact (all departments in one process) | external | off"""
     v = (os.environ.get("BAND_WORKERS") or "spawn").strip().lower()
-    return v if v in ("spawn", "external", "off") else "spawn"
+    return v if v in ("spawn", "compact", "external", "off") else "spawn"
 
 
 def room_url(room_id: str) -> str:

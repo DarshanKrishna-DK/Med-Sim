@@ -134,6 +134,14 @@ def parse_json_object(text: str) -> dict[str, Any]:
 
 @router.post("/agent/debrief/simple", response_model=DebriefResponse)
 async def debrief_simple(req: DebriefRequest):
+    out = await _grade(req)
+    from agentroom import academic
+
+    academic.record_marks("debrief", req.caseId, out.score)  # checked when faculty is asked to sign
+    return out
+
+
+async def _grade(req: DebriefRequest) -> DebriefResponse:
     rubric, case_criteria = split_rubric(req.rubric)
     transcript = [
         {"role": t.get("role", ""), "text": t.get("content", t.get("text", ""))}

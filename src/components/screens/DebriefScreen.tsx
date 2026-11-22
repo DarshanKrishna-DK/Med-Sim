@@ -6,7 +6,7 @@ import { store, useStore } from '../../game/store';
 import { useDebrief } from '../../agents/useDebrief';
 import type { CaseEvaluationInput, CriterionResult, DomainScore, VerdictBand } from '../../agents/customTools';
 import { getRecommendation } from '../../data/guidelines';
-import { getEvalHistory, saveEvalHistory } from '../../data/evalHistory';
+import { getEvalHistory, saveEvalHistory, type EvalHistoryEntry } from '../../data/evalHistory';
 import { practiceHistoryExtras } from '../../data/practiceHistory';
 import { POLYCLINIC_DIAGNOSIS_LABELS } from '../../data/polyclinicPatients';
 import { testById } from '../../data/tests';
@@ -22,6 +22,8 @@ import { getProfile } from '../../game/profile';
 import { getCaseClinic } from '../../data/cases';
 import { CLINIC_LABELS } from '../../game/clinic';
 import { TeamworkSection } from './TeamworkSection';
+import { AcademicSection } from '../academic/AcademicSection';
+import { entryScore } from '../../data/progress';
 
 const VERDICT: Record<VerdictBand, { word: string; tone: 'good' | 'mid' | 'bad' }> = {
   excellent: { word: 'Excellent', tone: 'good' },
@@ -80,7 +82,7 @@ export function DebriefScreen() {
             </button>
           </div>
         ) : reviewed ? (
-          <DebriefBody encounter={encounter} evaluation={reviewed.evaluation} source={null} savedAt={reviewed.savedAt} />
+          <DebriefBody encounter={encounter} evaluation={reviewed.evaluation} source={null} savedAt={reviewed.savedAt} score={reviewed.score} />
         ) : (
           <LiveDebrief
             key={`${attempt}-${mode}`}
@@ -130,7 +132,7 @@ function LiveDebrief({
   }, [d.evaluation, encounter]);
 
   if (d.evaluation) {
-    return <DebriefBody encounter={encounter} evaluation={d.evaluation} source={d.source} />;
+    return <DebriefBody encounter={encounter} evaluation={d.evaluation} source={d.source} score={d.simple?.score} />;
   }
 
   if (d.status === 'error' || d.status === 'aborted') {
@@ -179,11 +181,14 @@ function DebriefBody({
   evaluation,
   source,
   savedAt,
+  score,
 }: {
   encounter: ActivePatient;
   evaluation: CaseEvaluationInput;
   source: 'managed-agent' | 'simple' | null;
   savedAt?: number;
+  /** 0-100 as marked; worked out from the domains when the marker gave none. */
+  score?: number;
 }) {
   const v = VERDICT[evaluation.global_rating] ?? VERDICT.satisfactory;
   const highlights = asBullets(evaluation.highlights);
@@ -286,6 +291,30 @@ function DebriefBody({
           )}
         </div>
       </section>
+
+      <AcademicSection
+        auto={!savedAt}
+        input={{
+          resultKey: `debrief:${c.id}:${encounter.arrivedAt}`,
+          what: 'debrief',
+          total: score ?? entryScore({ evaluation } as EvalHistoryEntry),
+          domains: domains.map((d) => ({
+            name: d.label,
+            score: d.score?.raw ?? 0,
+            max: d.score?.max || 1,
+            note: d.criteria.find((x) => x.verdict !== 'met')?.evidence,
+          })),
+          strengths: highlights,
+          improvements,
+          clinic,
+          specialty: clinic ? CLINIC_LABELS[clinic] : '',
+          about: dxLabel(c.correctDiagnosisId) ?? '',
+          caseId: c.id,
+          markKey: c.id,
+          patientNames: [c.name],
+          studentName: getProfile()?.name,
+        }}
+      />
 
       {evaluation.criteria.length > 0 && (
         <section className="criteria-wrap">

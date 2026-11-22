@@ -5,6 +5,7 @@ import { RECEPTIONIST, buildReceptionistPersona, receptionGreeting } from '../..
 import { getAssignmentView, localProgressSummary, openAssignment, useAssignment } from '../../assignments/client';
 import { runReceptionAction, setReceptionSink, type ReceptionResult } from '../../agents/receptionAgent';
 import { toolLine, type AgentEvent } from '../../agents/agentEvents';
+import { followDesk, openDeskRoom, setDeskListener } from '../../room/deskWatch';
 import { getProfile, useProfile } from '../../game/profile';
 import { getPatientContact } from '../../game/patientContact';
 import { store, useStore } from '../../game/store';
@@ -44,8 +45,10 @@ function agentContext(): Record<string, unknown> {
   const p = getProfile();
   const contact = getPatientContact();
   const local = localProgressSummary();
+  const deskRoom = openDeskRoom();
   return {
     assignmentCode: view.code,
+    ...(deskRoom ? { deskRoom } : {}),
     knownCodes: view.known.slice(0, 20),
     profile: { name: p?.name ?? '', university: p?.university ?? '' },
     localProgress: { ...local, recent: local.recent.slice(0, 8) },
@@ -147,6 +150,15 @@ export function useReceptionSession() {
     return () => setReceptionSink(null);
   }, [push, say, isLive]);
 
+  // A faculty reply or Dr Iyer's plan that arrives while the student is at the desk.
+  useEffect(() => {
+    setDeskListener((n) => {
+      push('action', n.shown, n.id !== 'failed');
+      void say(n.spoken || n.shown);
+    });
+    return () => setDeskListener(null);
+  }, [push, say]);
+
   const listeners = useRef({
     onStatus: (s: ConversationStatus) => setStatus(s),
     onProgress: (m: string) => setProgress(m),
@@ -170,6 +182,7 @@ export function useReceptionSession() {
       for (const e of events) {
         const line = toolLine(e);
         if (line) push('action', line.summary, line.ok);
+        if (e.type === 'desk_room') followDesk(e.data);
         if (e.type === 'report_emailed') {
           const code = getAssignmentView().code;
           if (code) void openAssignment(code);

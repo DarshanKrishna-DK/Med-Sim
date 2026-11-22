@@ -32,7 +32,7 @@ import lang as langmod
 
 from . import bedside, client as band_client, config, faculty as facultymod
 from .protocol import (
-    AGENT_ROLES, EXAMINER, FACULTY, LAB, NURSE, PHARMACIST, RADIOLOGY, ROLES, WORKER_ROLES,
+    AGENT_ROLES, API_ROLES, EXAMINER, FACULTY, LAB, NURSE, PHARMACIST, RADIOLOGY, ROLES, WORKER_ROLES,
     Handoff, decode, encode, new_ref, strip_mentions,
 )
 
@@ -60,7 +60,7 @@ LATE_OK = (*OPEN, "timeout", "failed")  # a late result is still accepted
 DELIVERY_RANK = {"sent": 0, "delivered": 1, "processing": 2, "processed": 3, "failed": 4}
 SPOKEN_ROLES = (PHARMACIST, LAB, RADIOLOGY)
 # Events that must survive trimming: losing one would desynchronise the chart.
-KEEP_TYPES = ("apply", "delegation", "room", "score", "status")
+KEEP_TYPES = ("apply", "delegation", "room", "score", "status", "side")
 
 ENCOUNTER_ID = re.compile(r"[A-Za-z0-9_.:-]{1,120}")
 
@@ -124,6 +124,8 @@ class Ref:
     deadline: float = 0.0
     retries: int = 0
     recorded: bool = False          # FHIR side effect done
+    severity: str = ""              # of the hold: hard | soft | ""
+    override_reasons: list[bool] = field(default_factory=list)  # one per request: was a reason given
 
     @property
     def test_ids(self) -> list[str]:
@@ -177,8 +179,11 @@ class Encounter:
     criticals: list[dict[str, Any]] = field(default_factory=list)
     tally: dict[str, int] = field(default_factory=dict)
     closed: Optional[float] = None
+    faculty_asks: list[dict[str, Any]] = field(default_factory=list)  # {by, at, answeredAt}: questions from the human
     score_ref: str = ""
     score_final: bool = False
+    owner: str = NURSE              # the API participant that opened the room
+    side: Any = None                # siderooms.SideRoom: the room is not a bedside encounter
 
     def participant(self, role: str) -> Optional[dict[str, Any]]:
         return next((p for p in self.people.values() if p["role"] == role), None)
@@ -197,6 +202,7 @@ class Hub:
         self.rooms: dict[str, str] = {}
         self._tasks: set[asyncio.Task] = set()
         self._me: dict[str, Any] = {}
+        self._ids: dict[str, dict[str, Any]] = {}  # other API participants
         self._status_cache: tuple[float, dict[str, bool]] = (0.0, {})
         self.stopping = False
         self.started = False  # the server lifespan runs (red flags never post from a test process)
@@ -243,7 +249,20 @@ class Hub:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def me(self) -> dict[str, Any]:
+    def as_role(self, role: str) -> Any:
+        """The REST client of one participant of this process."""
+        if role == NURSE:
+            return self.asha
+        c = self._client_for(role)
+        if c is None:
+            raise band_client.BandError(f"no BAND key for {role}")
+        return c
+
+    async def me(self, role: str = NURSE) -> dict[str, Any]:
+        if role != NURSE:
+            if role not in self._ids:
+                self._ids[role] = await self.as_role(role).me()
+            return self._ids[role]
         if not self._me:
             self._me = await self.asha.me()
         return self._me
@@ -256,6 +275,8 @@ class Hub:
             return False
         self._prune()
         enc = self.encounters.get(encounter_id)
+        if enc is not None and enc.side is not None:
+            return False  # a side room is opened by siderooms.py only
         if enc is None:
             enc = Encounter(id=encounter_id, case_id=_clip(case_id, 80), lang=langmod.norm_lang(lang), osce=bool(osce),
                             patient=patient, doctor=_clip(doctor, 80), created=_now(), touched=_now())
@@ -277,13 +298,15 @@ class Hub:
     def active(self, encounter_id: Optional[str]) -> Optional[Encounter]:
         """The encounter when it is in room mode (BAND on, opened, not closed), else None."""
         enc = self.get(encounter_id) if self.enabled else None
-        return enc if enc is not None and enc.closed is None else None
+        return enc if enc is not None and enc.closed is None and enc.side is None else None
 
     def _drop(self, encounter_id: str) -> None:
         enc = self.encounters.pop(encounter_id, None)
         if enc is None:
             return
         self.rooms.pop(enc.room_id, None)
+        if enc.side is not None:
+            enc.side.cancel()
         if enc.loop_task:
             enc.loop_task.cancel()
         for w in list(enc.waiters):
@@ -390,6 +413,7 @@ class Hub:
             except Exception as e:  # noqa: BLE001
                 log.debug("peers unavailable: %s", type(e).__name__)
         out[NURSE] = True
+        out.update({r: True for r in API_ROLES if config.api_key(r)})
         self._status_cache = (time.monotonic(), dict(out))
         return out
 
@@ -403,9 +427,9 @@ class Hub:
 
     # ── roster ───────────────────────────────────────────────────────────────
 
-    async def _peers(self) -> list[dict[str, Any]]:
+    async def _peers(self, role: str = NURSE) -> list[dict[str, Any]]:
         await self.me()
-        return await self.asha.peers()
+        return await self.as_role(role).peers()
 
     def _role_of_peer(self, p: dict[str, Any]) -> str:
         """Role of a sibling agent. Only agents of our own account count: a stranger
@@ -452,25 +476,26 @@ class Hub:
         async with enc.room_lock:
             if enc.room_id:
                 return
-            me = await self.me()
-            enc.title = self._title(enc)
-            chat = await self.asha.create_chat(enc.title)
+            me = await self.me(enc.owner)
+            enc.title = enc.title or self._title(enc)
+            chat = await self.as_role(enc.owner).create_chat(enc.title)
             room_id = str(chat.get("id") or "")
             if not room_id:
                 raise band_client.BandError("no room id in the reply")
             enc.room_id = room_id
             self.rooms[room_id] = enc.id
-            enc.people[str(me.get("id"))] = {"id": str(me.get("id")), "role": NURSE, "name": ROLES[NURSE].name,
-                                             "title": ROLES[NURSE].title, "human": False, "online": True}
+            enc.people[str(me.get("id"))] = {"id": str(me.get("id")), "role": enc.owner, "name": ROLES[enc.owner].name,
+                                             "title": ROLES[enc.owner].title, "human": False, "online": True}
             self._emit_room(enc)
-            self._log(enc, "nurse", "Opened the room")
-        await self._event(enc, "Opened a room for this encounter. I add a department only when this case needs it.")
+            self._log(enc, enc.owner, "Opened the room")
+        if enc.side is None:
+            await self._event(enc, "Opened a room for this encounter. I add a department only when this case needs it.")
 
-    async def _event(self, enc: Encounter, text: str) -> None:
+    async def _event(self, enc: Encounter, text: str, role: str = "") -> None:
         """A thought in the room, shown right away. Never fails the caller."""
         try:
-            me = await self.me()
-            ev = await self.asha.send_event(enc.room_id, text, "thought")
+            me = await self.me(role or enc.owner)
+            ev = await self.as_role(role or enc.owner).send_event(enc.room_id, text, "thought")
             if ev.get("id"):
                 self._ingest(enc, {"id": ev["id"], "sender_id": me.get("id"), "sender_type": "Agent", "content": text,
                                    "message_type": "thought", "metadata": {}, "inserted_at": ev.get("inserted_at") or _iso()})
@@ -482,20 +507,20 @@ class Hub:
             p = enc.participant(role)
             if p:
                 return p
-            peer = next((x for x in await self._peers() if self._role_of_peer(x) == role), None)
+            peer = next((x for x in await self._peers(enc.owner) if self._role_of_peer(x) == role), None)
             if peer is None:
                 raise band_client.BandError(f"no {role} among the peers")
             person = self._person(peer)
             if person is None:
                 raise band_client.BandError(f"no {role} among the peers")
             try:
-                await self.asha.add_participant(enc.room_id, person["id"])
+                await self.as_role(enc.owner).add_participant(enc.room_id, person["id"])
             except band_client.BandError as e:
                 if e.status not in (409, 422):  # already in (another department may have added it)
                     raise
             enc.people[person["id"]] = person
             self._emit_room(enc)
-            self._log(enc, "nurse", why)
+            self._log(enc, enc.owner, why)
         await self._event(enc, why)
         return person
 
@@ -504,15 +529,15 @@ class Hub:
             p = enc.participant(FACULTY)
             if p:
                 return p
-            me = await self.me()
+            me = await self.me(enc.owner)
             owner = str(me.get("owner_uuid") or "")
             if not owner:
                 raise band_client.BandError("this agent has no human owner")
-            peer = next((x for x in await self._peers() if str(x.get("id")) == owner), None)
+            peer = next((x for x in await self._peers(enc.owner) if str(x.get("id")) == owner), None)
             person = self._person(peer or {"id": owner, "name": "Faculty", "type": "User"}, online=False)
             assert person is not None
             try:
-                await self.asha.add_participant(enc.room_id, owner)
+                await self.as_role(enc.owner).add_participant(enc.room_id, owner)
             except band_client.BandError as e:
                 if e.status not in (409, 422):
                     raise
@@ -525,13 +550,13 @@ class Hub:
         enc.last_people_at = _now()
         seen: set[str] = set()
         changed = False
-        for raw in await self.asha.participants(enc.room_id):
+        for raw in await self.as_role(enc.owner).participants(enc.room_id):
             if str(raw.get("status") or "active").lower() in ("removed", "left"):
                 continue
             p = self._person(raw)
             if p is None:
                 continue
-            if p["role"] == NURSE:
+            if p["role"] in API_ROLES:
                 p["online"] = True
             seen.add(p["id"])
             old = enc.people.get(p["id"])
@@ -540,7 +565,7 @@ class Hub:
                 changed = True
             if p["human"] and p["online"] and not enc.faculty_joined:
                 self._faculty_arrived(enc, p)
-        for pid in [x for x in enc.people if x not in seen and enc.people[x]["role"] != NURSE]:
+        for pid in [x for x in enc.people if x not in seen and enc.people[x]["role"] != enc.owner]:
             gone = enc.people.pop(pid)
             changed = True
             if gone["human"]:
@@ -565,13 +590,14 @@ class Hub:
 
     # ── posting ──────────────────────────────────────────────────────────────
 
-    async def _post(self, enc: Encounter, person: dict[str, Any], text: str, handoff: Optional[Handoff] = None) -> str:
+    async def _post(self, enc: Encounter, person: dict[str, Any], text: str, handoff: Optional[Handoff] = None,
+                    role: str = "") -> str:
         """Post a message mentioning one participant; only they receive it. Returns the message id."""
-        me = await self.me()
+        me = await self.me(role or enc.owner)
         content = f"@{person['name']} {text}"
         if handoff:
             content = encode(content, handoff)
-        r = await self.asha.send_message(enc.room_id, content, [{"id": person["id"], "name": person["name"]}])
+        r = await self.as_role(role or enc.owner).send_message(enc.room_id, content, [{"id": person["id"], "name": person["name"]}])
         mid = str(r.get("id") or "")
         if mid:
             self._ingest(enc, {"id": mid, "sender_id": me.get("id"), "sender_type": "Agent", "content": content,
@@ -736,7 +762,10 @@ class Hub:
             ctx = {**self._people_facts(enc), "chiefComplaint": self._redact(enc, _clip(enc.patient.get("chiefComplaint"), 300)),
                    "imaging": by("run_imaging")}
         else:
-            ctx = {"allergies": self._redact(enc, _clip(enc.patient.get("allergies"), 600)), "current": self.active_drugs(enc)}
+            ctx = {"allergies": self._redact(enc, _clip(enc.patient.get("allergies"), 600)), "current": self.active_drugs(enc),
+                   # what an order carries, so a question about another drug can be checked like one
+                   "patient": {**self._people_facts(enc), "chiefComplaint": self._redact(enc, _clip(enc.patient.get("chiefComplaint"), 300)),
+                               "history": self._history(enc)}}
             rx = self._drug_in_question(enc, question)
             if rx:
                 ctx["drug"] = {"medicationId": rx.medication_id, "name": rx.medication, "dose": rx.dose,
@@ -927,7 +956,12 @@ class Hub:
             await self._post(enc, person, f"The doctor says: {body}")
         enc.awaiting_faculty = False
         enc.bump("doctorToFaculty")
-        self.doctor_acted(enc, "Replied to faculty")
+        open_ = [q for q in enc.faculty_asks if q["answeredAt"] is None]
+        for q in open_:
+            q["answeredAt"] = _now()
+        self.doctor_acted(enc, "Wrote to faculty" if not open_ else
+                          f"Answered {'the question' if len(open_) == 1 else f'{len(open_)} questions'} from {open_[-1]['by']} "
+                          f"after {int(round(_now() - open_[-1]['at']))} seconds")
         self._ensure_loop(enc)
         enc.kick.set()
         return True
@@ -957,7 +991,8 @@ class Hub:
             self.emit(enc, "faculty", faculty={"action": "invited", "name": person["name"], "text": f"Override for {r.medication}", "ref": r.ref})
         self.emit(enc, "delegation", key=f"delegation:{r.ref}", delegation=self._delegation(r))
         enc.bump("overridesRequested")
-        self.doctor_acted(enc, f"Asked faculty to override the hold on {r.medication}")
+        r.override_reasons.append(bool(why))
+        self.doctor_acted(enc, f"Asked faculty to override the hold on {r.medication}, " + ("with a reason" if why else "without a reason"))
         self._speak(enc, NURSE, bedside.line("override_asked", enc.lang, name=self._called(person["name"]), item=r.medication), "ack", r.ref)
         self._ensure_loop(enc)
         enc.kick.set()
@@ -1003,8 +1038,10 @@ class Hub:
             if intent == "question":
                 enc.awaiting_faculty = True
                 enc.bump("facultyQuestions")
+                enc.faculty_asks.append({"by": name, "at": _now(), "answeredAt": None})
+                del enc.faculty_asks[:-20]
                 self.emit(enc, "faculty", faculty={"action": "question", "name": name, "text": body})
-                self._log(enc, "faculty", f"Asked: {body}")
+                self._log(enc, "faculty", f"{name} asked the doctor: {body}")
                 self.spawn(self._speak_free(enc, "fac_question", text, "result", name=called), "speak")
                 return
             self.emit(enc, "faculty", faculty={"action": "note", "name": name, "text": body})
@@ -1172,7 +1209,9 @@ class Hub:
         while len(enc.handled) > MAX_MESSAGES * 4:
             enc.handled.popitem(last=False)
         try:
-            if is_user:
+            if enc.side is not None:
+                enc.side.on_message(role, sender_id, msg, h)
+            elif is_user:
                 self.spawn(self._on_faculty(enc, mid, sender_id, self._clean_text(enc, text), msg["to"]), "faculty")
             elif h is not None and role != NURSE:
                 self._on_handoff(enc, role, sender_id, msg["to"], h)
@@ -1266,6 +1305,7 @@ class Hub:
         if verdict == "release" and r.local_hard:
             # The server's own hard-conflict check is the authority.
             reason = "; ".join(r.local_hard)
+            r.severity = "hard"
             self._hold(enc, r, f"Pharmacy released it, but the clinic's check found: {reason}")
             self._speak(enc, NURSE, bedside.line("local_hold", enc.lang, item=r.medication), "urgent", r.ref)
             return
@@ -1286,6 +1326,7 @@ class Hub:
             if isinstance(s, dict) and s.get("medicationId"):
                 enc.held_suggestions.add(str(s["medicationId"])[:80])
                 enc.bump("suggestionsOffered")
+        r.severity = "hard" if r.local_hard or d.get("severity") == "hard" else _clip(d.get("severity"), 8)
         self._hold(enc, r, reason or "Held by pharmacy")
         if spoken:
             self._speak(enc, PHARMACIST, spoken, "urgent", r.ref)
@@ -1467,7 +1508,7 @@ class Hub:
         text = bedside.clean_spoken(text)
         if not direct:
             speaker = NURSE
-        if not text or enc.closed:
+        if not text or enc.closed or enc.side is not None:  # a side room decides for itself what is said
             return
         item = {"speaker": speaker, "text": text, "priority": priority, "ref": ref}
         if priority != "result":
@@ -1517,10 +1558,14 @@ class Hub:
         enc.kick.set()
 
     def _busy(self, enc: Encounter) -> bool:
+        if enc.side is not None:
+            return bool(enc.side.busy())
         return (any(r.status in OPEN or r.override_requested for r in enc.refs.values())
                 or enc.awaiting_faculty or (bool(enc.humans()) and enc.closed is None))
 
     def _finished(self, enc: Encounter) -> bool:
+        if enc.side is not None:
+            return bool(enc.side.finished())
         if enc.closed is None:
             return _now() - enc.touched > LOOP_IDLE_STOP_S
         return enc.score_final or not enc.score_ref or _now() - enc.closed > CLOSE_KEEP_S
@@ -1625,6 +1670,11 @@ class Hub:
             "openAtClose": sum(r.status in OPEN for r in refs),
             "facultyInvited": t.get("facultyInvited", 0) > 0, "facultyMessages": enc.faculty_messages,
             "facultyQuestions": t.get("facultyQuestions", 0), "doctorToFaculty": t.get("doctorToFaculty", 0),
+            "facultyAnswered": sum(q["answeredAt"] is not None for q in enc.faculty_asks),
+            "facultyAnswerSeconds": [round(q["answeredAt"] - q["at"], 1) for q in enc.faculty_asks if q["answeredAt"] is not None],
+            "overridesWithReason": sum(any(r.override_reasons) for r in refs),
+            "overridesWithoutReason": sum(bool(r.override_reasons) and not any(r.override_reasons) for r in refs),
+            "hardOverridesWithReason": sum(r.severity == "hard" and any(r.override_reasons) for r in refs),
         }
 
     @staticmethod
@@ -1752,7 +1802,7 @@ async def start() -> None:
         asha.start(hub)
     except Exception as e:  # noqa: BLE001
         log.warning("Asha's room connection did not start: %s", type(e).__name__)
-    if config.workers_mode() == "spawn":
+    if config.workers_mode() in ("spawn", "compact"):
         try:
             from . import supervisor
 

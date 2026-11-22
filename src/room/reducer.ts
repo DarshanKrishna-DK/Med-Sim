@@ -100,6 +100,9 @@ export const ROLE_LABEL: Record<RoomRole, string> = {
   radiology: 'Radiology',
   examiner: 'Examiner',
   faculty: 'Faculty',
+  teacher: 'Dr Iyer',
+  reception: 'Priya',
+  theatre: 'Theatre',
 };
 
 const OPEN: ReadonlySet<DelegationStatus> = new Set(['sent', 'working', 'waiting']);
@@ -116,14 +119,13 @@ function why(state: RoomState, p: RoomParticipant): string {
   }
   const d = state.delegations.find((x) => x.target === p.role);
   if (d) {
-    const what: Record<Delegation['action'], string> = {
+    const what: Partial<Record<Delegation['action'], string>> = {
       verify_rx: 'check',
       run_test: 'run',
       run_imaging: 'image',
       ask: 'answer',
-      score_teamwork: 'mark the teamwork',
     };
-    return d.action === 'score_teamwork' ? what[d.action] : `${what[d.action]} ${d.label}`;
+    return d.action === 'score_teamwork' ? 'mark the teamwork' : `${what[d.action] ?? 'answer'} ${d.label}`;
   }
   const m = state.messages.find((x) => x.to.includes(p.role) && x.from !== p.role);
   if (m) return `answer ${ROLE_LABEL[m.from] ?? m.fromName}`;

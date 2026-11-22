@@ -8,7 +8,7 @@ import { ThirdPersonPlayer, isTypingTarget, makeRuntime, type PlayerRuntime } fr
 import { PostFX, WorldEnvironment, type FxQuality } from '../world/WorldFX';
 import { Fade, KeyCap, MenuButton, PauseMenu, PromptPill, UI, labelStyle, panel } from '../world/worldUi';
 import { loadSignFonts } from '../world/hindi';
-import { LANG_LOCALE, readLang } from '../../game/lang';
+import { LANG_LOCALE, normLang, readLang } from '../../game/lang';
 import {
   DRUGS,
   DRUG_IDS,
@@ -33,10 +33,12 @@ import {
   allergyConfirmed,
   answerChecklist,
   buildReport,
+  connectRoom,
   createOT,
   currentChecklistItem,
   fmtDose,
   phaseLabel,
+  theatreEvent,
   tick,
   vitalsAt,
   type Feedback,
@@ -44,7 +46,12 @@ import {
   type OTState,
 } from '../../ot/engine';
 import { parseChecklistAnswer, parseOTCommand } from '../../ot/commands';
-import { cancelOTSpeech, setOTSpeakingListener, speakOT } from '../../ot/speech';
+import { cancelOTSpeech, isTheatreEcho, setOTSpeakingListener, speakOT, speakTheatreRoom, type TheatreVoice } from '../../ot/speech';
+import { TheatreRoom } from '../../ot/room';
+import { rxLine } from '../../ot/roomState';
+import { TheatreStrip } from '../../ot/TheatreStrip';
+import { RoomAvatar } from '../encounter/RoomAvatar';
+import type { RoomState } from '../../room/reducer';
 import { otHistoryPayload } from '../../ot/history';
 import { saveEvalHistory } from '../../data/evalHistory';
 
@@ -60,6 +67,11 @@ const SPEAKER_COLOR: Record<Speaker, string> = {
   anaesthetist: '#9cc4ff',
   nurse: '#ffc46b',
 };
+
+/** Who a log line is by: the team, or Sister Leela for the theatre room. */
+const isTeam = (who: OTState['log'][number]['who']): who is Speaker => who !== 'you' && who !== 'system' && who !== 'leela';
+const whoLabel = (who: OTState['log'][number]['who']) => (who === 'you' ? 'You' : who === 'system' ? 'Note' : who === 'leela' ? 'Sister Leela' : SPEAKER_SHORT[who]);
+const whoColor = (who: OTState['log'][number]['who']) => (who === 'you' ? UI.amber : who === 'system' ? '#c9d2dc' : who === 'leela' ? '#7fd3dc' : SPEAKER_COLOR[who]);
 
 function pickQuality(): FxQuality | null {
   try {
@@ -217,6 +229,23 @@ function IVPanel({ s, doAct }: PanelProps) {
           ))}
         </div>
         <div style={{ ...small, opacity: 0.8 }}>{FLUID_LABEL[fluid]}</div>
+        {s.room && fluid === 'blood' && (
+          <>
+            <div style={{ ...small, color: UI.amber }}>
+              {s.blood?.status === 'released' ? `Cross-matched cells in theatre${s.blood.group ? ` (patient ${s.blood.group})` : ''}.` : 'Cells run when the lab releases the cross-match.'}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {s.blood?.status === 'sample' && (
+                <button type="button" style={btnOn} onClick={() => doAct({ kind: 'send-sample' })}>
+                  Send the sample
+                </button>
+              )}
+              <button type="button" style={btn} onClick={() => doAct({ kind: 'fluid-bolus', fluid: 'blood', volumeMl: 250, emergency: true })}>
+                Emergency O negative
+              </button>
+            </div>
+          </>
+        )}
       </Section>
       <Section title="Rate">
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -505,6 +534,22 @@ function CaseSheet({ s }: { s: OTState }) {
   );
 }
 
+/** The pharmacist's answer to the sign-in allergy question, from the theatre room. */
+function PharmacyLine({ s }: { s: OTState }) {
+  const rx = s.room || s.rx.status !== 'none' ? rxLine(s) : null;
+  if (!rx) return null;
+  const col = rx.tone === 'good' ? GOOD : rx.tone === 'warn' ? BAD : UI.amber;
+  return (
+    <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'center', background: UI.bg, borderLeft: `4px solid ${col}`, padding: '6px 8px' }}>
+      <RoomAvatar role="pharmacist" size={28} />
+      <div style={small}>
+        <span style={{ ...labelStyle, fontSize: 9, color: col, display: 'block' }}>Pharmacist Meera</span>
+        {rx.text}
+      </div>
+    </div>
+  );
+}
+
 function ChecklistCard({ s, onAnswer }: { s: OTState; onAnswer: (id: string) => void }) {
   const item = currentChecklistItem(s);
   if (!item) return null;
@@ -530,6 +575,7 @@ function ChecklistCard({ s, onAnswer }: { s: OTState; onAnswer: (id: string) => 
         ))}
       </div>
       <div style={{ ...small, opacity: 0.75 }}>Click, press 1 to {item.options.length}, or say / type your answer.</div>
+      <PharmacyLine s={s} />
       <CaseSheet s={s} />
     </div>
   );
@@ -639,6 +685,16 @@ function ReportCard({
             </div>
           ))}
         </div>
+        {report.blood.length > 0 && (
+          <div style={{ display: 'grid', gap: 4 }}>
+            <div style={{ ...labelStyle, fontSize: 11, color: UI.primary }}>Blood (recorded, not scored)</div>
+            {report.blood.map((b, i) => (
+              <div key={i} style={{ ...small, borderLeft: `4px solid ${b.how === 'crossmatched' ? GOOD : UI.amber}`, paddingLeft: 8 }}>
+                {Math.floor(b.t / 60)}:{String(Math.floor(b.t % 60)).padStart(2, '0')} · {b.text}
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ ...small, opacity: 0.65 }}>Saved to your progress history. Synthetic training scenario, not clinical advice.</div>
       </div>
     </div>
@@ -722,7 +778,10 @@ export function OTScreen() {
   const [heard, setHeard] = useState('');
   const [listening, setListening] = useState(false);
   const [voiceOn, setVoiceOn] = useState(readVoicePref);
-  const [speaking, setSpeaking] = useState<Speaker | null>(null);
+  const [speaking, setSpeaking] = useState<TheatreVoice | null>(null);
+  const [roomView, setRoomView] = useState<{ room: RoomState | null; url: string } | null>(null);
+  const roomRef = useRef<TheatreRoom | null>(null);
+  const lastOutId = useRef(0);
   const [report, setReport] = useState<OTReport | null>(null);
   const [explain, setExplain] = useState<Record<string, { loading: boolean; text: string }>>({});
   const lastLogId = useRef(0);
@@ -748,6 +807,8 @@ export function OTScreen() {
       setOTSpeakingListener(null);
       cancelOTSpeech();
       recRef.current?.stop();
+      roomRef.current?.stop();
+      roomRef.current = null;
     };
   }, [runtime]);
 
@@ -762,7 +823,13 @@ export function OTScreen() {
     for (const l of cur.log) {
       if (l.id <= lastLogId.current) continue;
       lastLogId.current = l.id;
-      if (voiceRef.current && l.who !== 'you' && l.who !== 'system') speakOT(l.text, l.who, langRef.current);
+      if (voiceRef.current && isTeam(l.who)) speakOT(l.text, l.who, langRef.current);
+    }
+    // What the drill has to ask the theatre room, once each.
+    for (const o of cur.outbox) {
+      if (o.id <= lastOutId.current) continue;
+      lastOutId.current = o.id;
+      void roomRef.current?.send(o);
     }
     if (cur.stage === 'done' && !reported.current) {
       reported.current = true;
@@ -795,13 +862,51 @@ export function OTScreen() {
     return () => window.clearTimeout(t);
   }, [feedback]);
 
+  /** The theatre room of this drill. Without BAND it never connects and nothing changes. */
+  const openRoom = useCallback(
+    (id: string) => {
+      roomRef.current?.stop();
+      setRoomView(null);
+      const mine: TheatreRoom = new TheatreRoom(scenarioById(id), langRef.current, {
+        onConnected: (on) => {
+          if (roomRef.current !== mine || !simRef.current) return;
+          simRef.current = connectRoom(simRef.current, on);
+          setRoomView(on ? { room: null, url: '' } : null);
+          afterChange();
+        },
+        onEvents: (events, side) => {
+          if (roomRef.current !== mine || !simRef.current) return;
+          for (const e of events) simRef.current = theatreEvent(simRef.current, e);
+          setRoomView((v) => (v ? { ...v, url: side.url } : v));
+          if (events.length) afterChange();
+        },
+        onSpeak: (sp) => {
+          if (roomRef.current === mine && voiceRef.current) speakTheatreRoom(sp.text, sp.speaker, normLang(sp.lang));
+        },
+        onRoom: (room) => {
+          if (roomRef.current === mine) setRoomView((v) => (v ? { ...v, room } : v));
+        },
+      });
+      roomRef.current = mine;
+    },
+    [afterChange],
+  );
+
+  const closeRoom = useCallback(() => {
+    roomRef.current?.stop();
+    roomRef.current = null;
+    setRoomView(null);
+  }, []);
+
   const start = useCallback(
     (id: string) => {
       cancelOTSpeech();
       const seed = (Date.now() % 100000) + 1;
       simRef.current = createOT(id, seed);
       lastLogId.current = 0;
+      lastOutId.current = 0;
       reported.current = false;
+      openRoom(id);
       setScenarioId(id);
       setPicking(false);
       setReport(null);
@@ -814,7 +919,7 @@ export function OTScreen() {
       runtime.camYaw = OT_SPAWN.yaw + Math.PI;
       afterChange();
     },
-    [afterChange, runtime],
+    [afterChange, openRoom, runtime],
   );
 
   const doAct = useCallback(
@@ -859,7 +964,7 @@ export function OTScreen() {
           return;
         }
       }
-      const a = parseOTCommand(text);
+      const a = parseOTCommand(text, { room: cur.room });
       if (a) {
         const here = nearRef.current;
         doAct(a, here && STATION_OF[a.kind] === here ? here : null);
@@ -885,7 +990,9 @@ export function OTScreen() {
     rec.continuous = true;
     rec.onresult = (e) => {
       const r = e.results[e.results.length - 1];
-      if (r?.isFinal) submitCommand(String(r[0].transcript));
+      const heardText = String(r?.[0]?.transcript ?? '');
+      // The team's own voices come back through the microphone: never an order.
+      if (r?.isFinal && !isTheatreEcho(heardText)) submitCommand(heardText);
     };
     rec.onend = () => setListening(false);
     rec.onerror = () => setListening(false);
@@ -903,11 +1010,12 @@ export function OTScreen() {
     leaving.current = true;
     runtime.inputEnabled = false;
     cancelOTSpeech();
+    closeRoom();
     recRef.current?.stop();
     setMenu(false);
     setFade(1);
     window.setTimeout(() => store.exitOTToCorridor(), 600);
-  }, [runtime]);
+  }, [closeRoom, runtime]);
 
   const openStation = useCallback((st: StationId) => {
     setOpenPanel(st);
@@ -1021,7 +1129,7 @@ export function OTScreen() {
 
   const calls = s ? activeCalls(s) : [];
   const recent = s ? s.log.slice(-5) : [];
-  const lastSpoken = s ? [...s.log].reverse().find((l) => l.who !== 'you' && l.who !== 'system') : undefined;
+  const lastSpoken = s ? [...s.log].reverse().find((l) => isTeam(l.who)) : undefined;
   const showBubble = !!lastSpoken && !!s && s.t - lastSpoken.t < 9;
   const checklistOpen = !!s && !!currentChecklistItem(s);
   const elapsed = s ? Math.floor(s.t) : 0;
@@ -1101,7 +1209,7 @@ export function OTScreen() {
       {/* call-out bubble + active problems */}
       {s && (showBubble || calls.length > 0) && (
         <div style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', width: 'min(520px, calc(100vw - 820px))', minWidth: 300, zIndex: 7, display: 'grid', gap: 6, pointerEvents: 'none' }} aria-live="polite">
-          {showBubble && lastSpoken && lastSpoken.who !== 'you' && lastSpoken.who !== 'system' && (
+          {showBubble && lastSpoken && isTeam(lastSpoken.who) && (
             <div style={{ ...panel, padding: '10px 14px', borderColor: SPEAKER_COLOR[lastSpoken.who], boxShadow: `0 0 0 2px ${SPEAKER_COLOR[lastSpoken.who]}, 4px 4px 0 0 #061431` }}>
               <div style={{ ...labelStyle, fontSize: 10, color: SPEAKER_COLOR[lastSpoken.who], display: 'flex', gap: 6 }}>
                 {SPEAKER_NAME[lastSpoken.who]}
@@ -1134,9 +1242,7 @@ export function OTScreen() {
           <div style={{ ...labelStyle, fontSize: 9, color: UI.primary }}>Theatre log</div>
           {recent.map((l) => (
             <div key={l.id} style={{ ...small, fontSize: 12, color: l.tone === 'bad' ? BAD : l.tone === 'good' ? GOOD : undefined }}>
-              <span style={{ ...labelStyle, fontSize: 9, color: l.who === 'you' ? UI.amber : l.who === 'system' ? '#c9d2dc' : SPEAKER_COLOR[l.who] }}>
-                {l.who === 'you' ? 'You' : l.who === 'system' ? 'Note' : SPEAKER_SHORT[l.who]}
-              </span>{' '}
+              <span style={{ ...labelStyle, fontSize: 9, color: whoColor(l.who) }}>{whoLabel(l.who)}</span>{' '}
               {l.text}
             </div>
           ))}
@@ -1147,6 +1253,10 @@ export function OTScreen() {
 
       {s && openPanel && !report && (
         <StationPanel station={openPanel} s={s} doAct={(a) => doAct(a, openPanel)} result={result} onClose={() => setOpenPanel(null)} />
+      )}
+
+      {s && s.room && roomView && !picking && !report && (
+        <TheatreStrip s={s} room={roomView.room} url={roomView.url} doAct={(a) => doAct(a, null)} compact={!!openPanel} />
       )}
 
       {/* feedback toast */}
@@ -1220,6 +1330,7 @@ export function OTScreen() {
           onExplain={(id) => void explainEvent(id)}
           onAgain={() => start(report.scenarioId)}
           onPick={() => {
+            closeRoom();
             setReport(null);
             simRef.current = null;
             setPicking(true);
@@ -1241,6 +1352,7 @@ export function OTScreen() {
             onClick={() => {
               setMenu(false);
               cancelOTSpeech();
+              closeRoom();
               simRef.current = null;
               setReport(null);
               setPicking(true);

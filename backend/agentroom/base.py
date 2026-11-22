@@ -15,6 +15,7 @@ does not arrive in time, ``on_wait_timeout`` runs instead. Nothing blocks.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -30,7 +31,8 @@ from band.core import SimpleAdapter
 
 from . import dept_phrases as phrases
 from .protocol import (
-    AGENT_ROLES, EXAMINER, FACULTY, LAB, NURSE, PHARMACIST, RADIOLOGY, ROLES, Handoff, decode, encode,
+    AGENT_ROLES, EXAMINER, FACULTY, LAB, NURSE, PHARMACIST, RADIOLOGY, RECEPTION, ROLES, TEACHER, THEATRE, Handoff,
+    decode, encode,
 )
 
 log = logging.getLogger("medsim.room.dept")
@@ -52,6 +54,15 @@ ALLOWED: dict[tuple[str, str], tuple[str, ...]] = {
     ("answer", "renal_function"): (LAB,),
     ("answer", "safety_question"): (NURSE,),
     ("note", "critical_value"): (LAB,),
+    ("request", "sign_off"): (NURSE,),
+    ("request", "study_plan"): (EXAMINER, RECEPTION),
+    ("answer", "study_plan"): (TEACHER,),
+    ("request", "crossmatch"): (THEATRE,),
+    ("answer", "crossmatch"): (THEATRE,),
+    ("request", "theatre_allergy"): (THEATRE,),
+    ("request", "second_read"): (NURSE,),
+    ("ack", "critical_finding"): (NURSE,),
+    ("request", "case_review"): (NURSE,),
 }
 
 
@@ -131,19 +142,19 @@ PROVIDERS: dict[str, dict[str, str]] = {
     "groq": {"url": "https://api.groq.com/openai/v1/chat/completions", "key_env": "GROQ_API_KEY",
              "model_env": "GROQ_MODEL", "default_model": "openai/gpt-oss-20b"},
 }
-_prefer = "sarvam"
+# Per context, because in compact mode several departments share one process.
+_prefer: contextvars.ContextVar[str] = contextvars.ContextVar("prefer_llm", default="sarvam")
 _http: Any = None
 
 
 def prefer_llm(name: str) -> None:
     """The provider this department tries first; the other one is the fallback."""
-    global _prefer
     if name in PROVIDERS:
-        _prefer = name
+        _prefer.set(name)
 
 
 def llm_order() -> list[str]:
-    return [n for n in sorted(PROVIDERS, key=lambda n: n != _prefer) if os.environ.get(PROVIDERS[n]["key_env"], "").strip()]
+    return [n for n in sorted(PROVIDERS, key=lambda n: n != _prefer.get()) if os.environ.get(PROVIDERS[n]["key_env"], "").strip()]
 
 
 async def ask_llm(provider: str, messages: list[dict[str, str]], *, max_tokens: int, json_mode: bool = False) -> str:
@@ -688,5 +699,5 @@ class Records:
 
 __all__ = [
     "DepartmentAdapter", "Turn", "Pending", "Room", "Records", "llm_answer", "two_sentences", "in_script",
-    "text_lang", "clean_text", "log_event", "load_json", "EXAMINER", "FACULTY", "LAB", "NURSE", "PHARMACIST", "RADIOLOGY",
+    "text_lang", "clean_text", "log_event", "load_json", "EXAMINER", "FACULTY", "LAB", "NURSE", "PHARMACIST", "RADIOLOGY", "THEATRE",
 ]

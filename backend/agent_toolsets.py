@@ -116,6 +116,8 @@ def _reception_state(ctx: dict[str, Any]) -> reception.ReceptionState:
         "profile": {"name": _clip(prof.get("name"), 80), "university": _clip(prof.get("university"), 120)},
         "assignmentCode": _clip(ctx.get("assignmentCode"), 12) or None,
         "knownCodes": [_clip(c, 12) for c in (ctx.get("knownCodes") or []) if isinstance(c, str)][:20],
+        "lang": _clip(ctx.get("lang"), 5) or None,
+        "deskRoom": _clip(ctx.get("deskRoom"), 120) or None,
     }
     try:
         req = reception.ReceptionActRequest(**raw, localProgress=reception.LocalProgress(**(ctx.get("localProgress") or {})))
@@ -145,6 +147,14 @@ async def reception_exec(name: str, args: dict[str, Any], tctx: dict[str, Any]) 
             tctx["publish"]("report_emailed", {"code": st._code(args.get("code")), "to": res.get("to"),
                                                 "teacherName": res.get("teacherName")})
         return res
+    if name in ("ask_faculty", "ask_revision_plan"):
+        st = _reception_state(ctx)
+        st.req.lang = tctx.get("lang") or st.req.lang
+        res = await st.execute(name, args)
+        if st.desk:
+            tctx["publish"]("desk_room", st.desk)  # the page follows the room and shows the answer when it comes
+        out = {k: v for k, v in res.items() if k in ("ok", "error", "asked", "ready", "question")}
+        return {**out, **({"say_this": res["spoken"]} if res.get("spoken") else {}), **({"plan": res["plan"]} if res.get("plan") else {})}
     if name == "book_study_session":
         topic = _clip(args.get("topic"), 80) or "revision"
         minutes = _int(args.get("minutes"), 15, 180) or 60
@@ -169,7 +179,7 @@ async def reception_exec(name: str, args: dict[str, Any], tctx: dict[str, Any]) 
 
 
 def reception_summary(name: str, res: dict[str, Any]) -> str:
-    if name in ("get_assignment_status", "get_my_scores", "list_assignments", "email_report_to_teacher"):
+    if name in ("get_assignment_status", "get_my_scores", "list_assignments", "email_report_to_teacher", "ask_faculty", "ask_revision_plan"):
         try:
             return reception.summarize(name, res)
         except Exception:  # noqa: BLE001
@@ -207,7 +217,7 @@ RECEPTION_TOOLS = reception.TOOL_SPECS + [
 
 RECEPTION_ADDENDUM = (
     "TOOLS: You act yourself during this call with your tools: get_assignment_status, get_my_scores, list_assignments, "
-    "email_report_to_teacher, book_study_session, send_to_my_phone. Ignore any instruction above saying a separate "
+    "email_report_to_teacher, book_study_session, send_to_my_phone, ask_faculty, ask_revision_plan. Ignore any instruction above saying a separate "
     "system does the actions. Decide on your own when a tool helps; you may chain them in one turn (for example book a "
     "study session and then text the plan). Email only goes to the assignment's teacher and only when the student asks "
     "to send or submit their report. Never claim an action happened unless the tool result says ok. After tools, answer "
@@ -218,6 +228,9 @@ RECEPTION_ADDENDUM = (
     "revise renal on Sunday', 'slot for pharma tonight' -> book_study_session (pass what they said as when_text). "
     "'text me that', 'WhatsApp it', 'send it to my phone', 'remind me' with no time -> send_to_my_phone. If a "
     "request needs a time or topic you can guess from context, guess and confirm in the same reply instead of asking. "
+    "'ask sir if...', 'sir ko pooch lo', 'check with faculty', anything only a person can decide -> ask_faculty with the whole question. "
+    "'what should I revise', 'plan bana do', 'ask Dr Iyer' -> ask_revision_plan. Never answer for faculty or invent their reply. When a tool "
+    "result has say_this, say exactly that sentence and nothing else. "
     "PROACTIVE BUT BOUNDED: at most ONE helpful action nobody asked for per session, only when strongly implied "
     "(for example they say they will study tonight and nothing is booked: offer, or text them the plan once)."
 )
@@ -239,6 +252,14 @@ rt.register(rt.AgentToolset(
                              "kn": "ಒಂದು ಕ್ಷಣ, ಈಗಲೇ ನಿಮಗೆ ಕಳಿಸ್ತೀನಿ.", "ta": "ஒரு நிமிஷம், இப்பவே உங்களுக்கு அனுப்பறேன்.",
                              "te": "ఒక్క క్షణం, ఇప్పుడే మీకు పంపిస్తున్నాను.", "mr": "एक क्षण, आत्ताच तुम्हाला पाठवते.",
                              "bn": "এক মুহূর্ত, এখনই আপনাকে পাঠাচ্ছি।"},
+        "ask_faculty": {"en": "Sure, I am asking faculty now.", "hi": "ज़रूर, अभी फ़ैकल्टी से पूछ रही हूँ।",
+                        "kn": "ಖಂಡಿತ, ಈಗಲೇ ಫ್ಯಾಕಲ್ಟಿಯನ್ನು ಕೇಳ್ತಿದ್ದೀನಿ.", "ta": "சரி, இப்பவே பேராசிரியர்கிட்ட கேட்கறேன்.",
+                        "te": "తప్పకుండా, ఇప్పుడే ఫ్యాకల్టీని అడుగుతున్నాను.", "mr": "नक्की, आत्ताच फॅकल्टीला विचारते.",
+                        "bn": "অবশ্যই, এখনই ফ্যাকাল্টিকে জিজ্ঞেস করছি।"},
+        "ask_revision_plan": {"en": "One moment, I am asking Dr Iyer.", "hi": "एक पल, मैं डॉक्टर अय्यर से पूछ रही हूँ।",
+                              "kn": "ಒಂದು ಕ್ಷಣ, ಡಾಕ್ಟರ್ ಅಯ್ಯರ್ ಅವರನ್ನು ಕೇಳ್ತಿದ್ದೀನಿ.", "ta": "ஒரு நிமிஷம், டாக்டர் ஐயர்கிட்ட கேட்கறேன்.",
+                              "te": "ఒక్క క్షణం, డాక్టర్ అయ్యర్ గారిని అడుగుతున్నాను.", "mr": "एक क्षण, डॉक्टर अय्यर यांना विचारते.",
+                              "bn": "এক মুহূর্ত, ডাক্তার আইয়ারকে জিজ্ঞেস করছি।"},
         "get_assignment_status": {"en": "One moment, let me check.", "hi": "एक पल, मैं देखती हूँ।",
                                   "kn": "ಒಂದು ಕ್ಷಣ, ನೋಡ್ತೀನಿ.", "ta": "ஒரு நிமிஷம், பார்க்கறேன்.",
                                   "te": "ఒక్క క్షణం, చూస్తాను.", "mr": "एक क्षण, बघते.", "bn": "এক মুহূর্ত, দেখছি।"},
@@ -249,8 +270,10 @@ rt.register(rt.AgentToolset(
         "email_report_to_teacher": lambda a: _key(a.get("code")) or "active",
         "book_study_session": lambda a: f"{_key(a.get('topic'))}|{_key(a.get('when_text'))}|{a.get('in_days')}|{a.get('hour')}",
         "send_to_my_phone": lambda a: _key(a.get("text")),
+        "ask_faculty": lambda a: re.sub(r"\s+", " ", str(a.get("question") or "")).strip().lower(),
+        "ask_revision_plan": lambda a: _key(a.get("code")) or "active",
     },
-    ctx_keys=("assignmentCode", "knownCodes", "profile", "localProgress", "contact", "lang"),
+    ctx_keys=("assignmentCode", "knownCodes", "profile", "localProgress", "contact", "lang", "deskRoom"),
     summarize=reception_summary,
 ))
 

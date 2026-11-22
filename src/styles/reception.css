@@ -64,3 +64,11 @@
   color: #fff;
   background: #2a8bd6;
 }
+
+/* Published by its author without a doctor's review. */
+.chip--telegram.chip--unreviewed {
+  color: #0b1f4b;
+  background: #ffc46b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

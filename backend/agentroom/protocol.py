@@ -28,8 +28,10 @@ VERSION = 1
 NURSE, PHARMACIST, LAB, RADIOLOGY, EXAMINER, FACULTY, TEACHER, RECEPTION, THEATRE = (
     "nurse", "pharmacist", "lab", "radiology", "examiner", "faculty", "teacher", "reception", "theatre",
 )
-WORKER_ROLES = (PHARMACIST, LAB, RADIOLOGY, EXAMINER)
-AGENT_ROLES = (NURSE, *WORKER_ROLES)
+WORKER_ROLES = (PHARMACIST, LAB, RADIOLOGY, EXAMINER, TEACHER)
+# Participants that live in the API process, each with its own BAND connection.
+API_ROLES = (NURSE, RECEPTION, THEATRE)
+AGENT_ROLES = (*API_ROLES, *WORKER_ROLES)
 
 
 @dataclass(frozen=True)

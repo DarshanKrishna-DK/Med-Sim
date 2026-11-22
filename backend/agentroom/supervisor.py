@@ -1,11 +1,12 @@
-"""Starts the four department workers, keeps them running, and never leaves one behind.
+"""Starts the department workers, keeps them running, and never leaves one behind.
 
     await supervisor.start()   # from the API's lifespan
     supervisor.status()        # {"pharmacist": True, ...}
     await supervisor.stop()
 
 Each worker gets its own BAND key, the model keys and what Python needs to run, and
-nothing else. Its stdin is a pipe held by this process: when this process goes away in
+nothing else. With BAND_WORKERS=compact all departments share one child process (for small
+hosts) that holds the department keys and nothing else. Its stdin is a pipe held by this process: when this process goes away in
 any manner, the pipe closes and the worker exits. Plain subprocess and threads are used
 so this works on every asyncio event loop, Windows included.
 """
@@ -44,9 +45,10 @@ ENV_ALLOW = frozenset({
 })
 
 
-def worker_env(role: str) -> dict[str, str]:
+def worker_env(*roles: str) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if k.upper() in ENV_ALLOW}
-    env[ROLES[role].key_env] = config.api_key(role)
+    for role in roles:
+        env[ROLES[role].key_env] = config.api_key(role)
     # Render sets PORT; locally the API listens on BACKEND_PORT. The lab reads custom cases there.
     env["BACKEND_PORT"] = os.environ.get("BACKEND_PORT") or os.environ.get("PORT") or "8787"
     env.update(PYTHONUNBUFFERED="1", PYTHONUTF8="1", MALLOC_ARENA_MAX="2")
@@ -54,10 +56,11 @@ def worker_env(role: str) -> dict[str, str]:
 
 
 class _Worker:
-    def __init__(self, role: str) -> None:
-        self.role = role
+    def __init__(self, *roles: str) -> None:
+        self.roles = roles
+        self.role = ",".join(roles)
         self.proc: Optional[subprocess.Popen[bytes]] = None
-        self.ready = False
+        self.ready_roles: set[str] = set()
         self.started_at = 0.0
         self.retry_at = 0.0
         self.backoff = BACKOFF_MIN_S
@@ -67,11 +70,11 @@ class _Worker:
         kw: dict[str, Any] = {}
         if os.name == "nt":
             kw["creationflags"] = subprocess.CREATE_NO_WINDOW
-        self.ready = False
+        self.ready_roles = set()
         self.started_at = time.monotonic()
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "agentroom.worker", "--role", self.role],
-            cwd=str(BACKEND_DIR), env=worker_env(self.role), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            cwd=str(BACKEND_DIR), env=worker_env(*self.roles), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL if os.environ.get("BAND_WORKER_QUIET") else None, close_fds=True, **kw)
         threading.Thread(target=self._read, args=(self.proc,), name=f"worker-{self.role}", daemon=True).start()
 
@@ -81,16 +84,21 @@ class _Worker:
             for raw in proc.stdout or ():
                 line = raw.decode("utf-8", "replace").strip()
                 try:
-                    event = json.loads(line).get("event")
+                    d = json.loads(line)
+                    event, role = d.get("event"), d.get("role", self.roles[0])
                 except (ValueError, AttributeError):
                     continue
                 if event == "ready" and proc is self.proc:
-                    self.ready = True
+                    self.ready_roles.add(role if role in self.roles else self.roles[0])
                 elif event in ("stopping", "crash", "exit") and proc is self.proc:
-                    self.ready = False
+                    self.ready_roles.discard(role)
                 log.info("%s", line[:400])
         except (OSError, ValueError):
             pass
+
+    @property
+    def ready(self) -> bool:
+        return self.ready_roles >= set(self.roles)
 
     @property
     def alive(self) -> bool:
@@ -127,17 +135,20 @@ atexit.register(_kill_all)
 
 
 async def start() -> None:
-    """Spawn every department whose key is configured (BAND_WORKERS=spawn)."""
+    """Spawn every department whose key is configured (BAND_WORKERS=spawn or compact)."""
     global _task, _stopping
     if _task is not None and not _task.done():
         return
-    if not config.enabled() or config.workers_mode() != "spawn":
+    mode = config.workers_mode()
+    if not config.enabled() or mode not in ("spawn", "compact"):
         return
     _stopping = False
     _workers.clear()
-    for role in WORKER_ROLES:
-        if config.api_key(role):
-            _workers[role] = _Worker(role)
+    roles = [r for r in WORKER_ROLES if config.api_key(r)]
+    if mode == "compact" and roles:
+        _workers["compact"] = _Worker(*roles)
+    else:
+        _workers.update((r, _Worker(r)) for r in roles)
     _task = asyncio.create_task(_supervise(), name="agentroom-supervisor")
 
 
@@ -146,7 +157,7 @@ async def _supervise() -> None:
         if _stopping:
             return
         await _spawn(w)
-        # One after the other: four interpreters importing at once is the memory and CPU peak.
+        # One after the other: several interpreters importing at once is the memory and CPU peak.
         for _ in range(30):
             if w.ready or not w.alive or _stopping:
                 break
@@ -158,7 +169,7 @@ async def _supervise() -> None:
                 continue
             if w.proc is not None:
                 w.close_stdin()
-                code, w.proc, w.ready = w.proc.returncode, None, False
+                code, w.proc, w.ready_roles = w.proc.returncode, None, set()
                 if now - w.started_at > STABLE_S:
                     w.backoff = BACKOFF_MIN_S
                 w.retry_at = now + w.backoff
@@ -199,7 +210,7 @@ async def stop() -> None:
         if w.alive:
             log.warning("%s worker did not exit, killing it", w.role)
             await asyncio.to_thread(w.kill)
-        w.ready = False
+        w.ready_roles = set()
 
 
 def status() -> dict[str, bool]:
@@ -209,4 +220,4 @@ def status() -> dict[str, bool]:
         return {r: False for r in WORKER_ROLES}
     if mode == "external":
         return {r: bool(config.api_key(r)) for r in WORKER_ROLES}
-    return {r: bool((w := _workers.get(r)) and w.alive and w.ready) for r in WORKER_ROLES}
+    return {r: any(r in w.roles and w.alive and r in w.ready_roles for w in _workers.values()) for r in WORKER_ROLES}

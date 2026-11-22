@@ -1,0 +1,283 @@
+/* The foot of a mark sheet: examiner's note, signature line, stamp, and the
+ * teacher's plan. Paper tokens only (tokens.css), square corners, hard bevels. */
+
+.academic {
+  display: grid;
+  gap: var(--s-5);
+}
+
+.signoff,
+.plan-body {
+  display: grid;
+  gap: 14px;
+}
+
+.signoff-plain {
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+
+/* ── the sheet ── */
+
+.signoff-sheet {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  max-width: 820px;
+  padding: 22px 24px;
+  background: var(--surface);
+  box-shadow: var(--bevel-sm);
+}
+
+.signoff-note {
+  display: grid;
+  gap: 4px;
+  max-width: 58ch;
+  padding-right: 168px;
+  color: var(--ink-2);
+}
+
+.signoff-who {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The stamp is the one loud thing here. */
+.signoff-stamp {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  padding: 6px 14px 4px;
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1;
+  color: var(--stamp);
+  box-shadow: inset 0 0 0 3px var(--stamp), inset 0 0 0 5px var(--surface), inset 0 0 0 6px var(--stamp);
+  transform: rotate(-4deg);
+  user-select: none;
+}
+
+.signoff-stamp--draft { --stamp: var(--amber-strong); }
+.signoff-stamp--none { --stamp: var(--muted); }
+.signoff-stamp--back { --stamp: var(--destructive); }
+.signoff-stamp--signed { --stamp: var(--green); }
+
+.signoff-stamp--signed,
+.signoff-stamp--back {
+  animation: stamp-down 180ms steps(3, end);
+}
+
+@keyframes stamp-down {
+  from { transform: rotate(-4deg) scale(1.9); opacity: 0; }
+  to { transform: rotate(-4deg) scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signoff-stamp--signed,
+  .signoff-stamp--back { animation: none; }
+}
+
+.signoff-line {
+  display: grid;
+  gap: 6px;
+  max-width: 460px;
+}
+
+.signoff-name {
+  min-height: 40px;
+  padding: 0 4px 2px;
+  border-bottom: 2px dashed var(--line-strong);
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 1.2;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.signoff-name.is-signed {
+  border-bottom-style: solid;
+  border-bottom-color: var(--green);
+}
+
+.signoff-state {
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.signoff-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.signoff-score b {
+  font-family: var(--font-display);
+  font-size: 44px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text);
+}
+
+.signoff-score span {
+  margin-left: 8px;
+  font-size: 14px;
+}
+
+.signoff-comment {
+  margin: 0;
+  padding: 10px 14px;
+  max-width: 64ch;
+  background: var(--background);
+  box-shadow: inset 4px 0 0 0 #c9971a;
+}
+
+.signoff-comment footer {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.signoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.signoff-ask {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+.signoff-ask .input {
+  width: 100%;
+  min-height: 40px;
+}
+
+.signoff-error {
+  color: var(--destructive);
+  font-size: 15px;
+}
+
+.signoff-audit summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.signoff-audit ol {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line-strong);
+}
+
+.signoff-audit li {
+  display: grid;
+  grid-template-columns: 4.2em minmax(0, 1fr);
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.signoff-audit li.is-human b { box-shadow: inset 0 -2px 0 0 #c9971a; }
+.signoff-audit time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.signoff-audit b { color: var(--text); font-weight: 600; }
+.signoff-audit q { display: block; color: var(--muted); }
+
+/* ── the teacher's plan ── */
+
+.plan {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  max-width: 820px;
+}
+
+.plan-reason {
+  max-width: 62ch;
+  color: var(--ink-2);
+}
+
+.plan-title--compact {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.plan-steps {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.plan-step {
+  width: 100%;
+  height: 100%;
+  min-height: 64px;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  box-shadow: var(--bevel-sm);
+}
+
+.plan-step:hover,
+.plan-step:focus-visible {
+  background: var(--secondary);
+}
+
+.plan-step:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 2px var(--line);
+}
+
+.plan-step-what {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.plan-step-name {
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.plan--compact .plan-steps {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ── list mark ── */
+
+.signed-mark {
+  display: inline-block;
+  padding: 1px 6px;
+  color: var(--green);
+  box-shadow: inset 0 0 0 1.5px var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .signoff-sheet { padding: 18px 16px; }
+  .signoff-stamp { position: static; justify-self: start; }
+  .signoff-note { padding-right: 0; }
+}
+
+@media print {
+  .signoff-sheet { box-shadow: inset 0 0 0 1px #000; break-inside: avoid; }
+  .signoff-audit:not([open]) { display: none; }
+}

@@ -26,6 +26,10 @@ import {
   type VivaVerdict,
 } from '../viva/vivaCore';
 import { EXAMINER } from '../../voice/vivaPersona';
+import { AcademicSection } from '../academic/AcademicSection';
+import { clinicForSubject, vivaDomains } from '../../room/academicCore';
+import { getProfile } from '../../game/profile';
+import type { ClinicId } from '../../game/clinic';
 import '../../styles/viva.css';
 
 // Viva voce exam hall: pick a subject, topic and year, then a voice examiner
@@ -84,7 +88,7 @@ export default function VivaScreen() {
       <AppHeader />
       {reviewed ? (
         <main className="viva wrap">
-          <VivaResult saved={reviewed} onAgain={() => store.clearViewedEval()} />
+          <VivaResult saved={reviewed} resultKey={`viva:${viewedId}`} onAgain={() => store.clearViewedEval()} />
         </main>
       ) : (
         <VivaHall />
@@ -106,6 +110,7 @@ function VivaHall() {
   const [planError, setPlanError] = useState('');
   const [markError, setMarkError] = useState('');
   const [result, setResult] = useState<SavedViva | null>(null);
+  const [resultId, setResultId] = useState('');
   const [, setTick] = useState(0);
 
   const session = useVivaSession();
@@ -226,7 +231,7 @@ function VivaHall() {
         durationSec: Math.round(Math.min(durationMs.current, VIVA_DURATION_MS + 60000) / 1000),
         transcript: lines.slice(-80),
       };
-      saveEvalHistory(vivaHistoryPayload(saved));
+      setResultId(saveEvalHistory(vivaHistoryPayload(saved)).id);
       setResult(saved);
       setPhase('result');
     } catch (e) {
@@ -355,6 +360,8 @@ function VivaHall() {
       <main className="viva wrap">
         <VivaResult
           saved={result}
+          resultKey={`viva:${resultId}`}
+          fresh
           onAgain={() => setPhase('setup')}
           onRetake={() => begin(voiceMode.current, true)}
         />
@@ -550,8 +557,22 @@ function ExamHall({
   );
 }
 
-export function VivaResult({ saved, onAgain, onRetake }: { saved: SavedViva; onAgain: () => void; onRetake?: () => void }) {
+export function VivaResult({
+  saved,
+  resultKey,
+  fresh,
+  onAgain,
+  onRetake,
+}: {
+  saved: SavedViva;
+  /** The saved history row, for the faculty signature. */
+  resultKey: string;
+  fresh?: boolean;
+  onAgain: () => void;
+  onRetake?: () => void;
+}) {
   const band = scoreBand(saved.score);
+  const clinic: ClinicId = clinicForSubject(saved.subjectId);
   const minutes = Math.floor(saved.durationSec / 60);
   const seconds = saved.durationSec % 60;
   return (
@@ -579,6 +600,24 @@ export function VivaResult({ saved, onAgain, onRetake }: { saved: SavedViva; onA
           <footer>{EXAMINER.name}</footer>
         </blockquote>
       )}
+
+      <AcademicSection
+        auto={!!fresh}
+        input={{
+          resultKey,
+          what: 'viva',
+          total: saved.score,
+          domains: vivaDomains(saved.perQuestion),
+          strengths: saved.strengths,
+          improvements: saved.gaps,
+          clinic,
+          specialty: saved.subject,
+          about: saved.topic,
+          markKey: `${saved.subject}|${saved.topic}`,
+          patientNames: [],
+          studentName: getProfile()?.name,
+        }}
+      />
 
       <h2 className="section-title">Question by question</h2>
       <ol className="viva-marks">

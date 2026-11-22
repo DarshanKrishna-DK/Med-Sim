@@ -152,8 +152,8 @@ class Base(unittest.IsolatedAsyncioTestCase):
 
         self.llm = None
 
-        async def words(domains, timeline):
-            return examiner.fixed_words(domains)
+        async def words(good, weak):
+            return [f["text"] for f in good], [f["text"] for f in weak]
 
         ps = [mock.patch.object(pharmacist.PharmacistAdapter, "_external", ext), mock.patch.object(pharmacist, "llm_answer", no_llm),
               mock.patch.object(lab, "llm_answer", no_llm), mock.patch.object(radiology, "llm_answer", no_llm),
@@ -978,21 +978,62 @@ class ExaminerTests(Base):
 class WordingTests(Base):
     real_words = True
 
-    async def test_model_wording_is_filtered_and_optional(self):
-        domains = examiner.score_domains(examiner.read_counts({"counts": COUNTS}))[0]
+    # The live run of im-005: the human asked two things through Asha, the student answered both, asked once for an
+    # override of a hard allergy hold without a reason, and faculty said no.
+    CURB = {"delegations": 3, "byDepartment": {"pharmacist": 1, "lab": 2}, "openAtClose": 0, "timeouts": 0, "failed": 0, "holds": 1,
+            "heldAtClose": 1, "overridesRequested": 1, "overridesDenied": 1, "overridesWithReason": 0, "overridesWithoutReason": 1,
+            "hardOverridesWithReason": 0, "criticalResults": 0, "facultyInvited": True, "facultyQuestions": 1, "facultyAnswered": 1,
+            "facultyAnswerSeconds": [23.0], "doctorToFaculty": 1}
 
-        async def chat(*a, **k):
-            return json.dumps({"strengths": ["You scored 99/100 overall.", "You asked the pharmacist why \u2014 good."], "improvements": []})
+    async def test_curb65_question_that_was_answered_is_never_held_against_the_doctor(self):
+        async def chat(*a, **k):  # what the model said in the live run
+            return json.dumps({"w_unreasoned": "You did not proactively calculate or explain the CURB-65 score when faculty specifically asked you to do so.",
+                               "g_faculty": "You did not answer faculty's question.", "g_closed": "You followed all 4 requests through to an answer.",
+                               "improvements": ["You did not explain the CURB-65 score."]})
+        bus = Bus("examiner")
         with mock.patch.object(base, "ask_llm", chat), mock.patch.dict(os.environ, {"GROQ_API_KEY": "k"}):
-            good, weak = await examiner.word_it(domains, [])
-        self.assertEqual(good, ["You asked the pharmacist why, good."])
-        self.assertTrue(weak)
+            await bus.nurse("examiner", Handoff("request", "score_teamwork", "score_1", enc="enc1", data={
+                "counts": self.CURB, "timeline": [{"at": "t", "who": "faculty", "what": "Dr Rao asked the doctor: what is the CURB-65 score and why?"},
+                                                  {"at": "t", "who": "doctor", "what": "Answered the question from Dr Rao after 23 seconds"}]}))
+        d = bus.last("examiner", "score").data
+        self.assertEqual(d["improvements"], ["You asked faculty to override a hold without giving a reason."])
+        self.assertIn("You answered faculty's question.", d["strengths"])
+        self.assertIn("You followed all 3 requests through to an answer.", d["strengths"])
+        self.assertNotIn("CURB", json.dumps(d))
+        self.assertIn("1 of 1 faculty questions were answered", json.dumps(d["domains"]))
+
+    async def test_unanswered_faculty_question_is_a_fact(self):
+        bus = Bus("examiner")
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "", "SARVAM_API_KEY": ""}):
+            await bus.nurse("examiner", Handoff("request", "score_teamwork", "score_1", enc="enc1", data={"counts": {**self.CURB, "facultyAnswered": 0}}))
+        self.assertIn("One question from faculty had no reply from you before you ended.", bus.last("examiner", "score").data["improvements"])
+
+    async def test_hard_hold_override_is_neutral_only_with_a_reason(self):
+        with_reason = {**self.CURB, "overridesWithReason": 1, "overridesWithoutReason": 0, "hardOverridesWithReason": 1}
+        def safety(counts):
+            return next((x for x in examiner.score_domains(examiner.read_counts({"counts": counts}))[0] if x["name"] == "Safety response to holds"), None)
+        self.assertIsNone(safety(with_reason))
+        self.assertIsNotNone(safety(self.CURB))
+        good, weak = examiner.select_facts(examiner.read_counts({"counts": with_reason}))
+        self.assertEqual(weak, [])  # no facts, no improvement bullet
+        self.assertNotIn("reasoned", [f["id"] for f in good])
+
+    async def test_a_rephrase_must_be_the_same_fact(self):
+        fact = "You answered all 2 safety questions from the departments."
+        self.assertTrue(examiner.faithful("All 2 safety questions from the departments were answered.", fact))
+        for other in ("You answered all 3 safety questions from the departments.", "You did not answer all 2 safety questions from the departments.",
+                      "You answered all 2 safety questions from the departments and explained CURB-65.", "You answered.", "",
+                      "You answered all 2 safety questions from the departments promptly, showing strong leadership.",
+                      "You answered only 2 safety questions from the departments."):
+            self.assertFalse(examiner.faithful(other, fact), other)
+        good, weak = examiner.select_facts(examiner.read_counts({"counts": COUNTS}))
+        self.assertTrue(good)
+        self.assertEqual(weak, [])
 
         async def broken(*a, **k):
             raise RuntimeError("down")
         with mock.patch.object(base, "ask_llm", broken), mock.patch.dict(os.environ, {"GROQ_API_KEY": "k"}):
-            good, weak = await examiner.word_it(domains, [])
-        self.assertTrue(good and weak)
+            self.assertEqual(await examiner.word_it(good, weak), ([f["text"] for f in good], []))
 
 
 class LlmAnswerTests(unittest.IsolatedAsyncioTestCase):
@@ -1071,7 +1112,7 @@ class SupervisorTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(k, got)
 
     async def test_modes_without_processes(self):
-        keys = {f"BAND_{r}_API_KEY": "k" for r in ("ASHA", "PHARMACIST", "LAB", "RADIOLOGY", "EXAMINER")}
+        keys = {f"BAND_{r}_API_KEY": "k" for r in ("ASHA", "PHARMACIST", "LAB", "RADIOLOGY", "EXAMINER", "TEACHER")}
         with mock.patch.dict(os.environ, {**keys, "BAND_WORKERS": "external"}), mock.patch.object(supervisor._Worker, "spawn", side_effect=AssertionError):
             await supervisor.start()
             self.assertTrue(all(supervisor.status().values()))
@@ -1113,6 +1154,56 @@ class SupervisorTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(p.poll() is not None for p in started))
         for p in started:
             p.stdout.close()
+
+    async def test_compact_mode_is_one_process_with_every_department(self):
+        code = ("import sys,json,os\nroles=sys.argv[1].split(',')\n"
+                "assert set(roles)=={'lab','teacher'}\n"
+                "assert os.environ['BAND_LAB_API_KEY']=='kl' and os.environ['BAND_TEACHER_API_KEY']=='kt'\n"
+                "assert 'BAND_ASHA_API_KEY' not in os.environ and 'MURF_API_KEY' not in os.environ\n"
+                "print(json.dumps({'event':'ready','role':'lab'}),flush=True)\n"
+                "sys.stdin.readline() if False else None\nsys.stdin.read()")
+        started, real = [], supervisor.subprocess.Popen
+
+        def popen(args, **kw):
+            p = real([sys.executable, "-c", code, args[-1]], **kw)
+            started.append(p)
+            return p
+        keys = {"BAND_ASHA_API_KEY": "ka", "BAND_LAB_API_KEY": "kl", "BAND_TEACHER_API_KEY": "kt", "MURF_API_KEY": "m", "BAND_WORKERS": "compact"}
+        with mock.patch.dict(os.environ, keys), mock.patch.object(supervisor.subprocess, "Popen", popen), mock.patch.object(supervisor, "POLL_S", 0.05):
+            for k in ("BAND_PHARMACIST_API_KEY", "BAND_RADIOLOGY_API_KEY", "BAND_EXAMINER_API_KEY"):
+                os.environ.pop(k, None)
+            await supervisor.start()
+            for _ in range(200):
+                if supervisor.status()["lab"]:
+                    break
+                await asyncio.sleep(0.05)
+            st = supervisor.status()
+            self.assertEqual((st["lab"], st["teacher"], st["pharmacist"], len(started)), (True, False, False, 1))  # each department is ready on its own
+            await supervisor.stop()
+        self.assertTrue(all(p.poll() is not None for p in started))
+        for p in started:
+            p.stdout.close()
+
+    async def test_worker_roles_argument_and_one_failing_department(self):
+        self.assertEqual(worker.parse_roles("lab, teacher,lab"), ["lab", "teacher"])
+        for bad in ("", "lab,nurse", "reception"):
+            with self.assertRaises(worker.argparse.ArgumentTypeError):
+                worker.parse_roles(bad)
+        served = []
+
+        async def serve(role, key, stop):
+            served.append((role, key))
+            if role == "lab":
+                raise RuntimeError("down")
+            await stop.wait()
+            return 0
+        with mock.patch.object(worker, "serve", serve), mock.patch.object(worker, "RETRY_MIN_S", 0.01), mock.patch.object(worker, "RETRY_MAX_S", 0.02), \
+                mock.patch.object(worker, "watch_stdin", lambda loop, stop: loop.call_later(0.3, stop.set)), \
+                mock.patch.object(base, "log_event", lambda *a, **k: None), \
+                mock.patch.dict(os.environ, {"BAND_LAB_API_KEY": "kl", "BAND_TEACHER_API_KEY": "kt", "BAND_EXAMINER_API_KEY": ""}):
+            self.assertEqual(await worker.run(["lab", "teacher", "examiner"]), 0)
+        self.assertEqual(served.count(("teacher", "kt")), 1)
+        self.assertGreater(served.count(("lab", "kl")), 1)
 
     def test_model_diversity(self):
         self.assertEqual((worker.PREFERRED_LLM["pharmacist"], worker.PREFERRED_LLM["radiology"], worker.PREFERRED_LLM["examiner"]),

@@ -18,6 +18,7 @@ import {
 import { AppHeader } from '../ui/chrome';
 import { FacultyMarksCard } from '../observer/FacultyMarksCard';
 import { TeamworkSection } from './TeamworkSection';
+import { AcademicSection } from '../academic/AcademicSection';
 import { SendResultButton } from '../ui/SendResultButton';
 import { buildResultPayload } from '../../agents/resultSend';
 import { getProfile } from '../../game/profile';
@@ -146,6 +147,7 @@ function Report({ entry, result, encounter }: { entry: EvalHistoryEntry; result:
   const r: OsceResult = result;
   const sessionLang = useStore((st) => st.lang);
   const profile = getProfile();
+  const [fresh] = useState(() => Date.now() - entry.savedAt < 10 * 60 * 1000);
   const resultPayload = buildResultPayload({
     profile: { name: candidate || profile?.name, university: profile?.university },
     caseId: c.id,
@@ -187,7 +189,7 @@ function Report({ entry, result, encounter }: { entry: EvalHistoryEntry; result:
             My progress
           </button>
         </div>
-        <SendResultButton sendKey={`osce:${entry.id}`} payload={resultPayload} auto={Date.now() - entry.savedAt < 10 * 60 * 1000} />
+        <SendResultButton sendKey={`osce:${entry.id}`} payload={resultPayload} auto={fresh} />
       </header>
 
       <dl className="osce-meta">
@@ -258,6 +260,25 @@ function Report({ entry, result, encounter }: { entry: EvalHistoryEntry; result:
           </div>
         ))}
       </section>
+
+      <AcademicSection
+        auto={fresh}
+        input={{
+          resultKey: `osce:${entry.id}`,
+          what: 'osce',
+          total: r.score,
+          domains: r.domains.map((d) => ({ name: d.label, score: d.score, max: 100, note: d.items.find((i) => i.verdict !== 'met')?.label })),
+          strengths: r.strengths,
+          improvements: r.improvements,
+          clinic: specialty,
+          specialty: specialty ? CLINIC_LABELS[specialty] : '',
+          about: dxLabel(c.correctDiagnosisId) ?? '',
+          caseId: c.id,
+          markKey: c.id,
+          patientNames: [c.name],
+          studentName: candidate || profile?.name,
+        }}
+      />
 
       <section className="osce-errors" aria-labelledby="osce-errors-title">
         <h2 id="osce-errors-title" className="section-title">Critical errors</h2>

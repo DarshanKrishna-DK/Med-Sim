@@ -16,6 +16,9 @@ const P: Record<RoomRole, RoomParticipant> = {
   radiology: { id: 'p-vikram', role: 'radiology', name: 'Radiologist Vikram', title: 'Radiology', human: false, online: true },
   examiner: { id: 'p-kulkarni', role: 'examiner', name: 'Examiner Kulkarni', title: 'Examiner', human: false, online: true },
   faculty: { id: 'p-rao', role: 'faculty', name: 'Dr Anand Rao', title: 'Faculty', human: true, online: true },
+  teacher: { id: 'p-iyer', role: 'teacher', name: 'Teacher Iyer', title: 'Teacher', human: false, online: true },
+  reception: { id: 'p-priya', role: 'reception', name: 'Receptionist Priya', title: 'Front desk', human: false, online: true },
+  theatre: { id: 'p-leela', role: 'theatre', name: 'Theatre Sister Leela', title: 'Theatre coordinator', human: false, online: true },
 };
 
 const ROOM_ID = '7c1e4b90-5d2f-4a11-9f3e-0b6a2c8d1e55';

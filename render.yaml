@@ -48,5 +48,11 @@ services:
         sync: false
       - key: BAND_EXAMINER_API_KEY
         sync: false
+      - key: BAND_TEACHER_API_KEY
+        sync: false
+      - key: BAND_RECEPTION_API_KEY
+        sync: false
+      - key: BAND_THEATRE_API_KEY
+        sync: false
       - key: BAND_WORKERS
-        value: spawn
+        value: compact    # all departments in one child process: fits 512 MB

@@ -517,6 +517,14 @@ def grade_messages(req: GradeRequest, plan: list[dict[str, Any]]) -> list[dict[s
 
 @router.post("/agent/viva/grade")
 async def viva_grade(req: GradeRequest):
+    out = await _grade(req)
+    from agentroom import academic
+
+    academic.record_marks("viva", f"{req.subject}|{req.topic}", out["score"])  # checked when faculty is asked to sign
+    return out
+
+
+async def _grade(req: GradeRequest) -> dict[str, Any]:
     try:
         plan = validate_plan(req.plan, MAX_Q, 1)
     except ValueError as e:

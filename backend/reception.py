@@ -7,7 +7,8 @@ but self-contained. When no LLM is reachable a keyword router runs the same tool
 so the front desk still works offline.
 
 Tools: get_assignment_status(code), get_my_scores(), email_report_to_teacher(code, note?),
-list_assignments(). The email tool has no recipient parameter: the report only ever
+list_assignments(), ask_faculty(question) (a human answers in the BAND room) and
+ask_revision_plan(code?) (Teacher Iyer answers there). The email tool has no recipient parameter: the report only ever
 goes to the teacher email stored on the assignment.
 """
 
@@ -58,6 +59,8 @@ class ReceptionActRequest(BaseModel):
     localProgress: LocalProgress = Field(default_factory=LocalProgress)
     lang: Optional[str] = None
     history: list[dict[str, str]] = Field(default_factory=list)
+    # The BAND side room of an earlier question that is still open at this desk.
+    deskRoom: Optional[str] = Field(None, max_length=120)
 
 
 TOOL_SPECS: list[dict[str, Any]] = [
@@ -84,6 +87,21 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "description": "Assignments this student has joined, with title, due date and progress.",
         "parameters": {"type": "object", "properties": {}, "required": []},
     }},
+    {"type": "function", "function": {
+        "name": "ask_faculty",
+        "description": "Put the student's question to a human faculty member, who answers in their own time. Use when the student asks "
+                       "to ask, message or check something with faculty, sir, ma'am, the professor or the HOD, or asks something only a "
+                       "person can decide (leave, exam dates, rules, a disputed mark).",
+        "parameters": {"type": "object", "properties": {
+            "question": {"type": "string", "description": "The student's question in their own words, complete, one or two sentences"},
+        }, "required": ["question"]},
+    }},
+    {"type": "function", "function": {
+        "name": "ask_revision_plan",
+        "description": "Ask Dr Iyer, the teacher, for a revision plan for the student's assignment: one lesson and one practice patient. "
+                       "Use when the student asks what to revise, study or practise next.",
+        "parameters": {"type": "object", "properties": {"code": {"type": "string", "description": "assignment code; omit for the active assignment"}}, "required": []},
+    }},
 ]
 
 
@@ -96,6 +114,7 @@ class ReceptionState:
         self.known = list(dict.fromkeys(c for c in codes if asg.CODE_RE.match(c)))
         self.active = asg.norm_code(req.assignmentCode or "") or None
         self.emailed: Optional[dict[str, Any]] = None
+        self.desk: Optional[dict[str, Any]] = None  # a BAND side room the browser should follow
 
     def _code(self, code: Any) -> Optional[str]:
         c = asg.norm_code(str(code or "")) or self.active
@@ -143,9 +162,33 @@ class ReceptionState:
                     rows.append({"code": c, "title": a["title"], "dueDate": a.get("dueDate"), "completed": rep["completed"],
                                  "total": rep["total"], "active": c == self.active})
                 return {"ok": True, "assignments": rows}
+            if name in ("ask_faculty", "ask_revision_plan"):
+                return await self._desk(name, args)
             return {"ok": False, "error": f"unknown tool {name}"}
         except HTTPException as e:
             return {"ok": False, "error": str(e.detail)}
+
+
+    async def _desk(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """What Priya cannot answer herself: a human or Teacher Iyer does, in the BAND room."""
+        from agentroom import desk
+
+        if self.desk is not None:
+            return {"ok": True, "note": "already asked this turn"}
+        if name == "ask_faculty":
+            res = await desk.ask_faculty(str(args.get("question") or ""), student=self.student, lang=self.req.lang,
+                                         side_id=self.req.deskRoom or "")
+        else:
+            code = self._code(args.get("code"))
+            if code and self.student:
+                rep = asg.report_for(code, self.student, self.university)
+            else:  # no assignment: what this browser knows about the student's practice
+                rep = {"student": self.student, "items": [a.model_dump() | {"bestScore": a.score} for a in self.req.localProgress.recent[:8]],
+                       "domains": self.req.localProgress.skills, "weaknesses": []}
+            res = await desk.revision_plan(rep, lang=self.req.lang)
+        if res.get("sideId"):
+            self.desk = {k: res[k] for k in ("sideId", "kind", "question", "asked", "ready", "plan") if k in res}
+        return res
 
 
 def _compact_report(rep: dict[str, Any]) -> dict[str, Any]:
@@ -170,6 +213,10 @@ def summarize(name: str, res: dict[str, Any]) -> str:
         return f"Report emailed to {res.get('teacherName') or 'the teacher'} ({res.get('to')}) via {res.get('via')}"
     if name == "list_assignments":
         return f"{len(res.get('assignments', []))} assignment(s)"
+    if name == "ask_faculty":
+        return f"Question sent to {res.get('asked') or 'faculty'} in the BAND room"
+    if name == "ask_revision_plan":
+        return f"Dr Iyer's plan: {res['plan']['topic']}" if res.get("plan") else "Asked Dr Iyer for a revision plan"
     return name
 
 
@@ -184,6 +231,7 @@ def _system_prompt(st: ReceptionState) -> str:
         "Use the tools to look things up or act; never invent scores, items or due dates. "
         "Call email_report_to_teacher only when the student asks to send, submit or email their report or results. "
         "You cannot email anyone except the assignment's teacher; if asked to email someone else, say so. "
+        "You never answer for faculty: use ask_faculty, and only say what its result says. Use ask_revision_plan when they ask what to revise. "
         "After the tools, reply with ONE short spoken sentence or two (max 40 words), no markdown, no lists, "
         "numbers as words where natural. If the student is only chatting, just answer briefly without tools.\n"
         f"Context: {json.dumps(ctx)}"
@@ -219,6 +267,10 @@ async def _run_native(st: ReceptionState, messages: list[dict[str, Any]], steps:
     return strip_think(msg.get("content") or "")
 
 
+ASK_FACULTY_RE = re.compile(
+    r"\b(?:ask|message|tell|contact|reach|check with|talk to|speak to)\b.{0,40}\b(?:faculty|professor|prof|hod|examiner|teacher|sir|madam|ma'?am|doctor)\b"
+    r"|\bquestion for (?:the |my )?(?:faculty|professor|teacher|sir|madam|ma'?am|hod)\b", re.I)
+PLAN_RE = re.compile(r"\b(?:revision|study|practice|practise) plan\b|\bwhat (?:should|can|do) i (?:revise|study|practi[sc]e)\b|\bdr\.? ?iyer\b|\bhelp me revise\b", re.I)
 EMAIL_RE = re.compile(r"\b(e-?mail|mail|send|submit|forward|share)\b", re.I)
 STATUS_RE = re.compile(r"\b(status|progress|pending|left|remaining|done|due|assignment|homework|deadline)\b", re.I)
 SCORE_RE = re.compile(r"\b(score|scores|marks|grade|grades|result|results|how am i doing|average|performance)\b", re.I)
@@ -228,6 +280,10 @@ LIST_RE = re.compile(r"\b(list|all|which|my assignments)\b", re.I)
 def keyword_plan(utterance: str) -> list[tuple[str, dict[str, Any]]]:
     """Deterministic routing used when the LLM is unavailable."""
     u = utterance.lower()
+    if PLAN_RE.search(u):
+        return [("ask_revision_plan", {})]
+    if ASK_FACULTY_RE.search(u) and not re.search(r"\b(report|result|results|score|scores)\b", u):
+        return [("ask_faculty", {"question": utterance})]
     if EMAIL_RE.search(u) and re.search(r"\b(report|result|results|score|scores|teacher|sir|madam|ma'am|professor)\b", u):
         return [("get_assignment_status", {}), ("email_report_to_teacher", {})]
     if LIST_RE.search(u) and "assignment" in u:
@@ -244,6 +300,8 @@ def fallback_reply(steps: list[dict[str, Any]]) -> str:
         return "Hello! I can check your assignment progress, tell you your scores, or email your report to your teacher."
     last = steps[-1]
     res = last["result"]
+    if res.get("spoken"):
+        return res["spoken"]
     if last["tool"] == "email_report_to_teacher":
         if res.get("ok"):
             who = res.get("teacherName") or "your teacher"
@@ -286,11 +344,15 @@ async def reception_act(req: ReceptionActRequest):
                 steps.append({"tool": name, "args": args, "ok": bool(res.get("ok")), "summary": summarize(name, res), "result": res})
     final = re.sub(r"[*_`#]+", "", final or "").strip()
     spoken = final or fallback_reply(steps)
+    # What a person or Dr Iyer will do is said in fixed words, in the student's language, never in the model's.
+    fixed = next((s["result"]["spoken"] for s in reversed(steps) if s["tool"] in ("ask_faculty", "ask_revision_plan") and s["result"].get("spoken")), "")
+    spoken = fixed or spoken
     return {
         "runId": run_id,
         "intent": "action" if steps else "none",
         "source": source,
         "steps": steps,
         "emailed": st.emailed,
+        "desk": st.desk,
         "spokenConfirmation": spoken[:400],
     }

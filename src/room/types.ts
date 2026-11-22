@@ -1,7 +1,16 @@
 // Shapes of the BAND agent room as the backend streams them (backend/agentroom/hub.py).
 // Pure types, no imports, so tests and reducers can use them freely.
 
-export type RoomRole = 'nurse' | 'pharmacist' | 'lab' | 'radiology' | 'examiner' | 'faculty';
+export type RoomRole =
+  | 'nurse'
+  | 'pharmacist'
+  | 'lab'
+  | 'radiology'
+  | 'examiner'
+  | 'faculty'
+  | 'teacher'
+  | 'reception'
+  | 'theatre';
 
 export interface RoomParticipant {
   id: string;
@@ -44,7 +53,20 @@ export type DelegationStatus =
 
 export interface Delegation {
   ref: string;
-  action: 'verify_rx' | 'run_test' | 'run_imaging' | 'ask' | 'score_teamwork';
+  action:
+    | 'verify_rx'
+    | 'run_test'
+    | 'run_imaging'
+    | 'ask'
+    | 'score_teamwork'
+    // side rooms
+    | 'sign_off'
+    | 'study_plan'
+    | 'crossmatch'
+    | 'theatre_allergy'
+    | 'second_read'
+    | 'critical_finding'
+    | 'case_review';
   target: RoomRole;
   status: DelegationStatus;
   label: string; // "Amoxicillin 500 mg" / "CBC, CRP"
@@ -103,6 +125,17 @@ export interface RoomScore {
   facultyComment?: string;
 }
 
+/** A side room (backend/agentroom/siderooms.py): a BAND room that belongs to one
+ *  result, desk question, drill, report or authored case instead of an encounter. */
+export interface SideState {
+  kind: string;
+  refId: string;
+  status: string; // the flow's own states
+  final: boolean;
+  url: string; // the room in BAND, '' until it exists
+  [key: string]: unknown;
+}
+
 export type RoomEvent = { seq: number; at: string } & (
   | { type: 'status'; enabled: boolean; reason?: string; departments: Partial<Record<RoomRole, boolean>> }
   | { type: 'room'; roomId: string; url: string; title: string; participants: RoomParticipant[] }
@@ -113,4 +146,5 @@ export type RoomEvent = { seq: number; at: string } & (
   | { type: 'faculty'; faculty: FacultyEvent }
   | { type: 'question'; ref: string; from: RoomRole; text: string } // a department awaits the doctor's answer
   | { type: 'score'; score: RoomScore }
+  | { type: 'side'; side: SideState } // upsert: the whole state of a side room
 );

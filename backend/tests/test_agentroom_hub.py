@@ -263,7 +263,7 @@ class Lifecycle(HubCase):
         ctx = {self.enc.refs[ref].target: h.data["context"] for ref, h in by.items()}
         self.assertEqual(set(ctx["lab"]), {"age", "gender", "results"})
         self.assertEqual(set(ctx["radiology"]), {"age", "gender", "chiefComplaint", "imaging"})
-        self.assertEqual(set(ctx["pharmacist"]), {"allergies", "current", "drug"})
+        self.assertEqual(set(ctx["pharmacist"]), {"allergies", "current", "patient", "drug"})
         self.assertEqual(ctx["pharmacist"]["drug"]["status"], "held")
         self.assertNotIn("Ravi", json.dumps([h.data for h in by.values()]))
         ref = next(r for r in self.enc.refs.values() if r.target == "lab")
@@ -467,6 +467,27 @@ class Hindi(HubCase):
 
 
 class Closing(HubCase):
+    async def test_faculty_question_and_the_doctors_reply_are_on_record(self) -> None:
+        await self.hub.invite_faculty(self.enc, "")
+        self.band.human("what is the CURB-65 score and why?")
+        await self.until(lambda: self.enc.faculty_asks, "question noted")
+        self.assertEqual((self.hub.counts(self.enc)["facultyQuestions"], self.hub.counts(self.enc)["facultyAnswered"]), (1, 0))
+        await self.hub.faculty_say(self.enc, "CURB-65 is 0 sir: no confusion, RR 20")
+        c = self.hub.counts(self.enc)
+        self.assertEqual((c["facultyQuestions"], c["facultyAnswered"], len(c["facultyAnswerSeconds"])), (1, 1, 1))
+        what = [t["what"] for t in self.enc.timeline]
+        self.assertTrue(any("asked the doctor: what is the CURB-65" in w for w in what))
+        self.assertTrue(any(w.startswith("Answered the question from") and w.endswith("seconds") for w in what))
+
+    async def test_overrides_are_counted_with_and_without_a_reason(self) -> None:
+        r = await self.held()
+        await self.hub.request_override(self.enc, r.ref, "")
+        c = self.hub.counts(self.enc)
+        self.assertEqual((c["overridesWithReason"], c["overridesWithoutReason"]), (0, 1))
+        await self.hub.request_override(self.enc, r.ref, "she took it last year without a rash")
+        c = self.hub.counts(self.enc)
+        self.assertEqual((c["overridesWithReason"], c["overridesWithoutReason"]), (1, 0))
+
     async def test_close_asks_the_examiner_and_the_human_signs_off(self) -> None:
         r = await self.held()
         await self.with_faculty(r)

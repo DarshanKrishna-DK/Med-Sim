@@ -135,7 +135,7 @@ class RoutingTests(Base):
         self.assertEqual(sse_text(r.text), "Namaste! How can I help?")
         names = {t["function"]["name"] for t in self.seen[0]["tools"]}
         self.assertEqual(names, {"get_assignment_status", "get_my_scores", "email_report_to_teacher", "list_assignments",
-                                 "book_study_session", "send_to_my_phone"})
+                                 "book_study_session", "send_to_my_phone", "ask_faculty", "ask_revision_plan"})
         sysmsgs = [m["content"] for m in self.seen[0]["messages"] if m["role"] == "system"]
         self.assertEqual(sysmsgs[0], "persona")
         self.assertIn("TOOLS:", sysmsgs[1])

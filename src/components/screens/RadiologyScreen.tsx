@@ -21,6 +21,9 @@ import {
 } from '../../data/radiology';
 import { RADIOLOGIST, filmIntroLine } from '../../voice/radiologistPersona';
 import { useRadiologistSession, type RadiologistSession } from '../radiology/useRadiologistSession';
+import { SecondReadCard } from '../radiology/SecondReadCard';
+import { useSecondRead } from '../radiology/useSecondRead';
+import type { SecondRead } from '../radiology/secondRead';
 
 const CAMERA_RIG = { distance: 2.6, minDistance: 1.2, maxDistance: 5, pivotHeight: 1.58, shoulder: 0.4, ceiling: 3.0 };
 const PANEL_W = 380;
@@ -160,7 +163,7 @@ function FilmViewer({ c, onHide }: { c: RadCase; onHide: () => void }) {
 
 // ───────── results card ─────────
 
-function ResultsCard({ c, grade, onNext, onRetry }: { c: RadCase; grade: RadGrade; onNext: () => void; onRetry: () => void }) {
+function ResultsCard({ c, grade, second, onNext, onRetry }: { c: RadCase; grade: RadGrade; second: SecondRead | null; onNext: () => void; onRetry: () => void }) {
   const tip = READING_TIP[c.modality];
   const tone = grade.score >= 75 ? GOOD : grade.score >= 45 ? UI.amber : '#ff7a6b';
   const crit = new Set(grade.missedCritical);
@@ -181,6 +184,7 @@ function ResultsCard({ c, grade, onNext, onRetry }: { c: RadCase; grade: RadGrad
         <div style={{ fontFamily: UI.heading, fontSize: 24, lineHeight: 1.05 }}>{grade.correctDiagnosis}</div>
       </div>
       <div style={{ fontFamily: UI.label, fontSize: 14, lineHeight: 1.45 }}>{grade.feedback}</div>
+      {second && <SecondReadCard s={second} />}
 
       <div>
         <div style={{ ...labelStyle, fontSize: 11, color: MISS, marginBottom: 6 }}>Missed findings ({grade.missedFindings.length})</div>
@@ -277,6 +281,13 @@ export function RadiologyScreen() {
   }, []);
   const session = useRadiologistSession({ onStudentFinal });
   sessionRef.current = session;
+  // Vikram's own words go through his own channel, so two voices never overlap.
+  const second = useSecondRead(
+    useCallback((s: SecondRead) => {
+      if (s.read?.spoken) sessionRef.current?.speak(s.read.spoken, { log: true });
+    }, []),
+  );
+  const { request: requestSecondRead, reset: resetSecondRead } = second;
 
   // New film on the screen: reset the read and ground the consultant.
   const firstCase = useRef(true);
@@ -289,10 +300,11 @@ export function RadiologyScreen() {
     setGrade(null);
     setProbing(false);
     setGrading(false);
+    resetSecondRead();
     sessionRef.current?.setCase(c);
     if (firstCase.current) firstCase.current = false;
     else sessionRef.current?.speak(filmIntroLine(c, store.getState().lang), { log: true });
-  }, [c]);
+  }, [c, resetSecondRead]);
 
   useEffect(() => {
     void loadSignFonts();
@@ -317,11 +329,12 @@ export function RadiologyScreen() {
     leaving.current = true;
     runtime.inputEnabled = false;
     abortRef.current?.abort();
+    resetSecondRead();
     setMenu(false);
     setFade(1);
     sessionRef.current?.hangUp();
     window.setTimeout(() => store.exitRadiologyToCorridor(), 600);
-  }, [runtime]);
+  }, [runtime, resetSecondRead]);
 
   const step = useCallback(
     (dir: 1 | -1) => {
@@ -391,15 +404,17 @@ export function RadiologyScreen() {
     setGrading(false);
     setGrade(g);
     setViewerOpen(true);
+    requestSecondRead(cur.id, lines.join('\n'), committed);
     sessionRef.current?.speak(
       g.diagnosisCorrect
         ? `Achha, I agree: ${g.correctDiagnosis}. ${g.missedFindings.length ? 'Look at what you missed on the card.' : 'Well read.'}`
         : `Not quite. This is ${g.correctDiagnosis}. Go through the card and look at the film again.`,
       { log: true },
     );
-  }, [committed, grading, draft]);
+  }, [committed, grading, draft, requestSecondRead]);
 
   const retry = () => {
+    resetSecondRead();
     setGrade(null);
     setTranscript([]);
     setDx(null);
@@ -482,7 +497,7 @@ export function RadiologyScreen() {
           </div>
           {grade && (
             <div style={{ flex: 1, minWidth: 280, maxWidth: 460 }}>
-              <ResultsCard c={c} grade={grade} onNext={() => step(1)} onRetry={retry} />
+              <ResultsCard c={c} grade={grade} second={second.state} onNext={() => step(1)} onRetry={retry} />
             </div>
           )}
         </div>

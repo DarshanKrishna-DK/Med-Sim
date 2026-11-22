@@ -383,6 +383,14 @@ def _user_payload(req: OsceRequest, checklist: list[dict[str, Any]]) -> str:
 
 @router.post("/agent/debrief/osce", response_model=OsceResponse)
 async def debrief_osce(req: OsceRequest):
+    out = await _mark(req)
+    from agentroom import academic
+
+    academic.record_marks("osce", req.caseId, out.score)  # so a faculty signature can tell real marks from edited ones
+    return out
+
+
+async def _mark(req: OsceRequest) -> OsceResponse:
     checklist = build_checklist(req.rubric)
     if not has_interaction(req):
         return no_interaction_result(req, checklist)

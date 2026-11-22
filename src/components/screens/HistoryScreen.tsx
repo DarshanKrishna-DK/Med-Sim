@@ -3,6 +3,8 @@ import { StethoscopeArt } from '../ui/pixel/MedArt';
 import { store } from '../../game/store';
 import { listEvalHistory, clearEvalHistory } from '../../data/evalHistory';
 import { AppHeader } from '../ui/chrome';
+import { SignedMark } from '../academic/AcademicSection';
+import { resultKeyOf } from '../../room/academicStore';
 
 const VERDICT_WORD: Record<string, string> = {
   excellent: 'Excellent',
@@ -54,7 +56,7 @@ export function HistoryScreen() {
                     <span className="history-dx">
                       {e.mode === 'osce' && <span className="chip">OSCE</span>}
                       {e.mode === 'ot' && <span className="chip">OT</span>}
-                      {e.mode === 'viva' && <span className="chip">Viva</span>} {e.diagnosisLabel}
+                      {e.mode === 'viva' && <span className="chip">Viva</span>} {e.diagnosisLabel} <SignedMark resultKey={resultKeyOf(e)} />
                     </span>
                     <span className={`tag tag--${VERDICT_TONE[e.verdict] ?? 'urgent'}`}>{VERDICT_WORD[e.verdict] ?? e.verdict}</span>
                     <time className="history-time" dateTime={new Date(e.savedAt).toISOString()}>

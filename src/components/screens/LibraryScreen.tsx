@@ -9,6 +9,7 @@ import { VitalsRow } from '../ui/Vitals';
 import { useAssignment } from '../../assignments/client';
 import { assignedCaseIds } from '../../assignments/core';
 import { useCustomCasesVersion } from '../../data/customCases';
+import { UNREVIEWED_BADGE } from '../../data/customCasesCore';
 import '../../styles/reception.css';
 
 const SEVERITY_LABEL: Record<Severity, string | null> = {
@@ -185,7 +186,7 @@ function CaseCard({ c, showClinic }: { c: Case; showClinic: boolean }) {
         {showClinic && <span className="case-clinic">{CLINIC_LABELS[c.clinic]}</span>}
         {sevLabel && <span className={`tag tag--${severity}`}>{sevLabel}</span>}
         {p?.source && <span className="chip" title="Adapted from an open-access case report">Based on a published case</span>}
-        {c.badge && <span className="chip chip--telegram" title={c.badgeTitle}>{c.badge}</span>}
+        {c.badge && <span className={`chip chip--telegram${c.badge === UNREVIEWED_BADGE ? ' chip--unreviewed' : ''}`} title={c.badgeTitle}>{c.badge}</span>}
       </span>
     </button>
   );

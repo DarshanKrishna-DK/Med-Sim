@@ -126,5 +126,5 @@ export function chipLabel(a: Assignment, p: AssignmentProgress): string {
 /** Is this receptionist utterance worth running the action agent on? */
 export function looksLikeReceptionRequest(text: string): boolean {
   const t = text.toLowerCase();
-  return /\b(e-?mail|mail|send|submit|forward|report|score|scores|marks|grade|result|results|progress|pending|status|assignment|assignments|homework|due|deadline|teacher|how am i doing|average|left to do|remaining)\b/.test(t);
+  return /\b(e-?mail|mail|send|submit|forward|report|score|scores|marks|grade|result|results|progress|pending|status|assignment|assignments|homework|due|deadline|teacher|how am i doing|average|left to do|remaining|faculty|professor|hod|revise|revision|study plan|dr iyer|ask (?:sir|ma'?am|madam))\b/.test(t);
 }

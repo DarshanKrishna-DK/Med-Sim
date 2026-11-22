@@ -15,6 +15,7 @@ import { FacultyToasts } from './components/observer/FacultyToasts';
 import { ProfileDialog } from './components/ui/ProfileDialog';
 import { callTokenFromUrl } from './voice/followupCall';
 import { startCustomCaseSync } from './data/customCases';
+import { startDeskWatch } from './room/deskWatch';
 
 // Teacher Portal lecture hall (3D + whiteboard), loaded on first visit.
 const TriageDrillScreen = lazy(() => import('./components/screens/TriageDrillScreen'));
@@ -50,6 +51,8 @@ function SimulatorApp() {
   const screen = useScreen();
   // Cases created on Telegram join the library (and open from ?case=<id>).
   useEffect(() => startCustomCaseSync(), []);
+  // Questions left at the reception desk: the answer may come on any screen.
+  useEffect(() => startDeskWatch(), []);
   return (
     <>
       <RouteProgress />
