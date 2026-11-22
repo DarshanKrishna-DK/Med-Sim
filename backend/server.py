@@ -122,9 +122,13 @@ async def _lifespan(_app):
     import telegram_bot
 
     telegram_bot.start()  # @medsim_asha_bot case-authoring chat (long polling)
+    from agentroom import hub as room_hub
+
+    await room_hub.start()  # BAND agent room: Asha's connection and the department workers
     try:
         yield
     finally:
+        await room_hub.stop()
         telegram_bot.stop()
         call_reminders.stop()
         llm_proxy.stop_tunnel()
@@ -1439,6 +1443,8 @@ async def patient_stream(req: PatientStreamRequest):
 app.include_router(voice_router)
 app.include_router(rx_audio_router)
 app.include_router(llm_proxy.router)
+from intent import router as intent_router  # noqa: E402  (POST /voice/route)
+app.include_router(intent_router)
 app.include_router(nurse_router)
 app.include_router(debrief_router)
 app.include_router(teacher_router)
@@ -1480,6 +1486,12 @@ from custom_cases import router as custom_cases_router  # noqa: E402
 app.include_router(custom_cases_router)
 
 
+# BAND agent room: delegations to the departments, SSE, human faculty (/agent/room/*).
+from agentroom import routes as room_routes  # noqa: E402
+app.include_router(room_routes.router)
+limiter.exempt(room_routes.room_stream)  # one long-lived SSE stream per encounter, EventSource reconnects
+
+
 # Production: serve the built SPA (../dist) from this same service so the
 # browser talks to one origin. Registered last so API routes win.
 _DIST = Path(__file__).resolve().parent.parent / "dist"
@@ -1500,4 +1512,4 @@ if _DIST.is_dir():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=BACKEND_PORT, log_level="info")
+    uvicorn.run(app, host="127.0.0.1", port=BACKEND_PORT, log_level="info", timeout_graceful_shutdown=5)  # open SSE streams

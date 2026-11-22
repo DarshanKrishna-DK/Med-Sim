@@ -201,7 +201,9 @@ class NurseToolTests(unittest.TestCase):
         a = st.order_test("cbc")
         self.assertEqual((a["result"], a["abnormal"]), ("WBC 14", True))
         b = st.order_test("crp")
-        self.assertEqual((b["result"], b["abnormal"]), ("Within normal limits", False))
+        # No result was supplied: pending, never "normal" (B1).
+        self.assertEqual((b["result"], b["abnormal"], b["resultPending"]), ("", False, True))
+        self.assertEqual(nurse.summarize("order_test", {}, b), "Ordered C-Reactive Protein: result pending, see chart")
         self.assertFalse(st.order_test("nope")["ok"])
         self.assertEqual(st.new_tests, ["cbc", "crp"])
         self.assertTrue(st.order_test("cbc")["alreadyOrdered"])

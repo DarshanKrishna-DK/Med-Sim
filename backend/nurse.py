@@ -12,17 +12,22 @@ import json
 import logging
 import re
 import secrets
+import time
 from typing import Any, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from llm_provider import chat, strip_think
+import drugterms
 import lang as langmod
 
 log = logging.getLogger("medsim.nurse")
 router = APIRouter()
 MAX_ITERATIONS = 6
+# The same order from the same encounter within this window is one run (double
+# voice finals, a retried request): the first run's answer is returned.
+DEDUPE_S = 4.0
 
 
 # ── request / response models ──────────────────────────────────────────────
@@ -90,6 +95,9 @@ class NurseActRequest(BaseModel):
     caseName: Optional[str] = None
     diagnosis: Optional[str] = None
     skills: list[str] = Field(default_factory=list)
+    # BAND agent room: with a registered encounter, orders are delegated to the departments.
+    encounterId: Optional[str] = None
+    osce: bool = False
 
 
 # ── tool executors (pure, no network) ──────────────────────────────────────
@@ -168,13 +176,21 @@ def _call_snapshot(req: "NurseActRequest", rx: list[dict[str, Any]], reason: Any
             "reason": _clip(reason, 160), "lang": lang}
 
 
-def _norm(s: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+_norm = drugterms.norm  # keeps native-script letters
 
 
 class NurseState:
-    def __init__(self, req: NurseActRequest):
+    def __init__(self, req: NurseActRequest, room: Any = None):
         self.req = req
+        # The encounter in the agent room (agentroom.hub.Encounter), or None for the legacy single agent.
+        self.room = room
+        self.osce = bool(req.osce or (room is not None and room.osce))
+        self.stopped: list[str] = []
+        self.cancelled: list[str] = []
+        self.room_tests: list[str] = []
+        self.room_rx: list[dict[str, Any]] = []
+        self.pending: list[dict[str, Any]] = []
+        self._done: dict[str, dict[str, Any]] = {}
         self.tests = {t.id: t for t in req.catalog.tests}
         self.meds = {m.id: m for m in req.catalog.medications}
         self.results = {r.testId: r for r in req.patient.testResults}
@@ -194,12 +210,11 @@ class NurseState:
 
     # --- helpers
     def _allergy_text(self) -> str:
-        parts = [self.req.patient.allergies or ""]
-        for qa in self.req.patient.anamnesis:
-            blob = f"{qa.question} {qa.answer}"
-            if "allerg" in blob.lower():
-                parts.append(qa.answer)
-        return _norm(" ".join(parts))
+        """Only what states an allergy ("No allergy to penicillin" is none), with drug names in English."""
+        return drugterms.expand(self._allergy_note())
+
+    def _allergy_note(self) -> str:
+        return drugterms.allergy_note(self.req.patient.allergies, [(qa.question, qa.answer) for qa in self.req.patient.anamnesis])
 
     def _med_words(self, med_id: str) -> set[str]:
         m = self.meds.get(med_id)
@@ -213,17 +228,17 @@ class NurseState:
         soft: list[str] = []
         allergy = self._allergy_text()
         words = self._med_words(med_id)
-        if allergy and allergy not in ("none", "no", "nkda", "no known allergies"):
+        if allergy:
             for cls, members in ALLERGY_CLASSES.items():
                 if cls in allergy or any(m in allergy for m in members):
-                    if any(m in w or w in m for m in members for w in words):
+                    if any(m in w or (len(w) >= 4 and w in m) for m in members for w in words):
                         hard.append(f"documented allergy ({cls} class) conflicts with {self.meds[med_id].name if med_id in self.meds else med_id}")
                         break
             else:
-                if any(w and w in allergy for w in words):
+                if any(len(w) >= 4 and w in allergy for w in words):
                     hard.append(f"documented allergy mentions {med_id}")
         current = [_norm(p) for p in self.prescribed]
-        anam = _norm(" ".join(qa.answer for qa in self.req.patient.anamnesis if "medic" in qa.question.lower()))
+        anam = drugterms.expand(" ".join(qa.answer for qa in self.req.patient.anamnesis if "medic" in qa.question.lower()))
         for have, adding, msg in INTERACTIONS:
             if any(w in a for w in words for a in adding):
                 if any(h in c for h in have for c in current) or any(h in anam for h in have):
@@ -239,6 +254,7 @@ class NurseState:
     def find_in_catalog(self, query: str, kind: str = "test") -> dict[str, Any]:
         q = _norm(query)
         qtok = set(q.split())
+        aliases = [c for c in drugterms.canonical_terms(query) if c != q] if kind == "medication" else []
         pool: list[tuple[str, str, str]]
         if kind == "medication":
             pool = [(m.id, m.name, m.dosing or "") for m in self.meds.values()]
@@ -251,6 +267,10 @@ class NurseState:
             if q and (q in hay):
                 score += 3
             score += len(qtok & set(hay.split()))
+            if any(a in hay for a in aliases):  # brand, short stem or native script
+                score += 3
+            elif kind == "medication" and not score and drugterms.mentions_drug(query, id_, name):
+                score += 2
             if score:
                 scored.append((score, id_, name, extra))
         scored.sort(key=lambda x: -x[0])
@@ -265,19 +285,48 @@ class NurseState:
         if testId not in self.tests:
             return {"ok": False, "error": f"unknown testId '{testId}'; use find_in_catalog first"}
         t = self.tests[testId]
+        if self.room is not None:
+            return self._order_in_room(t)
         dup = testId in self.ordered
         if not dup:
             self.ordered.append(testId)
             self.new_tests.append(testId)
         r = self.results.get(testId)
-        return {
-            "ok": True,
-            "testId": testId,
-            "name": t.name,
-            "alreadyOrdered": dup,
-            "result": r.result if r and r.result else "Within normal limits",
-            "abnormal": bool(r.abnormal) if r else False,
-        }
+        out: dict[str, Any] = {"ok": True, "testId": testId, "name": t.name, "alreadyOrdered": dup}
+        if r and r.result:
+            out.update(result=r.result, abnormal=bool(r.abnormal))
+        else:
+            # Nothing was reported to us: a missing result is never a normal result.
+            out.update(result="", abnormal=False, resultPending=True,
+                       note="No result supplied. Say the test is ordered and the result will be on the chart; never call it normal.")
+        return out
+
+    def _department(self, t: CatalogTest) -> str:
+        return "radiology" if t.category == "imaging" else "lab"
+
+    def _order_in_room(self, t: CatalogTest) -> dict[str, Any]:
+        """Queue the test for its department; the request goes out after the tool loop."""
+        from agentroom.hub import hub
+
+        out: dict[str, Any] = {"ok": True, "testId": t.id, "name": t.name, "department": self._department(t)}
+        if t.id in self.room_tests:
+            return {**out, "alreadyOrdered": True, "resultPending": True}
+        back = self.room.results.get(t.id)
+        if back:
+            return {**out, "alreadyOrdered": True, "result": back["result"], "abnormal": back["abnormal"]}
+        ref = next((r for r in reversed(self.room.refs.values()) if t.id in r.test_ids and r.status != "cancelled"), None)
+        if ref is not None and t.id not in ref.resulted:
+            if ref.status in ("timeout", "failed"):
+                hub.retry(self.room, ref.ref)
+                self._note_pending(ref)
+                return {**out, "resent": True, "resultPending": True, "note": f"Asked {out['department']} again; the result is pending."}
+            return {**out, "alreadyOrdered": True, "resultPending": True, "note": "Already with the department; the result is pending."}
+        self.room_tests.append(t.id)
+        if t.id not in self.ordered:
+            self.ordered.append(t.id)
+        self.new_tests.append(t.id)
+        return {**out, "alreadyOrdered": False, "resultPending": True,
+                "note": f"Sent to {out['department']}; the result is pending. Do not state or guess any result."}
 
     def check_allergies_and_interactions(self, medicationId: str) -> dict[str, Any]:
         if medicationId not in self.meds:
@@ -289,12 +338,17 @@ class NurseState:
         if medicationId not in self.meds:
             return {"ok": False, "error": f"unknown medicationId '{medicationId}'; use find_in_catalog first"}
         hard, soft = self._warnings(medicationId)
-        if hard:
-            return {"ok": False, "refused": True, "reason": "; ".join(hard), "suggestion": "choose a non-conflicting alternative"}
+        if hard and self.room is None:
+            out: dict[str, Any] = {"ok": False, "refused": True, "reason": "; ".join(hard)}
+            if not self.osce:
+                out["suggestion"] = "choose a non-conflicting alternative"
+            return out
         if medicationId in self.prescribed:
             return {"ok": True, "alreadyPrescribed": True, "warnings": soft}
         m = self.meds[medicationId]
         substitute = not self._named_by_doctor(medicationId, m.name)
+        if substitute and self.osce:
+            return {"ok": False, "error": "exam: the doctor has not named this drug. Ask which drug and dose they want; suggest nothing."}
         if substitute:
             # Safety: a drug the doctor did NOT name (e.g. doxycycline offered
             # instead of a held amoxicillin) must never inherit the dose the
@@ -303,6 +357,8 @@ class NurseState:
             dose = m.dosing or "standard dose"
         dose = dose or (m.dosing or "standard dose")
         duration = duration or "as directed"
+        if self.room is not None:
+            return self._verify_in_room(m, dose, duration, hard, substitute)
         self.prescribed.append(medicationId)
         self.new_rx.append({"medicationId": medicationId, "dose": dose, "duration": duration})
         out = {"ok": True, "medicationId": medicationId, "name": m.name, "dose": dose, "duration": duration, "warnings": soft}
@@ -311,11 +367,151 @@ class NurseState:
             out["note"] = "Not the drug the doctor named; standard catalogue dose used. Tell the doctor and ask them to confirm."
         return out
 
+    def _verify_in_room(self, m: CatalogMed, dose: str, duration: str, hard: list[str], substitute: bool) -> dict[str, Any]:
+        """Queue the drug for the pharmacist. It is on nobody's prescription until they release it."""
+        from agentroom.hub import OPEN, hub
+
+        base: dict[str, Any] = {"medicationId": m.id, "name": m.name, "dose": dose, "duration": duration}
+        held = hub.rx_ref(self.room, m.id, ("held",))
+        if held is not None:
+            return {"ok": False, "held": True, **base, "reason": held.summary,
+                    "note": "Pharmacy is holding this drug; it is not on the prescription. "
+                            "Only faculty can release it: use request_override if the doctor wants that."}
+        if any(x["medicationId"] == m.id for x in self.room_rx) or hub.rx_ref(self.room, m.id, OPEN) is not None:
+            return {"ok": True, "alreadyPending": True, "pendingVerification": True, **base,
+                    "note": "Already with pharmacy for verification; not on the prescription yet."}
+        stuck = hub.rx_ref(self.room, m.id, ("timeout", "failed"))
+        if stuck is not None:
+            hub.retry(self.room, stuck.ref)
+            self._note_pending(stuck)
+            return {"ok": True, "resent": True, "pendingVerification": True, **base, "note": "Sent to pharmacy again for verification."}
+        self.room_rx.append({**base, "hard": hard})
+        out = {"ok": True, "pendingVerification": True, **base,
+               "note": "Sent to pharmacy for verification. It is NOT prescribed or given yet; say you are checking with pharmacy."}
+        if substitute:
+            out["substitute"] = True
+            out["note"] += " Not the drug the doctor named; standard catalogue dose used. Tell the doctor and ask them to confirm."
+        return out
+
+    def _note_pending(self, r: Any) -> None:
+        if any(x["ref"] == r.ref for x in self.pending):
+            return
+        item: dict[str, Any] = {"ref": r.ref, "action": r.action, "target": r.target, "label": r.label}
+        if r.medication_id:
+            item["medicationId"] = r.medication_id
+        if r.tests:
+            item["testIds"] = list(r.test_ids)
+        self.pending.append(item)
+
+    def flush_room(self) -> None:
+        """Send this run's orders: one message per department for tests, one per drug to pharmacy."""
+        if self.room is None:
+            return
+        rx, tests = self.room_rx, self.room_tests
+        self.room_rx, self.room_tests = [], []
+        try:
+            from agentroom.hub import hub
+
+            for x in rx:
+                self._note_pending(hub.delegate_rx(self.room, x["medicationId"], x["name"], x["dose"], x["duration"], x["hard"]))
+            if tests:
+                for r in hub.delegate_tests(self.room, [{"testId": t, "name": self.tests[t].name, "category": self.tests[t].category}
+                                                        for t in tests if t in self.tests]):
+                    self._note_pending(r)
+        except Exception as e:  # noqa: BLE001 - the room never breaks the nurse
+            log.warning("orders could not be delegated: %s", type(e).__name__)
+
+    def stop_medication(self, medicationId: str, reason: str = "") -> dict[str, Any]:
+        """Take a drug off the prescription (or call back one that pharmacy is checking or holding)."""
+        if medicationId not in self.meds:
+            return {"ok": False, "error": f"unknown medicationId '{medicationId}'; use find_in_catalog first"}
+        name = self.meds[medicationId].name
+        was = ""
+        if any(x["medicationId"] == medicationId for x in self.room_rx):
+            self.room_rx = [x for x in self.room_rx if x["medicationId"] != medicationId]
+            was = "cancelled"
+        if self.room is not None:
+            from agentroom.hub import hub
+
+            was = hub.stop_medication(self.room, medicationId, _clip(reason, 120)) or was
+        on_chart = medicationId in self.req.alreadyPrescribed or any(
+            str(r.get("medicationId")) == medicationId for r in self.req.prescriptionsSoFar if isinstance(r, dict))
+        if medicationId in self.prescribed:
+            self.prescribed.remove(medicationId)
+            was = was or "stopped"
+        self.new_rx = [r for r in self.new_rx if r["medicationId"] != medicationId]
+        if (on_chart or was == "stopped") and medicationId not in self.stopped:
+            self.stopped.append(medicationId)
+            was = "stopped"
+        if not was:
+            return {"ok": False, "error": f"{name} is not on this patient's prescription, so there is nothing to stop"}
+        return {"ok": True, "medicationId": medicationId, "name": name, "was": was}
+
+    def cancel_test(self, testId: str) -> dict[str, Any]:
+        """Cancel a test that has no result yet."""
+        if testId not in self.tests:
+            return {"ok": False, "error": f"unknown testId '{testId}'; use find_in_catalog first"}
+        name = self.tests[testId].name
+        if testId not in self.ordered:
+            return {"ok": False, "error": f"{name} was not ordered, so there is nothing to cancel"}
+        r = self.results.get(testId)
+        if (r and r.result) or (self.room is not None and testId in self.room.results):
+            return {"ok": False, "error": f"{name} already has a result; it stays on the chart"}
+        if testId in self.room_tests:
+            self.room_tests.remove(testId)
+        elif self.room is not None:
+            from agentroom.hub import hub
+
+            hub.cancel_test(self.room, testId)
+        self.ordered.remove(testId)
+        if testId in self.new_tests:
+            self.new_tests.remove(testId)
+        if testId not in self.cancelled:
+            self.cancelled.append(testId)
+        return {"ok": True, "testId": testId, "name": name}
+
+    # --- agent room tools (only offered in room mode)
+    async def ask_department(self, department: str = "", question: str = "") -> dict[str, Any]:
+        from agentroom.hub import hub
+
+        role = {"pharmacy": "pharmacist", "pharmacist": "pharmacist", "lab": "lab", "laboratory": "lab",
+                "radiology": "radiology", "radiologist": "radiology"}.get(str(department).strip().lower(), "")
+        r = hub.ask(self.room, role, question) if role and str(question).strip() else None
+        if r is None:
+            return {"ok": False, "error": "department must be pharmacist, lab or radiology, with a question"}
+        self._note_pending(r)
+        return {"ok": True, "department": role, "note": "Question sent; they will answer out loud. Do not answer it yourself."}
+
+    async def invite_faculty(self, reason: str = "") -> dict[str, Any]:
+        from agentroom.hub import hub
+
+        out = await asyncio.wait_for(hub.invite_faculty(self.room, reason), timeout=9.0)
+        return {"ok": True, "name": out["name"], "url": out["url"], "note": "Faculty has been asked to join. Do not speak for them."}
+
+    async def request_override(self, medicationId: str = "", reason: str = "") -> dict[str, Any]:
+        from agentroom.hub import hub
+
+        r = hub.rx_ref(self.room, medicationId, ("held",))
+        if r is None:
+            held = [x for x in self.room.refs.values() if x.action == "verify_rx" and x.status == "held"]
+            r = held[0] if len(held) == 1 and not medicationId else None
+        if r is None:
+            return {"ok": False, "error": "that drug is not on hold"}
+        out = await asyncio.wait_for(hub.request_override(self.room, r.ref, reason), timeout=9.0)
+        if out.get("ok"):
+            out.update(medicationId=r.medication_id, name=r.medication, note="Faculty has been asked; the drug stays on hold until they decide.")
+        return out
+
+    async def message_faculty(self, text: str = "") -> dict[str, Any]:
+        from agentroom.hub import hub
+
+        if not await asyncio.wait_for(hub.faculty_say(self.room, text), timeout=9.0):
+            return {"ok": False, "error": "nothing to say"}
+        return {"ok": True, "note": "Passed on to faculty; their reply will be spoken when it comes."}
+
     def _named_by_doctor(self, medication_id: str, name: str) -> bool:
-        """True if the doctor's words mention this drug (by its base name)."""
-        said = re.sub(r"[^a-z0-9 ]+", " ", (self.req.utterance or "").lower())
-        stems = {re.split(r"[\s\-_0-9]", medication_id.lower())[0], re.split(r"[\s\-_0-9(]", name.lower())[0]}
-        return any(len(s) >= 4 and s in said for s in stems)
+        """True if the doctor's words mention this drug: name, stem, Indian brand or native script."""
+        return drugterms.mentions_drug(self.req.utterance or "", medication_id, name)
 
     def schedule_follow_up(self, inDays: Any, reason: str = "", recurrence: Any = None, mode: Any = None,
                            startsInMinutes: Any = None) -> dict[str, Any]:
@@ -342,6 +538,29 @@ class NurseState:
 
     # --- real-world tools (network; never raise)
     async def aexecute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
+        # Real-world side effects happen once per run, however often the model repeats the call.
+        key = ""
+        if tool in ("send_to_patient", "log_case", "refer_patient", "schedule_follow_up", "ask_department",
+                    "invite_faculty", "request_override", "message_faculty"):
+            key = f"{tool}:{json.dumps(args, sort_keys=True, default=str)}"
+            if key in self._done:
+                return {**self._done[key], "alreadyDone": True}
+        res = await self._aexecute(tool, args)
+        if key and res.get("ok"):
+            self._done[key] = dict(res)
+        return res
+
+    async def _aexecute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
+        if tool in ROOM_TOOLS:
+            if self.room is None:
+                return {"ok": False, "error": f"unknown tool '{tool}'"}
+            try:
+                return await getattr(self, tool)(**args)
+            except TypeError as e:
+                return {"ok": False, "error": f"bad arguments: {e}"}
+            except Exception as e:  # noqa: BLE001 - BAND being down never fails the run
+                log.warning("%s failed: %s", tool, type(e).__name__)
+                return {"ok": False, "error": "the agent room is not reachable right now"}
         if tool in ("send_to_patient", "log_case", "refer_patient"):
             try:
                 return await getattr(self, tool)(**args)
@@ -352,7 +571,7 @@ class NurseState:
                 return {"ok": False, "error": f"sending failed ({type(e).__name__})"}
         res = self.execute(tool, args)
         try:
-            if tool == "check_allergies_and_interactions" and res.get("ok"):
+            if tool == "check_allergies_and_interactions" and res.get("ok") and self.room is None:
                 await self._real_drug_check(str(args.get("medicationId", "")), res)
             elif tool == "schedule_follow_up" and res.get("ok"):
                 await self._calendar(res)
@@ -366,8 +585,7 @@ class NurseState:
         m = self.meds.get(med_id)
         if not m:
             return
-        allergies = " ".join([self.req.patient.allergies or ""] + [
-            qa.answer for qa in self.req.patient.anamnesis if "allerg" in f"{qa.question} {qa.answer}".lower()])
+        allergies = self._allergy_text()  # negations dropped, names in English
         current = [self.meds[p].name for p in self.prescribed if p in self.meds] + [
             qa.answer for qa in self.req.patient.anamnesis if "medic" in qa.question.lower()]
         try:
@@ -378,7 +596,7 @@ class NurseState:
         if not ext or not ext.get("ok"):
             res["realCheck"] = {"ok": False, "note": "public drug databases unreachable; checked the clinic catalogue only"}
             return
-        conflict = None if drugsafety.is_negated_allergy(allergies) else ext.get("allergyConflict")
+        conflict = None if not allergies or drugsafety.is_negated_allergy(allergies) else ext.get("allergyConflict")
         if conflict:
             msg = f"NIH RxClass: {conflict}"
             self.ext_hard.setdefault(med_id, []).append(msg)
@@ -539,9 +757,14 @@ class NurseState:
         meds: list[dict[str, str]] = []
         for rx in list(self.req.prescriptionsSoFar) + self.new_rx:
             mid = str(rx.get("medicationId", ""))
+            if mid in self.stopped or self._with_pharmacy(mid):
+                continue  # stopped, held or still being verified: never sent to a patient
             name = self.meds[mid].name if mid in self.meds else str(rx.get("name") or mid)
             if name and all(x["name"] != name for x in meds):
                 meds.append({"name": name, "dose": str(rx.get("dose", "")), "duration": str(rx.get("duration", ""))})
+        if not meds and self.room is not None and (self.room_rx or any(
+                r.action == "verify_rx" and r.status in ("sent", "working", "waiting", "held") for r in self.room.refs.values())):
+            return {"ok": False, "error": "pharmacy has not released the prescription yet, so nothing was sent; ask again after they do"}
         if not meds:
             return {"ok": False, "error": "nothing prescribed yet, so there is nothing to send"}
         # This run's follow-up was built server-side; one from the chart is rebuilt
@@ -618,6 +841,13 @@ class NurseState:
             out["followUp"] = fu.get("startText")
         return out
 
+    def _with_pharmacy(self, med_id: str) -> bool:
+        """In room mode: verified or held by pharmacy, so not on the prescription."""
+        if self.room is None or not med_id:
+            return False
+        mine = [r for r in self.room.refs.values() if r.action == "verify_rx" and r.medication_id == med_id]
+        return any(r.status in ("sent", "working", "waiting", "held") for r in mine) and not any(r.active for r in mine)
+
     def execute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
         fn = {
             "find_in_catalog": self.find_in_catalog,
@@ -625,6 +855,8 @@ class NurseState:
             "check_allergies_and_interactions": self.check_allergies_and_interactions,
             "prescribe": self.prescribe,
             "schedule_follow_up": self.schedule_follow_up,
+            "stop_medication": self.stop_medication,
+            "cancel_test": self.cancel_test,
         }.get(tool)
         if not fn:
             return {"ok": False, "error": f"unknown tool '{tool}'"}
@@ -638,13 +870,37 @@ def summarize(tool: str, args: dict[str, Any], res: dict[str, Any]) -> str:
     if not res.get("ok"):
         if res.get("refused"):
             return f"Refused {args.get('medicationId')}: {res.get('reason')}"
+        if res.get("held"):
+            return f"{res.get('name')} is on hold by pharmacy: {res.get('reason')}"
         return f"{tool} failed: {res.get('error', 'unknown error')}"
     if tool == "find_in_catalog":
         return "Found: " + (", ".join(m["id"] for m in res["matches"]) or "nothing")
     if tool == "order_test":
+        if res.get("department"):
+            if res.get("result"):
+                return f"{res['name']} is already back: {res['result']}" + (" (abnormal)" if res.get("abnormal") else "")
+            return f"{res['name']} " + ("is already with" if res.get("alreadyOrdered") else "sent to") + f" {res['department']}: result pending"
+        if res.get("resultPending"):
+            return f"Ordered {res['name']}: result pending, see chart"
         return f"Ordered {res['name']}: {res['result']}" + (" (abnormal)" if res["abnormal"] else "")
     if tool == "check_allergies_and_interactions":
         return "Safe" if res["safe"] and not res["warnings"] else "; ".join(res["hardConflicts"] + res["warnings"]) or "Safe"
+    if tool == "prescribe" and res.get("pendingVerification"):
+        if res.get("alreadyPending"):
+            return f"{res.get('name')} is already with pharmacy for verification"
+        return f"Sent {res.get('name')} {res.get('dose', '')} x {res.get('duration', '')} to pharmacy for verification"
+    if tool == "stop_medication":
+        return f"Stopped {res['name']}" if res.get("was") == "stopped" else f"Cancelled the {res['name']} order"
+    if tool == "cancel_test":
+        return f"Cancelled {res['name']}"
+    if tool == "ask_department":
+        return f"Asked {res.get('department')}"
+    if tool == "invite_faculty":
+        return f"Invited {res.get('name')} (faculty)"
+    if tool == "request_override":
+        return f"Asked faculty to review the hold on {res.get('name')}"
+    if tool == "message_faculty":
+        return "Passed the doctor's words to faculty"
     if tool == "prescribe":
         return f"Prescribed {res.get('name', args.get('medicationId'))} {res.get('dose', '')} x {res.get('duration', '')}".strip()
     if tool == "schedule_follow_up":
@@ -728,6 +984,16 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "parameters": {"type": "object", "properties": {
             "channel": {"type": "string", "enum": ["auto", "telegram", "whatsapp", "sms", "email"]}}, "required": ["channel"]}}},
     {"type": "function", "function": {
+        "name": "stop_medication",
+        "description": "Stop or remove a medication that was prescribed (or cancel one still being checked). "
+                       "Only when the doctor says stop, remove, cancel or don't give it.",
+        "parameters": {"type": "object", "properties": {
+            "medicationId": {"type": "string"}, "reason": {"type": "string"}}, "required": ["medicationId"]}}},
+    {"type": "function", "function": {
+        "name": "cancel_test",
+        "description": "Cancel a test that was ordered and has no result yet. Only when the doctor says cancel it or don't do it.",
+        "parameters": {"type": "object", "properties": {"testId": {"type": "string"}}, "required": ["testId"]}}},
+    {"type": "function", "function": {
         "name": "log_case",
         "description": "Log this case in the doctor's NMC CBME clinical logbook (a Google Sheet): specialty, diagnosis, skills, tests, "
                        "prescriptions. Only when the doctor asks to log, record or add this case to their logbook.",
@@ -745,6 +1011,51 @@ TOOL_SPECS: list[dict[str, Any]] = [
             "workingDiagnosis": {"type": "string", "description": "Only if the doctor stated one"}},
             "required": ["specialty", "urgency", "reason"]}}},
 ]
+
+# Extra tools when the encounter has a BAND agent room.
+ROOM_TOOLS = ("ask_department", "invite_faculty", "request_override", "message_faculty")
+ROOM_TOOL_SPECS: list[dict[str, Any]] = [
+    {"type": "function", "function": {
+        "name": "ask_department",
+        "description": "Put the doctor's question to a department (not an order). They answer out loud themselves.",
+        "parameters": {"type": "object", "properties": {
+            "department": {"type": "string", "enum": ["pharmacist", "lab", "radiology"]},
+            "question": {"type": "string", "description": "The doctor's question, in English"}},
+            "required": ["department", "question"]}}},
+    {"type": "function", "function": {
+        "name": "invite_faculty",
+        "description": "Bring the human faculty member (senior, consultant, professor) into the room. "
+                       "Only when the doctor asks for senior help or supervision.",
+        "parameters": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}}},
+    {"type": "function", "function": {
+        "name": "request_override",
+        "description": "Ask the human faculty member to release a drug that pharmacy is holding. Only when the doctor wants the held drug anyway.",
+        "parameters": {"type": "object", "properties": {
+            "medicationId": {"type": "string"}, "reason": {"type": "string", "description": "The doctor's reason"}},
+            "required": ["medicationId", "reason"]}}},
+    {"type": "function", "function": {
+        "name": "message_faculty",
+        "description": "Pass the doctor's words to the faculty member (a reply to their question, or a message for them).",
+        "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
+]
+
+ROOM_PROMPT = (
+    "\nTEAM MODE (overrides anything above): you do not run tests or dispense drugs yourself, you delegate. "
+    "order_test sends the test to the laboratory or radiology and the result comes later; prescribe sends the drug to the "
+    "clinical pharmacist, who releases or holds it. The pharmacist does the allergy, interaction and dose checks, so "
+    "check_allergies_and_interactions is not available: call prescribe directly.\n"
+    "- Never state, guess or imply a test result, and never say a drug is prescribed, started, given, added or 'on' before "
+    "pharmacy has released it. Say things like 'CBC is sent to the lab' and 'I'm checking amoxicillin with pharmacy'.\n"
+    "- Questions meant for a department ('ask pharmacy if...', 'what does radiology think') go to ask_department; never answer them yourself.\n"
+    "- If the doctor asks for a senior, consultant, faculty or professor, call invite_faculty. If they want a held drug anyway, call "
+    "request_override with their reason. Only a human can release a hold. Words for the faculty member go through message_faculty.\n"
+    "- stop_medication and cancel_test work for pending orders too. To ask a silent department again, call order_test or prescribe again.\n"
+    "- Example: 'Okay doctor, CBC is off to the lab, and I'm checking co-amoxiclav with pharmacy... I'll tell you what they say.'"
+)
+OSCE_PROMPT = (
+    "\nEXAM: this is an assessed examination. Carry out exactly what the doctor orders. Never suggest, substitute or recommend a drug, "
+    "test or diagnosis, never hint or teach, and never explain why something may be wrong. If the order is vague, ask which one they want."
+)
 
 SYSTEM_PROMPT = (
     "You are the charge nurse of a clinic, executing the doctor's spoken orders for one patient. "
@@ -772,11 +1083,13 @@ SYSTEM_PROMPT = (
     "otherwise mode visit. Follow-ups are added to the doctor's Google Calendar automatically. "
     "If the doctor asks to send, share, WhatsApp, SMS or email the prescription or follow-up "
     "to the patient, call send_to_patient (after any prescribe or schedule_follow_up in the same request). "
+    "If the doctor says to stop, remove or cancel a drug or a test, resolve its id and call stop_medication or cancel_test. "
     "If the doctor asks to log or record the case in their logbook, call log_case (after any orders in the same request). "
     "If the doctor asks to refer the patient to a specialist, call refer_patient with the specialty, urgency (routine unless they say urgent or emergency) "
     "and a short reason; the letter and voice handover are created for you. If a tool fails or a drug is refused for allergy, adapt: say so and (only if the doctor "
     "named a class or indication) pick a safe alternative from the catalog; otherwise just hold it.\n"
-    "- Never invent results, ids, or doses beyond tool outputs and the catalog.\n"
+    "- Never invent results, ids, or doses beyond tool outputs and the catalog. A result marked pending is not a normal result: "
+    "say it is ordered and will be on the chart.\n"
     "- Dose: pass the doctor's spoken dose and frequency to prescribe exactly as said (e.g. '75 mg once daily'). "
     "If the only catalog product has a different strength than the doctor asked for, still prescribe it but keep the "
     "doctor's dose in the dose field, and say the difference out loud in your final sentence "
@@ -795,7 +1108,19 @@ SYSTEM_PROMPT = (
 
 def _patient_brief(req: NurseActRequest, st: NurseState) -> str:
     p = req.patient
+    extra: dict[str, Any] = {}
+    if st.room is not None:
+        rx = [r for r in st.room.refs.values() if r.action == "verify_rx"]
+        extra = {
+            "pendingWithPharmacy": [r.medication_id for r in rx if r.status in ("sent", "working", "waiting", "timeout", "failed")],
+            "heldByPharmacy": [{"medicationId": r.medication_id, "reason": "" if st.osce else r.summary,
+                                "overrideRequested": r.override_requested} for r in rx if r.status == "held"],
+            "pendingTests": [t for r in st.room.refs.values() if r.tests and r.status in ("sent", "working", "waiting", "timeout", "failed")
+                             for t in r.test_ids if t not in r.resulted],
+            "facultyInRoom": bool(st.room.humans()), "facultyAwaitsReply": st.room.awaiting_faculty,
+        }
     return json.dumps({
+        **extra,
         "patient": {"name": p.name, "age": p.age, "gender": p.gender, "chiefComplaint": p.chiefComplaint,
                     "allergies": p.allergies or "not recorded", "vitals": p.vitals,
                     "anamnesis": [qa.model_dump() for qa in p.anamnesis][:20]},
@@ -816,12 +1141,19 @@ def _parse_json(text: str) -> Optional[dict[str, Any]]:
         return None
 
 
+def _tool_specs(st: NurseState) -> list[dict[str, Any]]:
+    if st.room is None:
+        return TOOL_SPECS
+    # The pharmacist does the checking in room mode.
+    return [t for t in TOOL_SPECS if t["function"]["name"] != "check_allergies_and_interactions"] + ROOM_TOOL_SPECS
+
+
 async def _run_native(st: NurseState, messages: list[dict[str, Any]], steps: list[dict[str, Any]]) -> tuple[str, str]:
     """Native function calling. Returns (plan, final_text)."""
     plan = ""
     provider: Optional[str] = None
     for _ in range(MAX_ITERATIONS):
-        msg, provider = await chat(messages, tools=TOOL_SPECS, max_tokens=500, temperature=0.1, stick_to=provider)
+        msg, provider = await chat(messages, tools=_tool_specs(st), max_tokens=500, temperature=0.1, stick_to=provider)
         content = strip_think(msg.get("content") or "")
         calls = msg.get("tool_calls") or []
         if not calls:
@@ -848,12 +1180,15 @@ async def _run_native(st: NurseState, messages: list[dict[str, Any]], steps: lis
 
 async def _run_json_plan(st: NurseState, req: NurseActRequest, steps: list[dict[str, Any]]) -> tuple[str, str]:
     """Fallback when native tool calling is unavailable: ask for a JSON plan."""
-    names = {s["function"]["name"]: list(s["function"]["parameters"]["properties"]) for s in TOOL_SPECS}
+    names = {s["function"]["name"]: list(s["function"]["parameters"]["properties"]) for s in _tool_specs(st)}
     sys_msg = (
         "You are a clinic charge nurse. Reply with JSON only: "
-        '{"intent":"order"|"none","plan":"one sentence","calls":[{"tool":"...","args":{...}}]}. '
+        '{"intent":"order"|"none"|"clarify","plan":"one sentence","question":"only for clarify: one short question to the doctor",'
+        '"calls":[{"tool":"...","args":{...}}]}. '
         f"Tools and arg names: {json.dumps(names)}. Resolve ids from the catalog list given; "
         "check_allergies_and_interactions must precede prescribe. intent none => calls [].\n"
+        + (ROOM_PROMPT + "\n" if st.room is not None else "") + (OSCE_PROMPT + "\n" if st.osce else "") +
+        ""
         f"Catalog tests: {json.dumps([t.model_dump() for t in st.tests.values()])}\n"
         f"Catalog medications: {json.dumps([m.model_dump() for m in st.meds.values()])}\n"
         f"Patient: {_patient_brief(req, st)}"
@@ -865,6 +1200,8 @@ async def _run_json_plan(st: NurseState, req: NurseActRequest, steps: list[dict[
     plan_obj = _parse_json(msg.get("content") or "") or {}
     calls = plan_obj.get("calls")
     calls = [c for c in calls if isinstance(c, dict)] if isinstance(calls, list) else []
+    if plan_obj.get("intent") == "clarify" and not calls and str(plan_obj.get("question") or "").strip():
+        return "", str(plan_obj["question"]).strip()
     if plan_obj.get("intent") == "none" or not calls:
         return "", "NO_ORDER"
     for c in calls[:8]:
@@ -873,7 +1210,7 @@ async def _run_json_plan(st: NurseState, req: NurseActRequest, steps: list[dict[
         res = await st.aexecute(name, args)
         steps.append({"tool": name, "args": args, "ok": bool(res.get("ok")), "summary": summarize(name, args, res), "result": res})
     msg2, _ = await chat(
-        [{"role": "system", "content": langmod.with_language("Write a short spoken confirmation (max 30 words, no markdown, no 'Done -' prefix) as a warm Indian charge nurse talking to the doctor: contractions, numbers as words, commas and '...' for pauses, e.g. 'Okay doctor, I've sent the troponin and ECG... anything else?'. Mention anything refused or abnormal. Use only the facts given.", req.lang, female=True, role="nurse")},
+        [{"role": "system", "content": langmod.with_language("Write a short spoken confirmation (max 30 words, no markdown, no 'Done -' prefix) as a warm Indian charge nurse talking to the doctor: contractions, numbers as words, commas and '...' for pauses, e.g. 'Okay doctor, I've sent the troponin and ECG... anything else?'. Mention anything refused or abnormal. Use only the facts given. A pending result is not normal, and a drug sent to pharmacy is not prescribed yet: say you are checking with pharmacy.", req.lang, female=True, role="nurse")},
          {"role": "user", "content": json.dumps([{"tool": s["tool"], "summary": s["summary"]} for s in steps])}],
         max_tokens=120, stick_to=prov,
     )
@@ -888,8 +1225,53 @@ NURSE_FALLBACK = {
 }
 
 
+def _room_confirmation(st: NurseState, lang: Optional[str]) -> str:
+    """Safe spoken line for delegated orders, in the session language ('' when nothing was delegated)."""
+    if st.room is None or not st.pending:
+        return ""
+    from agentroom import bedside
+
+    lg = langmod.norm_lang(lang)
+    out = []
+    for role in ("lab", "radiology"):
+        items = [x["label"] for x in st.pending if x["target"] == role and x.get("testIds")]
+        if items:
+            out.append(bedside.line("sent_tests", lg, items=", ".join(items), dept=bedside.department(role, lg)))
+    rx = [x["label"] for x in st.pending if x.get("medicationId")]
+    if rx:
+        out.append(bedside.line("sent_rx", lg, items=", ".join(rx)))
+    return " ".join(out)
+
+
+_SAYS_PHARMACY = re.compile("pharmac|verif|check|फार्म|चेक|ಫಾರ್ಮ|ಚೆಕ್|ஃபார்ம|பார்ம|சரிபார்|ఫార్మ|చెక్|ফার্ম|যাচাই", re.IGNORECASE)
+_CLAIMS_DRUG = re.compile(
+    r"\b(?:have|has|i've|is|are|it's|been)\s+(?:\w+\s+)?(?:prescribed|started|given|added|on board)\b|\b(?:i|we) (?:prescribed|started|gave|added)\b"
+    r"|\bis on\b(?! hold)", re.IGNORECASE)
+_CLAIMS_RESULT = re.compile(
+    r"\b(?:is|are|was|were|came back|looks?|shows?|showing)\s+(?:all\s+|quite\s+|within\s+)?(?:normal|fine|negative|positive|raised|elevated|high|low|abnormal|clear)\b",
+    re.IGNORECASE)
+
+
+def _safe_room_line(st: NurseState, text: str, lang: Optional[str]) -> str:
+    """Asha may not announce a verdict or a result the departments have not given yet."""
+    if st.room is None or not st.pending:
+        return text
+    rx = any(x.get("medicationId") for x in st.pending)
+    tests = any(x.get("testIds") for x in st.pending)
+    bad = (rx and (not _SAYS_PHARMACY.search(text) or _CLAIMS_DRUG.search(text))) or (tests and _CLAIMS_RESULT.search(text))
+    return _room_confirmation(st, lang) if bad else text
+
+
 def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]], lang: Optional[str] = None) -> str:
     bits = []
+    room_line = _room_confirmation(st, lang) if getattr(st, "room", None) is not None else ""
+    if room_line:
+        return room_line
+    if getattr(st, "room", None) is not None:
+        done = [s["summary"] for s in steps if s["ok"] and s["tool"] not in ("find_in_catalog", "record_to_ehr")]
+        if done and langmod.norm_lang(lang) == "en":
+            return "Okay doctor, " + "; ".join(done)[:240] + "."
+        bits += done
     if st.new_tests:
         bits.append(", ".join(st.tests[t].name for t in st.new_tests) + " ordered")
     if st.new_rx:
@@ -899,6 +1281,9 @@ def _fallback_confirmation(st: NurseState, steps: list[dict[str, Any]], lang: Op
         bits.append("held: " + "; ".join(refused))
     if st.follow_up:
         bits.append(f"follow-up in {st.follow_up['inDays']} days")
+    for s in steps:
+        if s["ok"] and s["tool"] in ("stop_medication", "cancel_test") and s["summary"] not in bits:
+            bits.append(s["summary"][:1].lower() + s["summary"][1:])
     lg = langmod.norm_lang(lang)
     if lg == "hi":
         return "ठीक है डॉक्टर, आपका ऑर्डर हो गया। और कुछ?" if bits else "डॉक्टर, मैं वह ऑर्डर पूरा नहीं कर पाई।"
@@ -953,14 +1338,80 @@ async def _record_to_ehr(req: NurseActRequest, st: NurseState, steps: list[dict[
                   "summary": summarize("record_to_ehr", {}, res), "result": res})
 
 
+# (encounter, utterance) -> (started, the run). Bounded by DEDUPE_S and MAX_RECENT.
+_recent: dict[tuple[str, str], tuple[float, "asyncio.Task[dict[str, Any]]"]] = {}
+MAX_RECENT = 200
+
+
 @router.post("/agent/nurse/act")
 async def nurse_act(req: NurseActRequest):
+    if not req.encounterId:
+        return await _act(req)
+    now = time.monotonic()
+    for k in [k for k, (t, _) in _recent.items() if now - t > DEDUPE_S][: MAX_RECENT]:
+        _recent.pop(k, None)
+    key = (req.encounterId[:120], re.sub(r"\s+", " ", req.utterance).strip().lower()[:400])
+    hit = _recent.get(key)
+    if hit is not None and hit[1].get_loop() is asyncio.get_running_loop():
+        return await asyncio.shield(hit[1])
+    task = asyncio.ensure_future(_act(req))
+    _recent[key] = (now, task)
+    return await asyncio.shield(task)
+
+
+def _room_for(req: NurseActRequest) -> Any:
+    """The encounter's agent room, or None for the legacy single agent. Never raises."""
+    if not req.encounterId:
+        return None
+    try:
+        from agentroom.hub import hub
+
+        room = hub.active(req.encounterId)
+        if room is None:
+            return None
+        room.osce = bool(room.osce or req.osce)
+        if req.lang:
+            room.lang = langmod.norm_lang(req.lang)
+        names = {m.id: m.name for m in req.catalog.medications}
+        current = {str(r.get("medicationId")): {"medicationId": str(r.get("medicationId")), "dose": str(r.get("dose") or ""),
+                                                "name": names.get(str(r.get("medicationId")), str(r.get("medicationId")))}
+                   for r in req.prescriptionsSoFar if isinstance(r, dict) and r.get("medicationId")}
+        for mid in req.alreadyPrescribed:
+            current.setdefault(mid, {"medicationId": mid, "name": names.get(mid, mid), "dose": ""})
+        hub.set_chart(room, list(current.values()), names)
+        hub.doctor_acted(room)
+        return room
+    except Exception as e:  # noqa: BLE001
+        log.warning("agent room unavailable: %s", type(e).__name__)
+        return None
+
+
+def _addressed(req: NurseActRequest) -> bool:
+    try:
+        import llm_proxy
+
+        return llm_proxy.addressed_to_nurse([{"role": "user", "content": req.utterance}])
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _applied(st: NurseState) -> dict[str, Any]:
+    out: dict[str, Any] = {"orderedTestIds": st.new_tests, "prescriptions": st.new_rx,
+                           "cancelledTestIds": st.cancelled, "stoppedMedicationIds": st.stopped}
+    if st.follow_up:
+        out["followUp"] = st.follow_up
+    return out
+
+
+async def _act(req: NurseActRequest) -> dict[str, Any]:
     run_id = "run_" + secrets.token_hex(6)
-    st = NurseState(req)
+    room = _room_for(req)
+    st = NurseState(req, room)
     steps: list[dict[str, Any]] = []
+    system = SYSTEM_PROMPT + (ROOM_PROMPT if room is not None else "") + (OSCE_PROMPT if st.osce else "")
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": langmod.with_language(
-            SYSTEM_PROMPT + "\nContext: " + _patient_brief(req, st), req.lang, female=True, role="nurse")},
+            system + "\nContext: " + _patient_brief(req, st), req.lang, female=True, role="nurse")},
         {"role": "user", "content": req.utterance},
     ]
     from fastapi import HTTPException
@@ -976,7 +1427,7 @@ async def nurse_act(req: NurseActRequest):
             plan, final = "", ""
         else:
             log.warning("native tool calling failed (%s); using JSON-plan fallback", str(e.detail)[:120])
-            st = NurseState(req)
+            st = NurseState(req, room)
             try:
                 plan, final = await _run_json_plan(st, req, steps)
             except HTTPException as e2:
@@ -988,23 +1439,25 @@ async def nurse_act(req: NurseActRequest):
                 log.warning("JSON-plan fallback failed too (%s)", type(e2).__name__)
                 plan, final = "", ""
             if not steps and not final:
-                return {"runId": run_id, "intent": "none", "plan": "", "steps": [],
-                        "applied": {"orderedTestIds": [], "prescriptions": []},
+                return {"runId": run_id, "intent": "none", "plan": "", "steps": [], "applied": _applied(st), "pending": [],
                         "spokenConfirmation": _fallback_confirmation(st, [], req.lang), "error": "nurse unavailable"}
+    finally:
+        st.flush_room()  # whatever the model already decided goes out, even if its closing line failed
 
     if not steps:
-        return {"runId": run_id, "intent": "none", "plan": "", "steps": [],
-                "applied": {"orderedTestIds": [], "prescriptions": []}, "spokenConfirmation": ""}
+        # No tool ran. A question back to the doctor must be heard, not dropped.
+        ask = re.sub(r"[*_`#]+", "", final or "").strip()
+        clarify = bool(ask) and "NO_ORDER" not in ask and ("?" in ask or _addressed(req))
+        return {"runId": run_id, "intent": "clarify" if clarify else "none", "plan": "", "steps": [], "applied": _applied(st),
+                "pending": [], "spokenConfirmation": ask[:400] if clarify else ""}
     _refresh_call_snapshots(st)
     await _record_to_ehr(req, st, steps)
     spoken = final if final and "NO_ORDER" not in final else _fallback_confirmation(st, steps, req.lang)
-    applied: dict[str, Any] = {"orderedTestIds": st.new_tests, "prescriptions": st.new_rx}
-    if st.follow_up:
-        applied["followUp"] = st.follow_up
+    spoken = _safe_room_line(st, spoken, req.lang)
     return {
         "runId": run_id, "intent": "order",
         "plan": plan or "; ".join(s["summary"] for s in steps[:3]),
-        "steps": steps, "applied": applied, "spokenConfirmation": spoken[:400],
+        "steps": steps, "applied": _applied(st), "pending": st.pending, "spokenConfirmation": spoken[:400],
     }
 
 

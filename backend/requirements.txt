@@ -5,3 +5,5 @@ pydantic==2.13.3
 anthropic>=0.88.0
 httpx==0.28.1
 slowapi==0.1.9
+# BAND agent room (Asha and the department agents). Import name: band
+band-sdk==9.3.0

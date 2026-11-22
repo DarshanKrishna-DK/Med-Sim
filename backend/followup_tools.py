@@ -73,20 +73,40 @@ FILLERS = {
     "escalate_red_flag": {
         "en": "One moment, I'm letting your doctor know.",
         "hi": "एक पल, मैं आपके डॉक्टर को बता रही हूँ।",
+        "kn": "ಒಂದು ಕ್ಷಣ, ನಿಮ್ಮ ಡಾಕ್ಟರ್‌ಗೆ ತಿಳಿಸ್ತಿದ್ದೀನಿ.",
+        "ta": "ஒரு நிமிஷம், உங்க டாக்டருக்கு சொல்றேன்.",
+        "te": "ఒక్క క్షణం, మీ డాక్టర్‌కి చెప్తున్నాను.",
+        "mr": "एक क्षण, मी तुमच्या डॉक्टरांना कळवते आहे.",
+        "bn": "এক মুহূর্ত, আমি আপনার ডাক্তারবাবুকে জানাচ্ছি।",
     },
     "reschedule_call": {
         "en": "One moment, I'm moving your call.",
         "hi": "एक पल, मैं आपकी कॉल का समय बदल रही हूँ।",
+        "kn": "ಒಂದು ಕ್ಷಣ, ನಿಮ್ಮ ಕಾಲ್ ಸಮಯ ಬದಲಾಯಿಸ್ತಿದ್ದೀನಿ.",
+        "ta": "ஒரு நிமிஷம், உங்க கால் நேரத்தை மாத்தறேன்.",
+        "te": "ఒక్క క్షణం, మీ కాల్ సమయం మారుస్తున్నాను.",
+        "mr": "एक क्षण, मी तुमच्या कॉलची वेळ बदलते आहे.",
+        "bn": "এক মুহূর্ত, আপনার কলের সময় বদলে দিচ্ছি।",
     },
 }
 
 FALLBACK = {
     "en": "Sorry, I could not finish that just now. I have noted it for your doctor.",
     "hi": "माफ़ कीजिए, अभी यह पूरा नहीं हो पाया। मैंने इसे आपके डॉक्टर के लिए नोट कर लिया है।",
+    "kn": "ಕ್ಷಮಿಸಿ, ಈಗ ಇದನ್ನ ಪೂರ್ತಿ ಮಾಡೋಕೆ ಆಗ್ಲಿಲ್ಲ. ನಿಮ್ಮ ಡಾಕ್ಟರ್‌ಗಾಗಿ ಬರೆದಿಟ್ಟಿದ್ದೀನಿ.",
+    "ta": "மன்னிக்கணும், இப்போ இதை முடிக்க முடியல. உங்க டாக்டருக்காக குறிச்சு வெச்சிருக்கேன்.",
+    "te": "క్షమించండి, ఇప్పుడు ఇది పూర్తి చేయలేకపోయాను. మీ డాక్టర్ కోసం రాసి పెట్టాను.",
+    "mr": "माफ करा, आत्ता हे पूर्ण झालं नाही. मी तुमच्या डॉक्टरांसाठी नोंद करून ठेवली आहे.",
+    "bn": "মাফ করবেন, এখন এটা শেষ করতে পারলাম না। আপনার ডাক্তারবাবুর জন্য লিখে রেখেছি।",
 }
 EMERGENCY_FALLBACK = {
     "en": "I have let your doctor know. Please go to the nearest emergency department now, or call 108 for an ambulance.",
     "hi": "मैंने आपके डॉक्टर को बता दिया है। कृपया अभी नज़दीकी इमरजेंसी में जाइए, या एम्बुलेंस के लिए 108 पर कॉल कीजिए।",
+    "kn": "ನಿಮ್ಮ ಡಾಕ್ಟರ್‌ಗೆ ತಿಳಿಸಿದ್ದೀನಿ. ದಯವಿಟ್ಟು ಈಗಲೇ ಹತ್ತಿರದ ಎಮರ್ಜೆನ್ಸಿಗೆ ಹೋಗಿ, ಅಥವಾ ಆಂಬುಲೆನ್ಸ್‌ಗಾಗಿ 108ಕ್ಕೆ ಕರೆ ಮಾಡಿ.",
+    "ta": "உங்க டாக்டருக்கு சொல்லிட்டேன். தயவுசெஞ்சு இப்பவே பக்கத்து எமர்ஜென்சிக்கு போங்க, இல்லன்னா ஆம்புலன்ஸுக்கு 108க்கு கூப்பிடுங்க.",
+    "te": "మీ డాక్టర్‌కి చెప్పాను. దయచేసి ఇప్పుడే దగ్గర్లోని ఎమర్జెన్సీకి వెళ్ళండి, లేదా అంబులెన్స్ కోసం 108కి కాల్ చేయండి.",
+    "mr": "मी तुमच्या डॉक्टरांना कळवलं आहे. कृपया आत्ताच जवळच्या इमर्जन्सीमध्ये जा, किंवा ॲम्ब्युलन्ससाठी 108 वर कॉल करा.",
+    "bn": "আপনার ডাক্তারবাবুকে জানিয়ে দিয়েছি। দয়া করে এখনই কাছের ইমার্জেন্সিতে যান, অথবা অ্যাম্বুলেন্সের জন্য 108 নম্বরে কল করুন।",
 }
 
 # Calls whose record is not in followup_call._history yet (race with /start).
@@ -168,6 +188,15 @@ async def escalate_red_flag(ctx: dict[str, Any], args: dict[str, Any]) -> dict[s
             rec["fhir"] = await fhir.record_flag(case, text)
 
         await asyncio.gather(alert(), flag(), return_exceptions=True)
+
+    # The agent room hears it too (its own BAND room, the human faculty in it). Fire and
+    # forget: it never delays the call and never blocks the alert below.
+    try:
+        from agentroom.hub import hub
+
+        hub.red_flag(symptom, severity, snap)
+    except Exception as e:  # noqa: BLE001
+        log.warning("red flag not posted to the room: %s", type(e).__name__)
 
     # Shielded: a slow channel never loses the alert, it only stops us waiting for it.
     task = asyncio.ensure_future(deliver())
@@ -317,7 +346,7 @@ async def run_turn(payload: dict[str, Any], meta: dict[str, Any], emit_filler=No
         names = [str((c.get("function") or {}).get("name") or "") for c in calls]
         if emit_filler and not filler_sent:
             tool = "escalate_red_flag" if "escalate_red_flag" in names else "reschedule_call" if "reschedule_call" in names else None
-            line = FILLERS.get(tool or "", {}).get(lang)
+            line = _pick(FILLERS[tool], lang) if tool in FILLERS else None
             if line:
                 await emit_filler(line)
                 filler_sent = True
