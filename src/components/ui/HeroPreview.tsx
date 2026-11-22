@@ -17,7 +17,7 @@ const EXAMPLE: NurseRun = {
   finishedAt: T0 + 6400,
   intent: 'order',
   steps: [
-    { tool: 'order_test', args: { testId: 'cbc' }, ok: true, summary: 'Ordered Complete Blood Count: within normal limits' },
+    { tool: 'order_test', args: { testId: 'cbc' }, ok: true, summary: 'CBC sent to the laboratory, result pending' },
     {
       tool: 'check_allergies_and_interactions',
       args: { medicationId: 'amoxicillin-500' },

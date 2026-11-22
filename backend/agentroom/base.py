@@ -119,8 +119,11 @@ def two_sentences(text: str, limit: int = 320) -> str:
     t = re.sub(r"\s+", " ", t).strip().strip('"')
     parts = re.split(r"(?<=[.!?।])\s+(?=\S)", t)
     out = " ".join(parts[:2]).strip()
+    if len(out) > limit and len(parts) > 1 and len(parts[0]) <= limit:
+        out = parts[0].strip()  # a whole sentence beats two with a torn end
     if len(out) > limit:
-        out = out[:limit].rsplit(" ", 1)[0].rstrip(",;") + "."
+        out = out[:limit].rsplit(" ", 1)[0]
+        out = re.sub(r"[\s,;:]+(?:and|or|with|the|a|an|of|to|for|in|on|by|as|but|that|which)?$", "", out).rstrip(",;: ") + "."
     return out
 
 

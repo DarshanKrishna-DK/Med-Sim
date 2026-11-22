@@ -7,7 +7,8 @@
 <p align="center"><sub>Winner of the <b>Build with Agora, Bengaluru 2026</b> hackathon, Track 3: AI Agents That Get Things Done.</sub></p>
 
 <p align="center">
-  <a href="https://medsim-0cla.onrender.com"><img alt="Live demo" src="https://img.shields.io/badge/live_demo-open-a8e27c?style=for-the-badge"></a>
+  <a href="https://medsim-band.onrender.com"><img alt="Live demo" src="https://img.shields.io/badge/live_demo-open-a8e27c?style=for-the-badge"></a>
+  <img alt="BAND" src="https://img.shields.io/badge/BAND-agent_rooms-a8e27c?style=for-the-badge">
   <img alt="Agora Conversational AI" src="https://img.shields.io/badge/Agora-Conversational_AI-0b1f4b?style=for-the-badge">
   <img alt="Murf Falcon" src="https://img.shields.io/badge/Murf-Falcon_TTS-a8e27c?style=for-the-badge">
   <img alt="Sarvam" src="https://img.shields.io/badge/Sarvam-STT_+_LLM-0b1f4b?style=for-the-badge">
@@ -16,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://medsim-0cla.onrender.com"><b>Live demo</b></a> &nbsp;·&nbsp;
+  <a href="https://medsim-band.onrender.com"><b>Live demo</b></a> &nbsp;·&nbsp;
   <a href="media/trailer.mp4"><b>Watch trailer</b></a> &nbsp;·&nbsp;
   <a href="#run-it"><b>Run it</b></a> &nbsp;·&nbsp;
   <a href="#how-it-works"><b>How it works</b></a>
@@ -35,6 +36,71 @@
 - **A grade at the end.** Every consult ends in a scored debrief, so students get safe, unlimited practice before real patients.
 
 <img src="media/readme/loop.svg" width="100%">
+
+<img src="media/readme/divider.svg" width="100%">
+
+## 🤝 BAND: a hospital team that talks to itself
+
+Nurse Asha does not know the lab result. She does not decide whether a drug is safe. She has to ask, in a [BAND](https://www.band.ai) room, and wait for the answer. Every department is its own BAND participant with its own key, running outside the nurse's process and holding only its own data.
+
+| BAND participant | Job | What it cannot see |
+|---|---|---|
+| **Nurse Asha** | Voice of the room. Opens it, adds only the departments a case needs, speaks their answers | Lab values and reports, until they are posted |
+| **Pharmacist Meera** | Release, hold or clarify for every prescription; asks the lab for renal function first when the dose depends on it | Imaging |
+| **Lab Officer Dev** | Runs tests, flags critical values, cross-matches blood for theatre | Allergies and prescriptions |
+| **Radiologist Vikram** | Vets imaging (pregnancy, contrast), reports, second reads, calls critical findings | Prescriptions |
+| **Examiner Kulkarni** | Drafts teamwork, OSCE, viva and consultation results | The patient's identity |
+| **Teacher Iyer** | Turns the examiner's weak areas into a lesson and a practice case | The student's name and the case |
+| **Receptionist Priya** | Takes questions only a person can answer to the faculty member | Clinical rooms |
+| **Theatre Sister Leela** | Blood, allergy checks and calls for help from theatre | The clinic |
+| **A human faculty member** | Joins the room from the BAND app. The only one who can release a hold or sign a result | |
+
+```mermaid
+sequenceDiagram
+  actor D as Doctor (voice)
+  participant A as Nurse Asha
+  participant P as Pharmacist Meera
+  participant L as Lab Officer Dev
+  actor F as Human faculty (BAND app)
+  D->>A: "CBC bhej do, and start amoxicillin"
+  A-->>D: "CBC is off to the lab, checking amoxicillin with pharmacy"
+  A->>L: @Lab run CBC
+  A->>P: @Pharmacist verify amoxicillin
+  opt dose depends on the kidneys
+    P->>L: @Lab renal function? (Asha is not in this message)
+    L->>P: eGFR
+  end
+  L->>A: result
+  A-->>D: speaks the result
+  P->>A: HOLD, penicillin allergy
+  A-->>D: "Amoxicillin is on hold"
+  D->>A: "Ask faculty"
+  A->>F: adds the human, with a brief
+  F->>A: "deny" (a bare "ok" is refused)
+  A-->>D: "Faculty said no"
+```
+
+**Where it is used**
+
+- **Consultation:** tests, imaging, prescriptions, questions to a department, override requests, red flags from the follow-up call.
+- **OSCE, viva and debrief:** results stay a draft until a human signs them in BAND. The examiner messages Teacher Iyer directly for a study plan.
+- **Operating theatre:** hanging blood waits for the lab's cross-match. Pharmacy answers the sign-in allergy question. "Call for help" reaches a person.
+- **Radiology reading room:** a second read, and a critical finding is called, read back and closed.
+- **Telegram-authored patients:** pharmacy and lab review the case; a human approves it before students see it.
+- **Reception:** Priya carries a question to faculty and brings the reply back.
+
+**Why it is not decoration.** Take the room away and there is no result, no release, no signature. The **Agent Room** panel shows it live: who was mentioned, who was left out, what was shared, delivery ticks, and "private to Pharmacy and Lab" threads that Asha never received.
+
+**Built to be safe.** Server-side allergy checks outrank any agent. Messages are accepted only from the participant that was asked. The model never decides a release or a signature, and silence never approves anything. With no BAND keys, MedSim falls back to a single nurse agent.
+
+| Piece | Where |
+|---|---|
+| Hand-off contract (human sentence + typed block) | `backend/agentroom/protocol.py` |
+| Rooms, roster, delegation, human gate, live stream | `backend/agentroom/hub.py`, `siderooms.py` |
+| Department agents (BAND SDK, own processes) | `pharmacist.py`, `lab.py`, `radiology.py`, `examiner.py`, `teacher.py` |
+| Agent Room panel | `src/components/encounter/AgentRoomPanel.tsx`, `src/room/` |
+| Who is the doctor talking to, in 7 mixed languages | `backend/intent.py` |
+| One speech queue, so voices never overlap | `src/voice/speechArbiter.ts` |
 
 <img src="media/readme/divider.svg" width="100%">
 
@@ -111,7 +177,7 @@ sequenceDiagram
     B-->>C: streamed reply
     C->>M: TTS
     M-->>D: patient voice over RTC
-  else starts with "Nurse" or "Asha"
+  else meant for the nurse or a department (backend/intent.py)
     B-->>C: empty turn, patient stays silent
     D->>B: /agent/nurse/act
     B->>B: tool calls (catalog, allergies, order, prescribe, follow-up)
@@ -142,8 +208,8 @@ sequenceDiagram
 1. **Prerequisites:** Node 22+, Python 3.12, and keys for Agora, Murf, Sarvam and Groq.
 2. **Clone:**
    ```bash
-   git clone https://github.com/DarshanKrishna-DK/MedSim.git
-   cd MedSim
+   git clone https://github.com/DarshanKrishna-DK/Med-Sim.git
+   cd Med-Sim
    ```
 3. **Add your keys:**
    ```bash
@@ -174,6 +240,7 @@ sequenceDiagram
 | Murf (required) | `MURF_API_KEY`, `MURF_REGION`, optional `MURF_VOICE_MALE`, `MURF_VOICE_FEMALE`, `MURF_NURSE_VOICE` |
 | LLMs (required) | `SARVAM_API_KEY`, `SARVAM_MODEL`, `GROQ_API_KEY`, `GROQ_MODEL`, `PATIENT_LLM_PROVIDER` |
 | Public URL | `PUBLIC_URL` or `PATIENT_LLM_TUNNEL=cloudflared`, `BACKEND_PORT`, `VOICE_ASR` |
+| BAND (agent rooms) | `BAND_ASHA_API_KEY`, `BAND_PHARMACIST_API_KEY`, `BAND_LAB_API_KEY`, `BAND_RADIOLOGY_API_KEY`, `BAND_EXAMINER_API_KEY`, `BAND_TEACHER_API_KEY`, `BAND_RECEPTION_API_KEY`, `BAND_THEATRE_API_KEY`, `BAND_WORKERS` (`spawn`, `compact`, `external` or `off`) |
 | Messaging (optional) | `TELEGRAM_BOT_TOKEN`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `TWILIO_SMS_FROM`, `TWILIO_VOICE_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `DOCTOR_ALERT_DEST` |
 | Avatar (optional) | `AVATAR_VENDOR`, `AVATAR_API_KEY`, `AVATAR_ID`, `AVATAR_QUALITY` |
 | Attending (optional) | `ANTHROPIC_API_KEY`, `MEDSIM_AGENT_ID`, `MEDSIM_ENV_ID` |
@@ -191,7 +258,7 @@ Agent tools and the noise-safe patient route need a public HTTPS URL. Locally, s
 | Echo, or the AI interrupts itself | Use headphones |
 | Voice agent will not start | Check `/health` and the backend logs (Agora minutes or keys) |
 | Patient silent after noise | Speak a full sentence; noise-only turns become "(inaudible)" |
-| Language toggle does nothing mid-call | End and restart the consultation |
+| Agent Room says not connected | Check the BAND keys; only one server may hold them at a time |
 | Tunnel route not ready | It turns on 15 to 90 s after start; see `llm.patient_route` in `/health` |
 
 Everything also works by typing if voice fails.

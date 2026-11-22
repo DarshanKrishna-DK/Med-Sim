@@ -72,7 +72,8 @@ export interface DebriefRequest {
       duration: string;
     }>;
     /** Ordered but not on the prescription at the end: still being checked, or
-     *  held by the pharmacist. Never grade these as prescribed. */
+     *  held by the pharmacist. Never grade these as prescribed, and never credit the
+     *  doctor with avoiding a drug the pharmacist had to stop. */
     not_prescribed?: Array<{
       medication_id: string;
       status: 'verifying' | 'held';

@@ -90,7 +90,7 @@ export function buildSimpleDebriefPayload(encounter: ActivePatient, transcript: 
       kind: 'treatment' as const,
       detail:
         r.status === 'held'
-          ? `NOT prescribed, held by the pharmacist: ${medName.get(r.medicationId) ?? r.medicationId}${r.reason ? ` (${r.reason})` : ''}`
+          ? `The doctor ORDERED ${medName.get(r.medicationId) ?? r.medicationId}; the pharmacist stopped it${r.reason ? ` (${r.reason})` : ''}. Never given. Stopping it was the pharmacist's catch: do not credit the doctor with avoiding it`
           : `NOT yet prescribed, pharmacist still checking: ${medName.get(r.medicationId) ?? r.medicationId}`,
     })),
     ...(encounter.submittedDiagnosisId
