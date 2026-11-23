@@ -1,12 +1,6 @@
 <p align="center"><img src="media/readme/header.svg" width="100%" alt="MedSim, The Voice-First Clinical Simulator"></p>
 
 <p align="center">
-  <img alt="1st Prize Winner, Build with Agora Bengaluru 2026" src="https://img.shields.io/badge/%F0%9F%A5%87_1st_Prize_Winner-Build_with_Agora_Bengaluru_2026-f5c518?style=for-the-badge&labelColor=0b1f4b">
-</p>
-
-<p align="center"><sub>Winner of the <b>Build with Agora, Bengaluru 2026</b> hackathon, Track 3: AI Agents That Get Things Done.</sub></p>
-
-<p align="center">
   <a href="https://medsim-band.onrender.com"><img alt="Live demo" src="https://img.shields.io/badge/live_demo-open-a8e27c?style=for-the-badge"></a>
   <img alt="BAND" src="https://img.shields.io/badge/BAND-agent_rooms-a8e27c?style=for-the-badge">
   <img alt="Agora Conversational AI" src="https://img.shields.io/badge/Agora-Conversational_AI-0b1f4b?style=for-the-badge">
