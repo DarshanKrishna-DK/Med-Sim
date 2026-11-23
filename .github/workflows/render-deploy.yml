@@ -1,0 +1,30 @@
+# Redeploy https://medsim-band.onrender.com on every push to main.
+# Render's own auto-deploy needs its GitHub app on this repo; this hook works without it.
+# One-time setup: Render dashboard -> medsim-band -> Settings -> Deploy Hook -> copy the URL,
+# then GitHub -> Med-Sim -> Settings -> Secrets and variables -> Actions -> New repository secret
+# named RENDER_DEPLOY_HOOK_URL with that URL as the value.
+name: Deploy to Render
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: render-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the Render deploy hook
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL is not set, so Render was not redeployed. See the comment at the top of this file."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 30 -X POST "$HOOK" -o /dev/null
+          echo "Render deploy started for ${GITHUB_SHA::7}."

@@ -239,3 +239,12 @@ test('agent room summary: round trip, alone and inside a snapshot, with hostile 
   assert.deepEqual([bad.room.url, bad.room.participants.length, bad.room.items[0].what.length, bad.room.items[0].tone], ['', 0, LIMITS.roomText, undefined]);
   assert.equal(parseMedsimMessage({ object: 'medsim.room', caseId: 'c' }), null);
 });
+
+test('faculty token: only a well-formed &fac= counts', async () => {
+  const { parseFacultyToken } = await import('../../src/observer/observeParam.ts');
+  const tok = 'aB3_-'.repeat(6) + 'xy';
+  assert.equal(parseFacultyToken(`?observe=abc&fac=${tok}`), tok);
+  assert.equal(parseFacultyToken('?observe=abc'), null);
+  assert.equal(parseFacultyToken('?fac=short'), null);
+  assert.equal(parseFacultyToken(`?fac=${tok}%3Cscript%3E`), null);
+});

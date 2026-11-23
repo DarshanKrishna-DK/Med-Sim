@@ -471,6 +471,7 @@ class ObsCallRequest(BaseModel):
     case: ObsCase = Field(default_factory=ObsCase)
     available: bool = False
     note: str = Field(default="", max_length=200)
+    encounterId: str = Field(default="", max_length=120)  # the Agent Room encounter: the contact may decide there
 
 
 # ------------------------------------------------------------------ invite link
@@ -500,9 +501,28 @@ def invite_message(ctx: dict[str, Any]) -> str:
     doc = st if re.match(r"^dr\.?\s", st, re.I) else f"Dr. {st}"
     spec = ctx["case"]["specialtyLabel"] or "clinic"
     return no_dashes(
-        f"{doc} invited you to observe a live MedSim consultation ({spec}). Join: {ctx['inviteUrl']} "
-        "Listen only, no app needed, nobody hears you. Training simulation, synthetic patient."
+        f"{doc} invited you {'as faculty to' if ctx.get('faculty') else 'to observe'} a live MedSim consultation ({spec}). "
+        f"Join: {ctx['inviteUrl']} "
+        + ("You can approve or deny a drug the pharmacy holds, and message the doctor. " if ctx.get("faculty") else "")
+        + "No app needed, nobody hears you. Training simulation, synthetic patient."
     )
+
+
+def faculty_link(encounter_id: str, name: str, invite_url: str) -> tuple[str, bool]:
+    """(link, decides): a link that also lets this contact decide in the Agent Room, when
+    the encounter has one. The token travels only in the message sent to the contact's phone."""
+    if not encounter_id:
+        return invite_url, False
+    try:
+        from agentroom.hub import hub
+    except Exception:  # noqa: BLE001
+        return invite_url, False
+    enc = hub.active(encounter_id) if hub.enabled else None
+    if enc is None or enc.side is not None:
+        return invite_url, False
+    token = secrets.token_urlsafe(24)
+    hub.add_guest(enc, name, token)
+    return f"{invite_url}&fac={token}", True
 
 
 async def deliver_link(ctx: dict[str, Any], phone: str) -> dict[str, Any]:
@@ -607,6 +627,7 @@ async def observer_call(req: ObsCallRequest) -> dict[str, Any]:
     if err:
         raise HTTPException(status_code=429, detail=err)
     record_attempt(phone)
+    invite_url, faculty = faculty_link(req.encounterId, _clean(req.contact.name, 60), invite_url)
     token = secrets.token_urlsafe(18)
     ctx: dict[str, Any] = {
         "token": token,
@@ -623,6 +644,7 @@ async def observer_call(req: ObsCallRequest) -> dict[str, Any]:
         "available": req.available,
         "note": _clean(req.note, 200),
         "inviteUrl": invite_url,
+        "faculty": faculty,
         "expiresAt": expires_ms,
         "delivery": {},
         "turns": 0,

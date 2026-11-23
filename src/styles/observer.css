@@ -783,3 +783,98 @@
     border-left: 0;
   }
 }
+
+/* ── "Other ways to join" + BAND self-join (inside the Invite faculty popover) ── */
+
+.obs-more {
+  display: grid;
+  gap: 8px;
+}
+.obs-more > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.obs-more[open] > summary {
+  margin-bottom: 8px;
+}
+.obs-more > * + * {
+  margin-top: 8px;
+}
+.obs-band {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+/* ── Faculty decisions (observer page, phone faculty) ── */
+
+.obs-desk {
+  display: grid;
+  gap: 10px;
+}
+.obs-holds {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.obs-hold {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: var(--background);
+  box-shadow: var(--bevel-sm);
+}
+.obs-hold.is-asked {
+  outline: 2px solid var(--amber-strong);
+  outline-offset: -2px;
+}
+.obs-hold-drug {
+  font-size: 15px;
+}
+.obs-hold-why,
+.obs-hold-ask {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.obs-hold-ask {
+  color: var(--amber-strong);
+}
+.obs-hold-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.obs-hold-actions .btn {
+  flex: 1;
+  min-height: 44px;
+}
+.obs-inbox {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.obs-inbox b {
+  margin-right: 4px;
+}
+.obs-inbox-doctor b {
+  color: var(--amber-strong);
+}
+.obs-desk-say {
+  display: flex;
+  gap: 8px;
+}
+.obs-desk-say .input {
+  flex: 1;
+  min-width: 0;
+}

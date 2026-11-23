@@ -2,10 +2,10 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type Re
 import { useAgentRoom, useOsceLive } from '../../game/store';
 import type { ActivePatient } from '../../game/types';
 import { encounterIdOf } from '../../room/chart';
+import { openFacultyInvite } from '../../observer/observerCall';
 import {
   answerQuestion,
   cancelDelegation,
-  inviteFaculty,
   openRoom,
   requestOverride,
   retryDelegation,
@@ -644,9 +644,8 @@ function RoomFoot({ room }: { room: RoomState }) {
   const name = facultyName(room);
   const asked = awaitingFaculty(room);
   const [text, setText] = useState('');
-  const [link, setLink] = useState('');
   const { busy, error, run } = useAction();
-  const invited = room.faculty.some((f) => f.action === 'invited') || !!link;
+  const invited = room.faculty.some((f) => f.action === 'invited');
 
   return (
     <footer className="aroom-foot">
@@ -674,19 +673,10 @@ function RoomFoot({ room }: { room: RoomState }) {
         </form>
       ) : (
         <p className="aroom-card-actions">
-          <button
-            type="button"
-            className="aroom-mini"
-            disabled={busy}
-            onClick={() => void run(async () => setLink((await inviteFaculty())?.url ?? ''))}
-          >
+          {/* One way in: Asha phones the tutor (or they join from the BAND app), see ObserverInvite. */}
+          <button type="button" className="aroom-mini" onClick={openFacultyInvite}>
             {invited ? 'Invite faculty again' : 'Invite faculty'}
           </button>
-          {link && (
-            <a className="aroom-fine" href={link} target="_blank" rel="noreferrer noopener">
-              Open their room link
-            </a>
-          )}
         </p>
       )}
       {error && <p className="aroom-fine" role="alert">{error}</p>}

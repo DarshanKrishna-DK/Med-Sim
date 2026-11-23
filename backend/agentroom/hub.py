@@ -54,6 +54,9 @@ KEEPALIVE_S = 15.0
 STREAM_MAX_S = 300.0
 STALE_SPEAK_S = 20.0
 STATUS_CACHE_S = 10.0
+MAX_GUESTS = 4           # faculty invited by phone, per encounter
+MAX_GUEST_ACTS = 60
+GUEST_TTL_S = 2 * 3600   # as long as the observer link
 
 OPEN = ("sent", "working", "waiting")
 LATE_OK = (*OPEN, "timeout", "failed")  # a late result is still accepted
@@ -182,6 +185,9 @@ class Encounter:
     faculty_asks: list[dict[str, Any]] = field(default_factory=list)  # {by, at, answeredAt}: questions from the human
     score_ref: str = ""
     score_final: bool = False
+    # Faculty invited by phone (Twilio): no BAND account, they act from MedSim's
+    # observer page with a token only their phone received. token -> guest.
+    guests: dict[str, dict[str, Any]] = field(default_factory=dict)
     owner: str = NURSE              # the API participant that opened the room
     side: Any = None                # siderooms.SideRoom: the room is not a bedside encounter
 
@@ -190,6 +196,10 @@ class Encounter:
 
     def humans(self) -> list[dict[str, Any]]:
         return [p for p in self.people.values() if p["human"]]
+
+    def phone_faculty(self) -> list[dict[str, Any]]:
+        """Phone guests who have opened their link."""
+        return [g for g in self.guests.values() if g["joined"]]
 
     def bump(self, what: str, n: int = 1) -> None:
         self.tally[what] = self.tally.get(what, 0) + n
@@ -204,6 +214,7 @@ class Hub:
         self._me: dict[str, Any] = {}
         self._ids: dict[str, dict[str, Any]] = {}  # other API participants
         self._status_cache: tuple[float, dict[str, bool]] = (0.0, {})
+        self.guest_index: "OrderedDict[str, str]" = OrderedDict()  # phone faculty token -> encounter id
         self.stopping = False
         self.started = False  # the server lifespan runs (red flags never post from a test process)
         # Set by start(): real-world side effects of a released drug (never in unit tests).
@@ -950,10 +961,16 @@ class Hub:
         body = self._redact(enc, _clip(text, 800))
         if not body:
             return False
+        phone = enc.phone_faculty()
         async with enc.send_lock:
             await self._ensure_room(enc)
-            person = enc.participant(FACULTY) or await self._add_faculty(enc)
-            await self._post(enc, person, f"The doctor says: {body}")
+            for g in phone:
+                self._to_guest(g, "doctor", body)
+            if phone:
+                await self._event(enc, f"The doctor to {', '.join(g['name'] for g in phone)} (faculty, by phone): {body}")
+            person = enc.participant(FACULTY) or (None if phone else await self._add_faculty(enc))
+            if person is not None:
+                await self._post(enc, person, f"The doctor says: {body}")
         enc.awaiting_faculty = False
         enc.bump("doctorToFaculty")
         open_ = [q for q in enc.faculty_asks if q["answeredAt"] is None]
@@ -971,6 +988,9 @@ class Hub:
         if r is None or r.action != "verify_rx" or r.status != "held":
             return {"ok": False, "error": "that drug is not on hold"}
         why = self._redact(enc, _clip(reason, 300))
+        phone = enc.phone_faculty()
+        if phone and enc.participant(FACULTY) is None:
+            return await self._override_by_phone(enc, r, why, phone)
         async with enc.send_lock:
             await self._ensure_room(enc)
             first = enc.participant(FACULTY) is None
@@ -998,6 +1018,134 @@ class Hub:
         enc.kick.set()
         return {"ok": True}
 
+    # ── faculty by phone (Twilio link, no BAND account) ──────────────────────
+    #
+    # The doctor phones a contact; the text message carries a link with a token
+    # that the doctor's browser never sees. Opening it shows MedSim's observer
+    # page with Approve, Deny and a message box. Asha posts every decision into
+    # the BAND room, so the room stays the record, and the same rules apply as
+    # for a human in BAND: explicit words or buttons only, never silence or "ok".
+
+    def add_guest(self, enc: Encounter, name: str, token: str) -> dict[str, Any]:
+        g = {"token": token, "name": _clip(name, 60).strip() or "Faculty", "joined": False, "inbox": [], "acts": 0,
+             "created": _now(), "n": 0}
+        enc.guests[token] = g
+        while len(enc.guests) > MAX_GUESTS:
+            self.guest_index.pop(enc.guests.pop(next(iter(enc.guests)))["token"], None)
+        self.guest_index[token] = enc.id
+        while len(self.guest_index) > MAX_ENCOUNTERS * MAX_GUESTS:
+            self.guest_index.popitem(last=False)
+        enc.faculty_invited = True
+        enc.bump("facultyInvited")
+        self.emit(enc, "faculty", faculty={"action": "invited", "name": g["name"], "text": "Invited by phone"})
+        self._log(enc, "doctor", f"Invited {g['name']} (faculty) by phone")
+        self.doctor_acted(enc)
+        self.spawn(self._room_note(enc, f"The doctor invited {g['name']} (faculty) by phone. They follow the consultation "
+                                        "from a MedSim link instead of BAND, and I post every decision they make here."), "guest")
+        return g
+
+    def guest(self, token: str) -> Optional[tuple[Encounter, dict[str, Any]]]:
+        enc = self.get(self.guest_index.get(token or ""))
+        g = enc.guests.get(token) if enc else None
+        if enc is None or g is None or _now() - g["created"] > GUEST_TTL_S:
+            return None
+        return enc, g
+
+    @staticmethod
+    def _to_guest(g: dict[str, Any], who: str, text: str) -> None:
+        g["inbox"].append({"id": g["n"], "from": who, "text": _clip(text, 600), "at": _iso()})
+        g["n"] += 1
+        del g["inbox"][:-40]
+
+    async def _room_note(self, enc: Encounter, text: str) -> None:
+        """A line for the BAND record. Never fails the caller."""
+        try:
+            async with enc.send_lock:
+                await self._ensure_room(enc)
+        except Exception as e:  # noqa: BLE001
+            log.info("room note not posted: %s", type(e).__name__)
+            return
+        await self._event(enc, self._redact(enc, text))
+
+    def guest_join(self, enc: Encounter, g: dict[str, Any]) -> None:
+        if g["joined"]:
+            return
+        g["joined"] = True
+        self.emit(enc, "faculty", faculty={"action": "joined", "name": g["name"], "text": "By phone"})
+        self._log(enc, "faculty", f"{g['name']} joined by phone")
+        self._to_guest(g, NURSE, f"Hello {self._called(g['name'])}, this is Nurse Asha. You can hear the consultation. "
+                                  "If the pharmacy holds a drug, approve or deny it here. Anything you type reaches the doctor through me.")
+        self.spawn(self._room_note(enc, f"{g['name']} (faculty) opened the phone link and is following the consultation."), "guest")
+
+    def guest_view(self, enc: Encounter, g: dict[str, Any]) -> dict[str, Any]:
+        rx = [r for r in enc.refs.values() if r.action == "verify_rx"]
+        return {
+            "name": g["name"], "doctor": enc.doctor or "", "open": enc.closed is None,
+            "holds": [{"ref": r.ref, "medication": r.medication, "dose": r.dose, "duration": r.duration,
+                       "reason": r.summary, "asked": r.override_requested} for r in rx if r.status == "held"],
+            "given": [{"ref": r.ref, "medication": r.medication, "dose": r.dose, "overridden": r.status == "overridden"}
+                      for r in rx if r.active],
+            "waitingForDoctor": any(q["answeredAt"] is None and q["by"] == g["name"] for q in enc.faculty_asks),
+            "inbox": list(g["inbox"]),
+        }
+
+    async def guest_act(self, enc: Encounter, g: dict[str, Any], action: str, ref: str = "", text: str = "") -> dict[str, Any]:
+        if enc.closed is not None:
+            return {"ok": False, "error": "The consultation has ended."}
+        g["acts"] += 1
+        if g["acts"] > MAX_GUEST_ACTS:
+            return {"ok": False, "error": "Too many messages from this link."}
+        self.guest_join(enc, g)
+        name, called = g["name"], self._called(g["name"])
+        body = bedside.clean_spoken(text, 400)
+        async with enc.faculty_lock:
+            enc.faculty_messages += 1
+            if action in ("approve", "deny"):
+                r = enc.refs.get(ref)
+                if r is None or r.action != "verify_rx" or (r.status != "held" and not (action == "deny" and r.active)):
+                    return {"ok": False, "error": "That drug is not waiting for a decision any more."}
+                what = f"{r.medication} {r.dose}".strip()
+                if action == "approve":
+                    self._approve(enc, r, name, called, body or "approve")
+                    did = f"approved {what} despite the hold"
+                    told = f"Done. {r.medication} is on the prescription, and I have told the doctor and the pharmacist."
+                else:
+                    was_active = r.active
+                    self._deny(enc, r, was_active, name, called, body or "deny")
+                    did = f"{'stopped' if was_active else 'said no to'} {what}"
+                    told = f"Done. {r.medication} stays off the prescription, and I have told the doctor."
+                self._to_guest(g, NURSE, told)
+                self.spawn(self._room_note(enc, f"{name} (faculty, by phone) {did}" + (f": {body}" if body else ".")), "guest")
+                return {"ok": True}
+            if action != "say" or not body:
+                return {"ok": False, "error": "Nothing to send."}
+            self.spawn(self._room_note(enc, f"{name} (faculty, by phone): {body}"), "guest")
+
+            async def reply(t: str) -> None:
+                self._to_guest(g, NURSE, t)
+
+            await self._faculty_words(enc, name, called, text, body, reply)
+            return {"ok": True}
+
+    async def _override_by_phone(self, enc: Encounter, r: Ref, why: str, phone: list[dict[str, Any]]) -> dict[str, Any]:
+        r.override_requested = True
+        ask = (f"Pharmacy is holding {r.medication}, {r.dose} for {r.duration}. Reason: {r.summary.rstrip('.') or 'not given'}. "
+               + (f"The doctor asks for an override: {why.rstrip('.')}. " if why else "The doctor asks for an override. ")
+               + "Approve or deny it here. The drug stays off the prescription until you do.")
+        for g in phone:
+            self._to_guest(g, NURSE, ask)
+        names = ", ".join(g["name"] for g in phone)
+        self.spawn(self._room_note(enc, f"Asked {names} (faculty, by phone) to approve or deny {r.medication}. "
+                                        f"Pharmacy's reason for the hold: {r.summary.rstrip('.') or 'not given'}."), "guest")
+        self.emit(enc, "delegation", key=f"delegation:{r.ref}", delegation=self._delegation(r))
+        enc.bump("overridesRequested")
+        r.override_reasons.append(bool(why))
+        self.doctor_acted(enc, f"Asked faculty to override the hold on {r.medication}, " + ("with a reason" if why else "without a reason"))
+        self._speak(enc, NURSE, bedside.line("override_asked", enc.lang, name=self._called(phone[0]["name"]), item=r.medication), "ack", r.ref)
+        self._ensure_loop(enc)
+        enc.kick.set()
+        return {"ok": True}
+
     async def _on_faculty(self, enc: Encounter, mid: str, sender_id: str, text: str, to: list[str]) -> None:
         async with enc.faculty_lock:
             person = enc.people.get(sender_id)
@@ -1018,43 +1166,51 @@ class Hub:
                 self.emit(enc, "faculty", faculty={"action": "message", "name": name, "text": body})
                 self._log(enc, "faculty", f"Wrote to {', '.join(to)}")
                 return
-            held = [r for r in enc.refs.values() if r.action == "verify_rx" and r.status == "held"]
-            given = [r for r in enc.refs.values() if r.action == "verify_rx" and r.active]
-            intent = await facultymod.classify(text, [r.medication for r in (*held, *given)])
-            if intent == "approve":
-                r = self._override_target(enc, text, held)
-                if r is None:
-                    intent = "note" if not held else "unclear"
-                else:
-                    self._approve(enc, r, name, called, body)
-                    return
-            if intent == "deny":
-                r, was_active = self._deny_target(enc, text, held, given)
-                if r is None:
-                    intent = "unclear" if held or given else "note"
-                else:
-                    self._deny(enc, r, was_active, name, called, body)
-                    return
-            if intent == "question":
-                enc.awaiting_faculty = True
-                enc.bump("facultyQuestions")
-                enc.faculty_asks.append({"by": name, "at": _now(), "answeredAt": None})
-                del enc.faculty_asks[:-20]
-                self.emit(enc, "faculty", faculty={"action": "question", "name": name, "text": body})
-                self._log(enc, "faculty", f"{name} asked the doctor: {body}")
-                self.spawn(self._speak_free(enc, "fac_question", text, "result", name=called), "speak")
+
+            async def reply(t: str) -> None:
+                await self._tell_human(enc, person, t)
+
+            await self._faculty_words(enc, name, called, text, body, reply)
+
+    async def _faculty_words(self, enc: Encounter, name: str, called: str, text: str, body: str,
+                             reply: Callable[[str], Any]) -> None:
+        """What a human faculty member wrote to Asha, from BAND or from the phone link. Caller holds faculty_lock."""
+        held = [r for r in enc.refs.values() if r.action == "verify_rx" and r.status == "held"]
+        given = [r for r in enc.refs.values() if r.action == "verify_rx" and r.active]
+        intent = await facultymod.classify(text, [r.medication for r in (*held, *given)])
+        if intent == "approve":
+            r = self._override_target(enc, text, held)
+            if r is None:
+                intent = "note" if not held else "unclear"
+            else:
+                self._approve(enc, r, name, called, body)
                 return
-            self.emit(enc, "faculty", faculty={"action": "note", "name": name, "text": body})
-            self._log(enc, "faculty", f"Said: {body}")
-            waiting = [r for r in held if r.override_requested]
-            if intent == "unclear" and waiting:
-                self._speak(enc, NURSE, bedside.line("fac_unclear", enc.lang, name=called), "result")
-                drugs = ", ".join(r.medication for r in waiting)
-                self.spawn(self._tell_human(enc, person,
-                           f"I can't take that as a decision, so the hold stays. For {drugs}, please reply approve or deny"
-                           + (" and name the drug." if len(waiting) > 1 else ".")), "clarify")
-            elif body:
-                self.spawn(self._speak_free(enc, "fac_note", text, "result", name=called), "speak")
+        if intent == "deny":
+            r, was_active = self._deny_target(enc, text, held, given)
+            if r is None:
+                intent = "unclear" if held or given else "note"
+            else:
+                self._deny(enc, r, was_active, name, called, body)
+                return
+        if intent == "question":
+            enc.awaiting_faculty = True
+            enc.bump("facultyQuestions")
+            enc.faculty_asks.append({"by": name, "at": _now(), "answeredAt": None})
+            del enc.faculty_asks[:-20]
+            self.emit(enc, "faculty", faculty={"action": "question", "name": name, "text": body})
+            self._log(enc, "faculty", f"{name} asked the doctor: {body}")
+            self.spawn(self._speak_free(enc, "fac_question", text, "result", name=called), "speak")
+            return
+        self.emit(enc, "faculty", faculty={"action": "note", "name": name, "text": body})
+        self._log(enc, "faculty", f"Said: {body}")
+        waiting = [r for r in held if r.override_requested]
+        if intent == "unclear" and waiting:
+            self._speak(enc, NURSE, bedside.line("fac_unclear", enc.lang, name=called), "result")
+            drugs = ", ".join(r.medication for r in waiting)
+            self.spawn(reply(f"I can't take that as a decision, so the hold stays. For {drugs}, please reply approve or deny"
+                             + (" and name the drug." if len(waiting) > 1 else ".")), "clarify")
+        elif body:
+            self.spawn(self._speak_free(enc, "fac_note", text, "result", name=called), "speak")
 
     async def _tell_human(self, enc: Encounter, person: dict[str, Any], text: str) -> None:
         async with enc.send_lock:

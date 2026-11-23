@@ -436,6 +436,68 @@ class Faculty(HubCase):
             await self.hub.faculty_say(self.enc, "hello")
 
 
+class PhoneFaculty(HubCase):
+    """Faculty invited by phone (Twilio link): decide from MedSim's page, Asha records it in BAND."""
+
+    TOKEN = "t" * 32
+
+    def thoughts(self) -> list[str]:
+        return [m["content"] for room in self.band.rooms.values() for m in room["messages"] if m["message_type"] == "thought"]
+
+    async def guest(self):
+        g = self.hub.add_guest(self.enc, "Dr Meena Rao", self.TOKEN)
+        self.hub.guest_join(self.enc, g)
+        return g
+
+    async def test_link_lets_them_approve_and_band_has_the_record(self) -> None:
+        r = await self.held()
+        g = await self.guest()
+        self.assertEqual(self.hub.guest(self.TOKEN), (self.enc, g))
+        self.assertIsNone(self.hub.guest("x" * 32))
+        await self.hub.request_override(self.enc, r.ref, "rash was 20 years ago")
+        self.assertIsNone(self.enc.participant("faculty"))  # the BAND owner was not pulled in
+        view = self.hub.guest_view(self.enc, g)
+        self.assertEqual([(h["ref"], h["asked"]) for h in view["holds"]], [(r.ref, True)])
+        self.assertIn("approve or deny", view["inbox"][-1]["text"].lower())
+        out = await self.hub.guest_act(self.enc, g, "approve", r.ref)
+        self.assertTrue(out["ok"])
+        self.assertEqual(r.status, "overridden")
+        self.assertEqual(self.applies()[-1]["addPrescription"]["medicationId"], "amox")
+        acts = [e["faculty"]["action"] for e in self.events("faculty")]
+        self.assertEqual([a for a in acts if a in ("invited", "joined", "approve")], ["invited", "joined", "approve"])
+        await self.until(lambda: any("by phone) approved Amoxicillin" in t for t in self.thoughts()), "recorded in BAND")
+        await self.until(lambda: any("despite the hold" in t for t in self.band.plain()), "pharmacy told")
+        self.assertFalse((await self.hub.guest_act(self.enc, g, "approve", r.ref))["ok"])  # decided already
+
+    async def test_deny_and_typed_ok_never_approves(self) -> None:
+        r = await self.held()
+        g = await self.guest()
+        await self.hub.request_override(self.enc, r.ref)
+        for t in ("ok", "haan", "maybe"):
+            self.assertTrue((await self.hub.guest_act(self.enc, g, "say", text=t))["ok"])
+        self.assertEqual((r.status, self.applies()), ("held", []))
+        await self.until(lambda: any("can't take that" in m["text"] for m in g["inbox"]), "asked again on the page")
+        self.assertTrue((await self.hub.guest_act(self.enc, g, "deny", r.ref))["ok"])
+        self.assertEqual((r.status, self.applies()), ("held", []))
+        self.assertTrue(any(e["faculty"]["action"] == "deny" for e in self.events("faculty")))
+
+    async def test_questions_and_the_doctors_reply_reach_the_page(self) -> None:
+        g = await self.guest()
+        self.assertTrue((await self.hub.guest_act(self.enc, g, "say", text="What is his troponin?"))["ok"])
+        await self.until(lambda: self.enc.awaiting_faculty, "awaiting")
+        self.assertTrue(self.hub.guest_view(self.enc, g)["waitingForDoctor"])
+        self.assertTrue(await self.hub.faculty_say(self.enc, "It is pending"))
+        self.assertEqual(g["inbox"][-1], {**g["inbox"][-1], "from": "doctor", "text": "It is pending"})
+        self.assertIsNone(self.enc.participant("faculty"))
+        self.assertFalse(self.hub.guest_view(self.enc, g)["waitingForDoctor"])
+
+    async def test_closed_or_unknown_ref_does_nothing(self) -> None:
+        g = await self.guest()
+        self.assertFalse((await self.hub.guest_act(self.enc, g, "approve", "rx_nope"))["ok"])
+        self.hub.close(self.enc)
+        self.assertFalse((await self.hub.guest_act(self.enc, g, "say", text="hello"))["ok"])
+
+
 class Osce(HubCase):
     osce = True
 

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Brand } from '../ui/chrome';
 import { ObserverSession, type ObserverView } from '../../observer/observerSession';
-import { observeCodeFromUrl } from '../../observer/observeParam';
+import { facultyTokenFromUrl, observeCodeFromUrl } from '../../observer/observeParam';
+import { FacultyDesk } from '../observer/FacultyDesk';
 import { LIMITS, OSCE_DOMAINS, type ChartEvent, type MarkDomain } from '../../observer/messages';
 import type { RoomSummary } from '../../room/reducer';
 import '../../styles/observer.css';
@@ -22,6 +23,7 @@ function readName(): string {
  *  the student and send OSCE marks. */
 export default function ObserverScreen() {
   const code = useMemo(() => observeCodeFromUrl(), []);
+  const facultyToken = useMemo(() => facultyTokenFromUrl(), []);
   const session = useMemo(() => new ObserverSession(), []);
   const view = useSyncExternalStore(session.subscribe, session.getView);
   const [name, setName] = useState(readName);
@@ -63,7 +65,7 @@ export default function ObserverScreen() {
 
       {!code ? (
         <Gate title="This observer link is not valid">
-          <p className="obs-gate-body">Ask the student to create a new link from the consultation (Invite observer, bottom left).</p>
+          <p className="obs-gate-body">Ask the student to invite you again from the consultation (Invite faculty, bottom left).</p>
         </Gate>
       ) : view.phase === 'idle' || view.phase === 'joining' || view.phase === 'error' ? (
         <Gate title="Observe a live consultation">
@@ -72,6 +74,12 @@ export default function ObserverScreen() {
             quiet notes and an OSCE marking sheet. You join as a silent listener: your microphone is never used and
             nobody in the room can hear you.
           </p>
+          {facultyToken && (
+            <p className="obs-gate-body">
+              You were invited as faculty: if the pharmacy holds a drug, you decide whether it is given. Nurse Asha
+              records your decision in the hospital&apos;s BAND agent room.
+            </p>
+          )}
           <label className="field-label" htmlFor="obs-name">Your name (shown to the student)</label>
           <input
             id="obs-name"
@@ -110,6 +118,7 @@ export default function ObserverScreen() {
             <Transcript view={view} />
           </section>
           <section className="obs-col obs-col--right" aria-label="Faculty tools">
+            {facultyToken && <FacultyDesk token={facultyToken} />}
             <Whisper session={session} view={view} />
             <MarkingSheet session={session} view={view} />
           </section>

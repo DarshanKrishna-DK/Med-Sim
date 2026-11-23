@@ -172,6 +172,39 @@ async def room_close(encounter_id: str, b: CloseBody):
     return {"ref": ref} if ref else {}
 
 
+# ── faculty invited by phone (hub.add_guest) ───────────────────────────────
+# The token reached the faculty member's phone by text message and nowhere else.
+
+
+class GuestActBody(BaseModel):
+    action: str = Field(pattern="^(approve|deny|say)$")
+    ref: str = Field("", max_length=40)
+    text: str = Field("", max_length=800)
+
+
+def _guest(token: str) -> tuple[Encounter, dict[str, Any]]:
+    found = hub.guest(token) if hub.enabled and 16 <= len(token) <= 64 else None
+    if found is None:
+        raise HTTPException(status_code=404, detail="This faculty link is not valid any more.")
+    return found
+
+
+@router.get("/agent/room/guest/{token}")
+async def guest_state(token: str):
+    enc, g = _guest(token)
+    hub.guest_join(enc, g)
+    return hub.guest_view(enc, g)
+
+
+@router.post("/agent/room/guest/{token}/act")
+async def guest_act(token: str, b: GuestActBody):
+    enc, g = _guest(token)
+    out = await hub.guest_act(enc, g, b.action, b.ref, b.text)
+    if not out.get("ok"):
+        raise HTTPException(status_code=409, detail=str(out.get("error") or "not possible now"))
+    return hub.guest_view(enc, g)
+
+
 # ── side rooms (siderooms.py) ──────────────────────────────────────────────
 
 

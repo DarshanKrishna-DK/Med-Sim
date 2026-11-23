@@ -14,6 +14,7 @@ import { getExistingConversation } from '../voice/conversationStore';
 import { observerLine } from '../voice/lines';
 import { say } from '../voice/speech';
 import { findContact, getContacts, parseInviteCommand, type ObserverContact } from './contacts';
+import { encounterIdOf } from '../room/chart';
 import { getLinkState, inviteObserver, pushObserverMessage } from './studentLink';
 
 const LOG = '[medsim:observer-call]';
@@ -106,13 +107,17 @@ export function clearObserverCall() {
 export interface PopoverRequest {
   seq: number;
   prefillName: string;
+  add: boolean; // open on the add-contact form
 }
-let popover: PopoverRequest = { seq: 0, prefillName: '' };
+let popover: PopoverRequest = { seq: 0, prefillName: '', add: true };
 const popListeners = new Set<() => void>();
-export function requestObserverPopover(prefillName = '') {
-  popover = { seq: popover.seq + 1, prefillName };
+export function requestObserverPopover(prefillName = '', add = true) {
+  popover = { seq: popover.seq + 1, prefillName, add };
   for (const l of popListeners) l();
 }
+
+/** Open "Invite faculty" on the contact list (the Agent Room's invite button). */
+export const openFacultyInvite = () => requestObserverPopover('', false);
 const subscribePop = (l: () => void) => {
   popListeners.add(l);
   return () => popListeners.delete(l);
@@ -281,6 +286,8 @@ export async function callObserver(contact: ObserverContact, note = '', utteranc
           caseId: patient.case.id,
         },
         available: false,
+        // Lets the contact approve or deny held drugs from their phone (the backend checks the room is live).
+        encounterId: encounterIdOf(patient),
         ...(note ? { note } : {}),
       }),
     });

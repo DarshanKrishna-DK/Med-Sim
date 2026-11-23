@@ -15,6 +15,10 @@ tsconfig.tsbuildinfo
 # Every dot-directory: editor, agent, tool and MCP state
 # (.claude, .playwright-mcp, .vscode, .idea, .agents, .cursor, ...)
 .*/
+# ...except the GitHub workflows (Render auto-deploy)
+!.github/
+.github/*
+!.github/workflows/
 # Local MCP / tool config files
 .mcp.json
 skills-lock.json

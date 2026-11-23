@@ -149,6 +149,28 @@ class CallStartTests(Base):
         self.assertEqual(res["spoken"], "Calling Darshan now. I've sent the link on Telegram.")
         self.assertEqual(res["contact"]["phone"], "+91******3210")
 
+    def test_faculty_token_goes_only_to_the_phone(self):
+        enc = mock.Mock(side=None)
+        fake_hub = mock.Mock(enabled=True)
+        fake_hub.active.return_value = enc
+        with mock.patch("agentroom.hub.hub", fake_hub):
+            res = self.start_call(encounterId="enc-1")
+        msg = oc.notify.send_to_patient.await_args.args[2]
+        tok = re.search(r"&fac=([A-Za-z0-9_-]+)", msg).group(1)
+        self.assertIn("invited you as faculty to a live MedSim consultation", msg)
+        self.assertIn("approve or deny", msg)
+        fake_hub.add_guest.assert_called_once_with(enc, "Darshan Kumar", tok)
+        self.assertNotIn(tok, json.dumps(res))
+        self.assertNotIn(tok, self.client.get(f"/agent/observer/call/{res['token']}", headers=HDR).text)
+
+    def test_no_room_means_a_watch_only_link(self):
+        fake_hub = mock.Mock(enabled=True)
+        fake_hub.active.return_value = None
+        with mock.patch("agentroom.hub.hub", fake_hub):
+            self.start_call(encounterId="enc-gone")
+        self.assertNotIn("&fac=", oc.notify.send_to_patient.await_args.args[2])
+        fake_hub.add_guest.assert_not_called()
+
     def test_invalid_or_expired_invite_rejected(self):
         r = self.client.post("/agent/observer/call", json=body("bogus.code"), headers=HDR)
         self.assertEqual(r.status_code, 400)

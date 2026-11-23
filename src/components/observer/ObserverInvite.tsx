@@ -5,10 +5,14 @@ import { POLYCLINIC_BED_INDEX } from '../../game/store';
 import { getExistingConversation } from '../../voice/conversationStore';
 import { inviteObserver, stopObserverLink, useObserverLink } from '../../observer/studentLink';
 import { qrMatrix, qrPath } from '../../observer/qr';
+import { inviteFaculty, roomActive } from '../../room/client';
 import '../../styles/observer.css';
 
-/** "Invite observer": a small secondary control pinned bottom-left of the
- *  encounter (practice and OSCE). Mints a faculty link for the live call. */
+/** "Invite faculty": pinned bottom-left of the encounter (practice and OSCE), also
+ *  opened from the Agent Room. Asha phones a saved contact (Twilio) and texts them a
+ *  link: they listen live, follow the chart and the Agent Room, and can approve or
+ *  deny a held drug, which Asha records in the BAND room. A watch-only link and
+ *  joining from the BAND app are the other ways in. */
 export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null; voiceStatus: string }) {
   const voiceLive = ['ready', 'listening', 'thinking', 'speaking'].includes(voiceStatus);
   const link = useObserverLink();
@@ -23,7 +27,7 @@ export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null;
   useEffect(() => {
     if (!popReq.seq) return;
     setOpen(true);
-    setAdding(true);
+    setAdding(popReq.add);
     setPrefill(popReq.prefillName);
   }, [popReq]);
 
@@ -56,12 +60,22 @@ export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null;
   return (
     <div className="obs-invite" ref={wrap}>
       {open && (
-        <div className="obs-pop" role="dialog" aria-label="Invite a faculty observer">
-          <p className="obs-pop-title">Faculty observer</p>
+        <div className="obs-pop" role="dialog" aria-label="Invite faculty">
+          <p className="obs-pop-title">Invite faculty</p>
           <p className="obs-pop-body">
-            A tutor can listen to this consultation, follow your chart, send you quiet notes and mark you. They join
-            as a silent listener: no microphone, nobody hears them.
+            Asha phones your tutor and texts them a link. On their phone they hear this consultation, follow your chart
+            and the Agent Room, and can approve or deny a drug the pharmacy holds. Asha records their decisions in the
+            BAND room. Nobody hears them.
           </p>
+          <ObserverContacts
+            voiceLive={voiceLive}
+            adding={adding}
+            setAdding={setAdding}
+            prefill={prefill}
+          />
+          <details className="obs-more" open={sharingThisCase}>
+            <summary>Other ways to join</summary>
+          <p className="obs-pop-body">A watch-only link: they listen and mark you, but cannot decide on drugs.</p>
           {sharingThisCase && !stale ? (
             <SharePanel url={link.inviteUrl} expiresAt={link.expiresAt} watching={watching} />
           ) : (
@@ -84,12 +98,8 @@ export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null;
               Stop sharing
             </button>
           )}
-          <ObserverContacts
-            voiceLive={voiceLive}
-            adding={adding}
-            setAdding={setAdding}
-            prefill={prefill}
-          />
+          {roomActive() && <BandSelfJoin />}
+          </details>
         </div>
       )}
       <button
@@ -104,9 +114,41 @@ export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null;
           <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8Z" />
           <circle cx="8" cy="8" r="2" />
         </svg>
-        {sharingThisCase ? (watching ? `${watching} observing` : 'Observer link live') : 'Invite observer'}
+        {sharingThisCase ? (watching ? `${watching} watching` : 'Faculty link live') : 'Invite faculty'}
         {watching > 0 && <span className="obs-live-dot" aria-hidden="true" />}
       </button>
+    </div>
+  );
+}
+
+/** The BAND account owner joins the room from the BAND app (no phone call). */
+function BandSelfJoin() {
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="obs-band">
+      <p className="obs-pop-body">Or join the Agent Room yourself from the BAND app, as the account owner.</p>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm btn-block"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setFailed(false);
+          void inviteFaculty()
+            .then((r) => (r?.url ? setUrl(r.url) : setFailed(true)))
+            .finally(() => setBusy(false));
+        }}
+      >
+        {busy ? 'Adding you...' : url ? 'Added again' : 'Join in BAND'}
+      </button>
+      {url && (
+        <a className="obs-share-meta" href={url} target="_blank" rel="noreferrer noopener">
+          Open the room in BAND
+        </a>
+      )}
+      {failed && <p className="obs-pop-warn">BAND did not answer. Try again in a moment.</p>}
     </div>
   );
 }

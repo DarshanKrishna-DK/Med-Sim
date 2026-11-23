@@ -47,7 +47,7 @@ Nurse Asha does not know the lab result. She does not decide whether a drug is s
 | **Teacher Iyer** | Turns the examiner's weak areas into a lesson and a practice case | The student's name and the case |
 | **Receptionist Priya** | Takes questions only a person can answer to the faculty member | Clinical rooms |
 | **Theatre Sister Leela** | Blood, allergy checks and calls for help from theatre | The clinic |
-| **A human faculty member** | Joins the room from the BAND app. The only one who can release a hold or sign a result | |
+| **A human faculty member** | Invited by phone: Asha calls them (Twilio) and texts a link. On their phone they hear the consultation and press Approve or Deny on a held drug; Asha records it in the BAND room. The account owner can also join from the BAND app. Only a human can release a hold or sign a result | |
 
 ```mermaid
 sequenceDiagram
@@ -108,7 +108,7 @@ sequenceDiagram
   </tr>
   <tr>
     <td valign="top">📞 <b>Follow-up calls</b><br>The patient talks to Asha live from their phone; red flags alert the doctor mid-call.</td>
-    <td valign="top">👀 <b>Observers by phone</b><br>"Asha, invite my senior to observe" sends the Agora link and phones them.</td>
+    <td valign="top">👀 <b>Faculty by phone</b><br>"Asha, invite my senior" phones them and texts a link: they listen live and decide on held drugs.</td>
     <td valign="top">🤖 <b>Autonomous agents</b><br>Priya at reception, Dr. Iyer teaching (optional Anam avatar), Prof. Kulkarni's viva, Dr. Rao in radiology.</td>
   </tr>
   <tr>
