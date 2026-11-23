@@ -2,8 +2,8 @@ import { store } from '../../game/store';
 import { BrandMark, enterHospital, goToLandingSection } from './chrome';
 import { FooterScene } from './pixel/FooterScene';
 
-const REPO = 'https://github.com/DarshanKrishna-DK/MedSim';
-const DEMO = 'https://medsim-0cla.onrender.com';
+const REPO = 'https://github.com/DarshanKrishna-DK/Med-Sim';
+const DEMO = 'https://medsim-band.onrender.com';
 
 /** Landing footer: brand + links over the pixel night street, with the
  *  credits line sitting on the road at the very bottom. */
@@ -56,11 +56,6 @@ export function SiteFooter() {
                   Live demo
                 </a>
               </li>
-              <li>
-                <a className="footer-link" href={`${REPO}/blob/main/LICENSE`} target="_blank" rel="noreferrer">
-                  MIT license
-                </a>
-              </li>
             </ul>
           </div>
         </nav>
@@ -71,7 +66,7 @@ export function SiteFooter() {
       <div className="footer-base">
         <div className="wrap footer-base-inner">
           <p>
-            Built for Build with Agora Bengaluru 2026 with Agora Conversational AI, Murf Falcon and Sarvam.
+            Built with BAND, Agora Conversational AI, Murf Falcon and Sarvam.
           </p>
           <p className="footer-small">Synthetic cases, for training only. Not clinical advice.</p>
         </div>

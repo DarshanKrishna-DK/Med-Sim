@@ -54,7 +54,7 @@ const AGENTS = [
 const BEYOND = [
   { title: 'Departments in one room', what: 'Pharmacy, Lab, Radiology and the examiner are separate agents on BAND. Asha brings in only the one a case needs, each sees only what it is sent, and a human teacher can join the room to overrule them.' },
   { title: 'Follow-up calls', what: 'At the booked time Asha messages the patient and calls them over Agora. A red flag mid-call alerts the doctor on Telegram.' },
-  { title: 'Observer, by phone', what: '“Asha, invite Darshan to observe.” She phones him, answers his questions, and he joins the live call listen-only.' },
+  { title: 'Faculty, by phone', what: '“Asha, invite Dr Rao.” She phones your tutor and texts a link: they listen live, and approve or deny a drug the pharmacy holds.' },
   { title: 'Assignments and Reception', what: 'Teachers assign cases with a code. Priya at the front desk tells you what is pending and emails your report card.' },
   { title: 'Agents with their own tools', what: 'Priya, Dr. Iyer and Prof. Kulkarni decide mid-call when to act: book a study slot, text you the plan, draw on the board, set an assignment, mark your answer.' },
   { title: 'Logbook and referrals', what: 'Every debrief adds a CBME logbook row in Google Sheets; referrals become PDFs in Drive.' },
