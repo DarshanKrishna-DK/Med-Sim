@@ -13,6 +13,20 @@ clearAllConversationStorage();
 // Teacher assignment link (/?assignment=<code>), next to the ?observe= check in the store.
 captureAssignmentFromUrl();
 
+// A deploy replaces the hashed chunks: a tab opened before it gets a blank screen
+// on the next lazy import. Reload once to pick up the new build (not in a loop).
+window.addEventListener('vite:preloadError', (e) => {
+  try {
+    const last = Number(sessionStorage.getItem('medsim:chunk-reload') || 0);
+    if (Date.now() - last < 30_000) return;
+    sessionStorage.setItem('medsim:chunk-reload', String(Date.now()));
+  } catch {
+    /* storage blocked: still reload once, this page load */
+  }
+  e.preventDefault();
+  window.location.reload();
+});
+
 const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('#root not found');
 

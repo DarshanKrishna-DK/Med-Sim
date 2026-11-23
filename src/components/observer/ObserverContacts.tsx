@@ -12,7 +12,7 @@ import { callObserver, clearObserverCall, isCallBusy, useObserverCall, type Call
 
 const STATUS_LABEL: Record<CallStatus, string> = {
   idle: '',
-  inviting: 'Creating the observer link',
+  inviting: 'Creating the faculty link',
   placing: 'Sending the link',
   preparing: 'Sending the link',
   queued: 'Dialling',
@@ -46,16 +46,16 @@ export function ObserverContacts({
   const busy = isCallBusy(call.status);
 
   return (
-    <section className="obs-contacts" aria-label="Call an observer">
+    <section className="obs-contacts" aria-label="Call faculty">
       <div className="obs-sec-head">
-        <p className="obs-sec-title">Call an observer</p>
+        <p className="obs-sec-title">Call faculty</p>
         {!adding && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding(true)}>
             Add contact
           </button>
         )}
       </div>
-      <p className="obs-pop-hint">Or say “Asha, invite {contacts[0] ? firstName(contacts[0].name) : 'Darshan'} to observe”.</p>
+      <p className="obs-pop-hint">Or say “Asha, invite {contacts[0] ? firstName(contacts[0].name) : 'Darshan'}”.</p>
 
       {call.status !== 'idle' && <CallPanel />}
 

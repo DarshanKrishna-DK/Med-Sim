@@ -81,7 +81,7 @@ export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null;
           ) : (
             <>
               {stale && <p className="obs-pop-warn">Voice reconnected, so the old link points at the previous call. Create a new one.</p>}
-              {!voiceLive && <p className="obs-pop-warn">Start voice first (press T): the observer listens to the live call.</p>}
+              {!voiceLive && <p className="obs-pop-warn">Start voice first (press T): they listen to the live call.</p>}
               {link.status === 'error' && link.error && <p className="obs-pop-warn">{link.error}</p>}
               <button
                 type="button"
@@ -89,7 +89,7 @@ export function ObserverInvite({ caseId, voiceStatus }: { caseId: string | null;
                 disabled={!voiceLive || link.status === 'creating'}
                 onClick={() => void inviteObserver()}
               >
-                {link.status === 'creating' ? 'Creating link...' : 'Create observer link'}
+                {link.status === 'creating' ? 'Creating link...' : 'Create watch-only link'}
               </button>
             </>
           )}
